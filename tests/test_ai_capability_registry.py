@@ -630,7 +630,7 @@ class MotorAIBootstrapBuilderTests(unittest.TestCase):
     def test_build_start_here_md_contains_project_name(self) -> None:
         content = self.builder.build_start_here_md("MyGame")
         self.assertIn("MyGame", content)
-        self.assertIn("MotorVideojuegosIA", content)
+        self.assertIn("OpenGame", content)
 
     def test_start_here_md_lists_common_capabilities(self) -> None:
         content = self.builder.build_start_here_md("Test")

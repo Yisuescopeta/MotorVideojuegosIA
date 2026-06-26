@@ -1,6 +1,6 @@
 # 🎮 Platformer Vertical Slice
 
-Demo de plataformas 2D implementado con MotorVideojuegosIA.
+Demo de plataformas 2D implementado con OpenGame.
 
 ## 📂 Estructura del Proyecto
 
@@ -36,7 +36,7 @@ platformer_vertical_slice_project/
 ### Opción 3: Línea de comandos
 
 ```cmd
-cd C:\Users\usuario\Downloads\MotorVideojuegosIA-main\MotorVideojuegosIA-main
+cd C:\Users\usuario\Downloads\OpenGame-main\OpenGame-main
 python main.py --project demo/platformer_vertical_slice_project
 ```
 

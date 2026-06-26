@@ -52,7 +52,7 @@ def main():
     motor_ai_path = project_path / "motor_ai.json"
     
     if not motor_ai_path.exists():
-        print("\n⚠️  No motor_ai.json found. This may not be a MotorVideojuegosIA project.")
+        print("\n⚠️  No motor_ai.json found. This may not be a OpenGame project.")
         print("   Run: motor doctor --project .")
         return 1
     

@@ -1,4 +1,4 @@
-# MotorVideojuegosIA — Informe de Fallos
+# OpenGame — Informe de Fallos
 
 Generado: 2026-06-01  
 Version del motor: 2026.03  

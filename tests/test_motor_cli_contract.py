@@ -282,7 +282,7 @@ class AIStartCLIContractTests(unittest.TestCase):
         self.assertTrue(payload["success"])
 
         data = payload["data"]
-        self.assertEqual(data["engine"]["name"], "MotorVideojuegosIA")
+        self.assertEqual(data["engine"]["name"], "OpenGame")
         self.assertTrue(data["engine"]["version"])
         self.assertEqual(data["recommended_cli"], "motor")
         self.assertEqual(data["recommended_api"], "EngineAPI")

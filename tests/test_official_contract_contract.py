@@ -88,18 +88,18 @@ class DoctorReadOnlyContractTests(_ContractTestMixin, unittest.TestCase):
     def test_doctor_passes_read_only_to_engine_api(self) -> None:
         """doctor must pass read_only=True to EngineAPI so no global storage is created.
 
-        Uses an isolated MOTORVIDEOJUEGOSIA_HOME so the test is deterministic.
+        Uses an isolated OPENGAME_HOME so the test is deterministic.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             project = self._create_test_project(workspace)
             isolated_home = workspace / "isolated_home"
 
-            # Build env with isolated MOTORVIDEOJUEGOSIA_HOME
+            # Build env with isolated OPENGAME_HOME
             test_env = self.env.copy()
-            test_env["MOTORVIDEOJUEGOSIA_HOME"] = isolated_home.as_posix()
+            test_env["OPENGAME_HOME"] = isolated_home.as_posix()
 
-            global_dir = isolated_home / ".motorvideojuegosia"
+            global_dir = isolated_home
             recents = global_dir / "recent_projects.json"
 
             # Run doctor with isolated global storage
@@ -113,7 +113,7 @@ class DoctorReadOnlyContractTests(_ContractTestMixin, unittest.TestCase):
             # Verify global storage was NOT created in isolated home
             self.assertFalse(
                 global_dir.exists(),
-                "doctor must NOT create ~/.motorvideojuegosia/ (EngineAPI must use read_only=True)"
+                "doctor must NOT create OPENGAME_HOME artifacts (EngineAPI must use read_only=True)"
             )
             self.assertFalse(
                 recents.exists(),

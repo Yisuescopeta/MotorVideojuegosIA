@@ -38,7 +38,7 @@ def main() -> int:
 
     if config.print_runtime_info:
         info = {
-            "engine": "MotorVideojuegosIA",
+            "engine": "OpenGame",
             "frozen": getattr(sys, 'frozen', False),
             "cwd": str(Path.cwd()),
             "entry_scene": config.entry_scene,

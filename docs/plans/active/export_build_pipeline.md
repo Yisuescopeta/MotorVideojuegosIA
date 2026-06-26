@@ -1,4 +1,4 @@
-# Plan profesional: Export/Build Pipeline nivel Godot para MotorVideojuegosIA
+# Plan profesional: Export/Build Pipeline nivel Godot para OpenGame
 
 > Documento base para que el agente Reina implemente de forma progresiva, verificable y profesional un sistema de exportación/build de juegos jugables para PC y móviles.
 >
@@ -8,7 +8,7 @@
 
 ## 0. Principio rector
 
-El build oficial de juegos de MotorVideojuegosIA **no debe empaquetar el editor completo**.
+El build oficial de juegos de OpenGame **no debe empaquetar el editor completo**.
 
 Debe seguir este flujo:
 
@@ -37,7 +37,7 @@ La base actual del repo incluye empaquetado Windows del editor/motor con PyInsta
 
 ## 1. Objetivo de producto
 
-Implementar en MotorVideojuegosIA un sistema profesional de exportación de juegos con estas capacidades:
+Implementar en OpenGame un sistema profesional de exportación de juegos con estas capacidades:
 
 1. Export presets estilo Godot.
 2. Exportación por CLI oficial `motor`.
@@ -130,7 +130,7 @@ La funcionalidad se considera objetivamente "nivel Godot" para el alcance de est
 El repo local contiene Godot aquí:
 
 ```text
-C:\Users\Jesus\Documents\GitHub\MotorVideojuegosIA\godot\godot
+C:\Users\Jesus\Documents\GitHub\OpenGame\godot\godot
 ```
 
 Usar ese código **solo como referencia arquitectónica y conceptual**, no copiar código.
@@ -160,7 +160,7 @@ Filtros de inclusión/exclusión
 Validación por plataforma
 ```
 
-La implementación debe adaptarse a MotorVideojuegosIA y respetar su arquitectura propia.
+La implementación debe adaptarse a OpenGame y respetar su arquitectura propia.
 
 ---
 
@@ -170,7 +170,7 @@ El repo ya tiene:
 
 ```text
 build/build_windows.py
-build/motorvideojuegos.spec
+build/opengame.spec
 build/installer.iss
 docs/building.md
 ```
@@ -325,7 +325,7 @@ Mantener como legacy o reconvertir:
 
 ```text
 build/build_windows.py
-build/motorvideojuegos.spec
+build/opengame.spec
 docs/building.md
 ```
 

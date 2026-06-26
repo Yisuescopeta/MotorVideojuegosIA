@@ -1,6 +1,6 @@
 # Export Presets
 
-Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
+Configuracion de exportacion estilo Godot para OpenGame. Un archivo
 `export_presets.motor.json` en la raiz del proyecto define todos los presets.
 
 ## Formato

@@ -8,7 +8,7 @@
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="MotorVideojuegosIA"
+        android:text="OpenGame"
         android:textColor="#FFFFFF"
         android:textSize="18sp"
         android:layout_gravity="center" />

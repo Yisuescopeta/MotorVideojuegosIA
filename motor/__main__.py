@@ -2,7 +2,7 @@
 motor/__main__.py - Entrypoint for `python -m motor`
 
 ARCHITECTURE NOTE:
-    This is the OFFICIAL CLI entrypoint for MotorVideojuegosIA.
+    This is the OFFICIAL CLI entrypoint for OpenGame.
     
     Execution flow:
         python -m motor [args]

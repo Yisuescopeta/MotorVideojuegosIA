@@ -92,7 +92,7 @@ py -m motor ai start --project . --json
 El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": object }`.
 `data` incluye:
 
-- `engine`: nombre y version de MotorVideojuegosIA.
+- `engine`: nombre y version de OpenGame.
 - `recommended_cli`: `motor`.
 - `recommended_api`: `EngineAPI`.
 - `scene_context`: escena activa desde estado de editor si existe, ultima escena,
@@ -106,7 +106,7 @@ El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": ob
 
 ### `motor ai compliance`
 
-Diagnostico read-only para validar si un proyecto usa MotorVideojuegosIA de
+Diagnostico read-only para validar si un proyecto usa OpenGame de
 forma nativa y detectar senales de runtimes externos priorizados por IA.
 
 ```bash

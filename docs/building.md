@@ -28,7 +28,7 @@ py build/build_windows.py
 Salida esperada:
 
 ```text
-dist/MotorVideojuegosIA/MotorVideojuegosIA.exe
+dist/OpenGame/OpenGame.exe
 ```
 
 ## Generar ejecutable e instalador
@@ -40,7 +40,7 @@ py build/build_windows.py --installer
 Salida esperada:
 
 ```text
-dist/MotorVideojuegosIA-{version}-Setup.exe
+dist/OpenGame-{version}-Setup.exe
 ```
 
 El instalador requiere `ISCC.exe` en el `PATH`, en la instalacion por usuario de
@@ -67,7 +67,7 @@ No dupliques la version en documentacion ni scripts si puede leerse desde
 build/
   build_windows.py
   installer.iss
-  motorvideojuegos.spec
+  opengame.spec
 ```
 
 ## Publicacion manual
@@ -75,7 +75,7 @@ build/
 1. Actualiza `ENGINE_VERSION` en `engine/config.py`.
 2. Ejecuta `py build/build_windows.py --installer`.
 3. Crea una GitHub Release con tag `v{version}`.
-4. Sube `dist/MotorVideojuegosIA-{version}-Setup.exe` como asset.
+4. Sube `dist/OpenGame-{version}-Setup.exe` como asset.
 
 ## Notas
 

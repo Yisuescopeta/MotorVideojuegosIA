@@ -1,14 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec para MotorVideojuegosIA.
+PyInstaller spec para OpenGame.
 
 Uso:
-    pyinstaller build/motorvideojuegos.spec --noconfirm
+    pyinstaller build/opengame.spec --noconfirm
 
-Genera: dist/MotorVideojuegosIA/ (carpeta con ejecutable y dependencias)
+Genera: dist/OpenGame/ (carpeta con ejecutable y dependencias)
 
 Para build de depuración (consola visible — útil cuando la ventana no aparece):
-    SET MOTOR_DEBUG_CONSOLE=1 && pyinstaller build/motorvideojuegos.spec --noconfirm
+    SET MOTOR_DEBUG_CONSOLE=1 && pyinstaller build/opengame.spec --noconfirm
     (o cambiar console=False → console=True en la sección EXE de abajo)
 """
 
@@ -204,7 +204,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="MotorVideojuegosIA",
+    name="OpenGame",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -224,5 +224,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="MotorVideojuegosIA",
+    name="OpenGame",
 )

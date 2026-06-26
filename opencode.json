@@ -270,7 +270,7 @@
     },
     "godot": {
       "description": "Godot analysis & adaptation: analiza codigo Godot, compara con el motor, implementa features adaptadas",
-      "template": "I want you to act as the QUEEN orchestrator agent. This task requires Godot source code analysis and feature adaptation to MotorVideojuegosIA. Use the godot-source-analyzer, godot-gap-analyzer, and godot-adapter sub-agents as needed. Load the godot-feature-adapter skill for Godot-to-Motor mappings.\n\nUser task: $ARGUMENTS\n\nReference docs:\n- .opencode/agents/godot-source-analyzer.md\n- .opencode/agents/godot-gap-analyzer.md\n- .opencode/agents/godot-adapter.md\n- .agents/skills/godot-feature-adapter/SKILL.md",
+      "template": "I want you to act as the QUEEN orchestrator agent. This task requires Godot source code analysis and feature adaptation to OpenGame. Use the godot-source-analyzer, godot-gap-analyzer, and godot-adapter sub-agents as needed. Load the godot-feature-adapter skill for Godot-to-Motor mappings.\n\nUser task: $ARGUMENTS\n\nReference docs:\n- .opencode/agents/godot-source-analyzer.md\n- .opencode/agents/godot-gap-analyzer.md\n- .opencode/agents/godot-adapter.md\n- .agents/skills/godot-feature-adapter/SKILL.md",
       "agent": "queen",
       "model": "opencode-go/deepseek-v4-pro"
     }

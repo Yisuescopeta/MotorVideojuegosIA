@@ -9,6 +9,7 @@ from engine.agent.credentials import (
     AgentCredentialStore,
     AgentProviderLoginService,
     AgentProviderSettingsStore,
+    resolve_agent_global_state_dir,
 )
 from engine.agent.engine_port import AgentEnginePort, EngineAPIAgentEnginePort
 from engine.agent.memory import AgentCompactionService, AgentMemoryStore
@@ -99,14 +100,9 @@ class AgentSessionService:
         return Path.cwd().resolve()
 
     def _resolve_global_state_dir(self, global_state_dir: str | Path | None) -> Path:
-        if global_state_dir is not None:
-            return Path(global_state_dir).expanduser().resolve()
         if self.api is not None and getattr(self.api, "project_service", None) is not None:
             return self.api.project_service.global_state_dir.resolve()
-        env_override = __import__("os").environ.get("MOTORVIDEOJUEGOSIA_HOME", "").strip()
-        if env_override:
-            return Path(env_override).expanduser().resolve()
-        return (Path.home() / ".motorvideojuegosia").resolve()
+        return resolve_agent_global_state_dir(global_state_dir)
 
     def create_session(
         self,

@@ -120,6 +120,37 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertTrue((first_global / "recent_projects.json").exists())
         self.assertTrue((second_global / "recent_projects.json").exists())
 
+    def test_global_state_dir_prefers_opengame_home_env(self) -> None:
+        primary_global = self.workspace / "opengame_home"
+        legacy_global = self.workspace / "legacy_home"
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENGAME_HOME": primary_global.as_posix(),
+                "MOTORVIDEOJUEGOSIA_HOME": legacy_global.as_posix(),
+            },
+            clear=False,
+        ):
+            service = ProjectService(self.workspace / "EnvProject", auto_ensure=False, read_only=True)
+
+        self.assertEqual(service.global_state_dir, primary_global.resolve())
+
+    def test_global_state_dir_falls_back_to_legacy_home_env(self) -> None:
+        legacy_global = self.workspace / "legacy_home"
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENGAME_HOME": "",
+                "MOTORVIDEOJUEGOSIA_HOME": legacy_global.as_posix(),
+            },
+            clear=False,
+        ):
+            service = ProjectService(self.workspace / "LegacyEnvProject", auto_ensure=False, read_only=True)
+
+        self.assertEqual(service.global_state_dir, legacy_global.resolve())
+
     def test_launcher_lists_internal_and_invalid_registered_projects(self) -> None:
         bootstrap = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)
         internal_root = bootstrap.build_internal_project_path("InternalProject")
@@ -442,7 +473,7 @@ class AIDiscoverabilityTests(unittest.TestCase):
         motor_ai_path = project_root / "motor_ai.json"
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(data["engine"]["name"], "MotorVideojuegosIA")
+        self.assertEqual(data["engine"]["name"], "OpenGame")
         self.assertIn("version", data["engine"])
         self.assertIn("api_version", data["engine"])
 
@@ -502,7 +533,7 @@ class AIDiscoverabilityTests(unittest.TestCase):
         content = start_here_path.read_text(encoding="utf-8")
 
         self.assertIn("StartHereProject", content)
-        self.assertIn("MotorVideojuegosIA", content)
+        self.assertIn("OpenGame", content)
         self.assertIn("motor_ai.json", content)
 
     def test_generate_ai_bootstrap_overwrites_existing_files(self) -> None:

@@ -1,6 +1,6 @@
 # Platformer Vertical Slice
 
-Mini juego de plataformas 2D implementado como vertical slice del motor `MotorVideojuegosIA`.
+Mini juego de plataformas 2D implementado como vertical slice del motor `OpenGame`.
 
 ## Objetivo
 

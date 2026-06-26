@@ -1,6 +1,6 @@
-# MotorVideojuegosIA
+# OpenGame
 
-MotorVideojuegosIA es un motor/editor 2D experimental en Python orientado a
+OpenGame es un motor/editor 2D experimental en Python orientado a
 authoring asistido por IA. El proyecto mantiene editor, runtime, CLI, tests y
 automatizacion alineados alrededor de un modelo serializable compartido.
 

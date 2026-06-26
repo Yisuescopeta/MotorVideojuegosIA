@@ -22,7 +22,7 @@ from typing import Optional
 
 from engine.config import ENGINE_VERSION
 
-GITHUB_RELEASES_URL = "https://api.github.com/repos/Yisuescopeta/MotorVideojuegosIA/releases/latest"
+GITHUB_RELEASES_URL = "https://api.github.com/repos/Yisuescopeta/OpenGame/releases/latest"
 REQUEST_TIMEOUT = 5  # segundos
 
 
@@ -48,7 +48,7 @@ def _check() -> None:
     try:
         req = urllib.request.Request(
             GITHUB_RELEASES_URL,
-            headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "MotorVideojuegosIA-UpdateCheck"},
+            headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "OpenGame-UpdateCheck"},
         )
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))

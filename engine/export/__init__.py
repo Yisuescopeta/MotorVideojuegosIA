@@ -1,4 +1,4 @@
-"""Export/Build Pipeline for MotorVideojuegosIA.
+"""Export/Build Pipeline for OpenGame.
 
 Godot-inspired export preset system:
   - Serializable presets (export_presets.motor.json)

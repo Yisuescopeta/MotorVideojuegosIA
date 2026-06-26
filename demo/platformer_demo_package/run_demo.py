@@ -105,7 +105,7 @@ def main():
     args = parser.parse_args()
     
     print("=" * 60)
-    print("MotorVideojuegosIA - Platformer Vertical Slice")
+    print("OpenGame - Platformer Vertical Slice")
     print("=" * 60)
     
     if args.validate:

@@ -1,10 +1,10 @@
-# MotorVideojuegosIA - AI Quick Start
+# OpenGame - AI Quick Start
 
-**Project**: MotorVideojuegosIA
-**Engine Version**: 2026.03
+**Project**: OpenGame
+**Engine Version**: 2026.06
 
 ## Overview
-This project uses MotorVideojuegosIA, a 2D game engine designed for AI-assisted development.
+This project uses OpenGame, a 2D game engine designed for AI-assisted development.
 
 ## Implemented Capabilities
 
@@ -343,7 +343,7 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Mobile
 
-- `mobile:controls:add`: Add mobile virtual controls to the active or selected scene
+- `mobile:controls:add`: Add mobile virtual controls to the active scene
 
 ### Editor
 
@@ -400,7 +400,7 @@ motor ai start --project . --json
 ```
 
 Rules for AI agents:
-- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.
+- Use OpenGame through `motor`, `EngineAPI` and serialized scenes/components.
 - Do not create an external runtime for this project.
 - Do not deliver `run_game.py` or an alternate main loop as the main game.
 - Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path, emits movement events during PLAY, can carry Player when Player Collider rests on the platform Collider before frame movement, and does not persist runtime progress. Rider support is minimal and Player-focused; `moving_platform_rider_attached`, `moving_platform_rider_moved` and `moving_platform_rider_detached` are planned, not current public events.

@@ -22,7 +22,7 @@ class CapabilityRegistryBuilder:
     def __init__(self, engine_version: Optional[str] = None) -> None:
         self._registry = CapabilityRegistry(
             schema_version=1,
-            engine_name="MotorVideojuegosIA",
+            engine_name="OpenGame",
             engine_version=engine_version or ENGINE_VERSION,
         )
 
@@ -2378,13 +2378,13 @@ class MotorAIBootstrapBuilder:
     def build_start_here_md(self, project_name: str = "Untitled Project") -> str:
         """Build the START_HERE_AI.md content."""
         lines: List[str] = [
-            "# MotorVideojuegosIA - AI Quick Start",
+            "# OpenGame - AI Quick Start",
             "",
             f"**Project**: {project_name}",
             f"**Engine Version**: {self._registry.engine_version}",
             "",
             "## Overview",
-            "This project uses MotorVideojuegosIA, a 2D game engine designed for AI-assisted development.",
+            "This project uses OpenGame, a 2D game engine designed for AI-assisted development.",
             "",
             "## Implemented Capabilities",
             "",
@@ -2503,7 +2503,7 @@ class MotorAIBootstrapBuilder:
             "```",
             "",
             "Rules for AI agents:",
-            "- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.",
+            "- Use OpenGame through `motor`, `EngineAPI` and serialized scenes/components.",
             "- Do not create an external runtime for this project.",
             "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
             "- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path, emits movement events during PLAY, can carry Player when Player Collider rests on the platform Collider before frame movement, and does not persist runtime progress. Rider support is minimal and Player-focused; `moving_platform_rider_attached`, `moving_platform_rider_moved` and `moving_platform_rider_detached` are planned, not current public events.",

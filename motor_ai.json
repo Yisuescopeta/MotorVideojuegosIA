@@ -1,8 +1,8 @@
 {
     "schema_version": 3,
     "engine": {
-        "name": "MotorVideojuegosIA",
-        "version": "2026.03",
+        "name": "OpenGame",
+        "version": "2026.06",
         "api_version": "1",
         "capabilities_schema_version": 1
     },
@@ -3679,7 +3679,7 @@
         "total": 125
     },
     "project": {
-        "name": "MotorVideojuegosIA",
+        "name": "OpenGame",
         "root": ".",
         "engine_version": "2026.03",
         "template": "empty",

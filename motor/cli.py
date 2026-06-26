@@ -1,5 +1,5 @@
 """
-motor/cli.py - Official CLI implementation for MotorVideojuegosIA
+motor/cli.py - Official CLI implementation for OpenGame
 
 ARCHITECTURE:
     This module implements the OFFICIAL CLI interface. It is the ONLY public
@@ -173,7 +173,7 @@ def create_motor_parser() -> argparse.ArgumentParser:
     """Create the argument parser for the motor CLI."""
     parser = argparse.ArgumentParser(
         prog="motor",
-        description="Official CLI for MotorVideojuegosIA - AI-facing game engine operations",
+        description="Official CLI for OpenGame - AI-facing game engine operations",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 GRAMMAR: motor <noun> [<subnoun>] <verb> [<args>] [options]
@@ -282,7 +282,7 @@ Documentation:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s {ENGINE_VERSION} (MotorVideojuegosIA)",
+        version=f"%(prog)s {ENGINE_VERSION} (OpenGame)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -308,7 +308,7 @@ Documentation:
     ai_compliance_parser = ai_subparsers.add_parser(
         "compliance",
         help="Run read-only AI-native project compliance diagnostics",
-        description="Validate whether a project follows the MotorVideojuegosIA AI-native contract.",
+        description="Validate whether a project follows the OpenGame AI-native contract.",
     )
     ai_compliance_parser.add_argument(
         "--project", dest="project_root", default=".",

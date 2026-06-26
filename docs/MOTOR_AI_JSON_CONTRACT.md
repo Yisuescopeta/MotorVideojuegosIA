@@ -1,7 +1,7 @@
 # Contrato `motor_ai.json`
 
 `motor_ai.json` es el artefacto legible por maquinas que permite a una IA
-descubrir un proyecto creado con MotorVideojuegosIA. No es documentacion del repositorio:
+descubrir un proyecto creado con OpenGame. No es documentacion del repositorio:
 se genera dentro de cada proyecto con la CLI oficial.
 
 Generador canonico:
@@ -34,7 +34,7 @@ debe generar siempre schema `3`.
 {
   "schema_version": 3,
   "engine": {
-    "name": "MotorVideojuegosIA",
+    "name": "OpenGame",
     "version": "2026.03",
     "api_version": "1",
     "capabilities_schema_version": 1

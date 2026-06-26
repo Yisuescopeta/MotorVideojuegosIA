@@ -38,7 +38,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
         env = os.environ.copy()
         python_path = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(root) if not python_path else str(root) + os.pathsep + python_path
-        env["MOTORVIDEOJUEGOSIA_HOME"] = self.isolated_home.as_posix()
+        env["OPENGAME_HOME"] = self.isolated_home.as_posix()
 
         result = subprocess.run(
             cmd,
@@ -260,7 +260,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                            "Doctor should not create START_HERE_AI.md")
             self.assertFalse(
                 self.isolated_home.exists(),
-                "Doctor should not create isolated MOTORVIDEOJUEGOSIA_HOME artifacts"
+                "Doctor should not create isolated OPENGAME_HOME artifacts"
             )
 
     def test_bootstrap_ai_fails_without_project(self) -> None:
@@ -360,7 +360,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             legacy_schema = {
                 "schema_version": 1,
                 "engine": {
-                    "name": "MotorVideojuegosIA",
+                    "name": "OpenGame",
                     "version": "2026.03",
                     "api_version": "1",
                 },
@@ -410,7 +410,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             legacy_schema = {
                 "schema_version": 2,
                 "engine": {
-                    "name": "MotorVideojuegosIA",
+                    "name": "OpenGame",
                     "version": "2026.03",
                     "api_version": "1",
                 },
@@ -459,7 +459,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             malformed_v3 = {
                 "schema_version": 3,
                 "engine": {
-                    "name": "MotorVideojuegosIA",
+                    "name": "OpenGame",
                     "version": "2026.03",
                     "api_version": "1",
                 },

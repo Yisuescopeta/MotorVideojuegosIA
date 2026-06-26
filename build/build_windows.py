@@ -50,7 +50,7 @@ def find_iscc() -> str:
 
 
 def run_pyinstaller(project_root: str) -> None:
-    spec_path = os.path.join(project_root, "build", "motorvideojuegos.spec")
+    spec_path = os.path.join(project_root, "build", "opengame.spec")
     print(f"[BUILD] Ejecutando PyInstaller con spec: {spec_path}")
     subprocess.run(
         [sys.executable, "-m", "PyInstaller", spec_path, "--noconfirm", "--distpath",
@@ -58,7 +58,7 @@ def run_pyinstaller(project_root: str) -> None:
         cwd=project_root,
         check=True,
     )
-    print("[BUILD] Ejecutable generado en dist/MotorVideojuegosIA/")
+    print("[BUILD] Ejecutable generado en dist/OpenGame/")
 
 
 def run_inno_setup(project_root: str, version: str) -> None:
@@ -76,12 +76,12 @@ def run_inno_setup(project_root: str, version: str) -> None:
         cwd=project_root,
         check=True,
     )
-    installer_name = f"MotorVideojuegosIA-{version}-Setup.exe"
+    installer_name = f"OpenGame-{version}-Setup.exe"
     print(f"[BUILD] Instalador generado: dist/{installer_name}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build MotorVideojuegosIA para Windows")
+    parser = argparse.ArgumentParser(description="Build OpenGame para Windows")
     parser.add_argument("--installer", action="store_true", help="Generar tambien el instalador (requiere Inno Setup 6)")
     args = parser.parse_args()
 
@@ -102,9 +102,9 @@ def main() -> None:
     print(f"  Build completado - v{version}")
     print("=" * 60)
     if args.installer:
-        print(f"  Instalador: dist/MotorVideojuegosIA-{version}-Setup.exe")
+        print(f"  Instalador: dist/OpenGame-{version}-Setup.exe")
     else:
-        print("  Ejecutable: dist/MotorVideojuegosIA/MotorVideojuegosIA.exe")
+        print("  Ejecutable: dist/OpenGame/OpenGame.exe")
         print("  (usar --installer para generar el instalador)")
 
 

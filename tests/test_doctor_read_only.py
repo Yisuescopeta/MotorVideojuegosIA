@@ -32,7 +32,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
         self.env = os.environ.copy()
         python_path = self.env.get("PYTHONPATH", "")
         self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
-        self.env["MOTORVIDEOJUEGOSIA_HOME"] = self.isolated_home.as_posix()
+        self.env["OPENGAME_HOME"] = self.isolated_home.as_posix()
 
     def tearDown(self):
         self._temp_home.cleanup()
@@ -190,7 +190,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
     def test_doctor_does_not_create_global_storage(self) -> None:
         """CRITICAL: motor doctor must not create global storage directory.
 
-        Uses an isolated MOTORVIDEOJUEGOSIA_HOME so the test is fully deterministic
+        Uses an isolated OPENGAME_HOME so the test is fully deterministic
         and does not depend on the real home directory or prior state.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -214,7 +214,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
             }))
 
             # Check for global storage in isolated directory
-            global_dir = self.isolated_home / ".motorvideojuegosia"
+            global_dir = self.isolated_home
             recents_file = global_dir / "recent_projects.json"
 
             # Run doctor
@@ -230,7 +230,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
             # Verify no global storage was created in isolated home
             self.assertFalse(
                 global_dir.exists(),
-                f"doctor must NOT create global storage directory in isolated MOTORVIDEOJUEGOSIA_HOME "
+                f"doctor must NOT create global storage directory in isolated OPENGAME_HOME "
                 f"({self.isolated_home}). Global dir path checked: {global_dir}"
             )
             self.assertFalse(
@@ -239,7 +239,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
             )
             self.assertFalse(
                 any(self.isolated_home.rglob("*")),
-                "doctor must not create any artifacts under isolated MOTORVIDEOJUEGOSIA_HOME"
+                "doctor must not create any artifacts under isolated OPENGAME_HOME"
             )
 
     def test_doctor_does_not_modify_existing_files(self) -> None:

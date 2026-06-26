@@ -39,6 +39,7 @@ _SKIP_SCAN_DIRS = {
     "build",
     "engine",
     "motor",
+    "opengame.egg-info",
     "motorvideojuegosia.egg-info",
     "pyray",
     "tests",

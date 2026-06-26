@@ -1,6 +1,6 @@
 # Export Pipeline
 
-Sistema profesional de exportacion/build de juegos para MotorVideojuegosIA.
+Sistema profesional de exportacion/build de juegos para OpenGame.
 
 ## Arquitectura
 

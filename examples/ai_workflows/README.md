@@ -1,7 +1,7 @@
 # AI Workflow Examples
 
 This directory contains examples demonstrating how AI assistants can interact
-with MotorVideojuegosIA using the **official `motor` CLI interface**.
+with OpenGame using the **official `motor` CLI interface**.
 
 ## Official Interface
 
@@ -151,6 +151,6 @@ motor animator info Player --project .
 Or on Windows:
 
 ```powershell
-$env:PYTHONPATH = "C:\MejoraIA\MotorVideojuegosIA;$env:PYTHONPATH"
+$env:PYTHONPATH = "C:\MejoraIA\OpenGame;$env:PYTHONPATH"
 motor doctor --project .
 ```

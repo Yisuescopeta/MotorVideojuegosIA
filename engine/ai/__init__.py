@@ -1,4 +1,4 @@
-"""engine/ai/ - AI-facing capabilities and registry for MotorVideojuegosIA."""
+"""engine/ai/ - AI-facing capabilities and registry for OpenGame."""
 
 from engine.ai.capability_registry import (
     Capability,

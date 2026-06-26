@@ -72,7 +72,7 @@ class AIFacingEndToEndTests(unittest.TestCase):
             json.dumps({
                 "schema_version": 2,
                 "engine": {
-                    "name": "MotorVideojuegosIA",
+                    "name": "OpenGame",
                     "version": "2026.03",
                     "api_version": "1",
                     "capabilities_schema_version": 1,
@@ -87,7 +87,7 @@ class AIFacingEndToEndTests(unittest.TestCase):
                 },
                 "capabilities": {
                     "schema_version": 1,
-                    "engine": {"name": "MotorVideojuegosIA", "version": "2026.03"},
+                    "engine": {"name": "OpenGame", "version": "2026.03"},
                     "capabilities": [
                         {"id": "scene:create", "summary": "Create scene"},
                         {"id": "entity:create", "summary": "Create entity"},
@@ -372,7 +372,7 @@ class AIFacingContractTests(unittest.TestCase):
             motor_ai = {
                 "schema_version": 2,
                 "engine": {
-                    "name": "MotorVideojuegosIA",
+                    "name": "OpenGame",
                     "version": "2026.03",
                     "api_version": "1",
                 },

@@ -16,6 +16,26 @@ from engine.agent.types import utc_now_iso
 DEFAULT_OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 DEFAULT_OPENCODE_GO_MODEL = "opencode-go/kimi-k2.5"
 DEFAULT_OPENAI_MODEL = "gpt-5"
+PRIMARY_GLOBAL_STATE_ENV = "OPENGAME_HOME"
+LEGACY_GLOBAL_STATE_ENV = "MOTORVIDEOJUEGOSIA_HOME"
+DEFAULT_GLOBAL_STATE_DIR_NAME = ".opengame"
+LEGACY_GLOBAL_STATE_DIR_NAME = ".motorvideojuegosia"
+
+
+def resolve_agent_global_state_dir(global_state_dir: str | Path | None) -> Path:
+    if global_state_dir is not None:
+        return Path(global_state_dir).expanduser().resolve()
+    primary_env_override = os.environ.get(PRIMARY_GLOBAL_STATE_ENV, "").strip()
+    if primary_env_override:
+        return Path(primary_env_override).expanduser().resolve()
+    legacy_env_override = os.environ.get(LEGACY_GLOBAL_STATE_ENV, "").strip()
+    if legacy_env_override:
+        return Path(legacy_env_override).expanduser().resolve()
+    primary_default = (Path.home() / DEFAULT_GLOBAL_STATE_DIR_NAME).resolve()
+    legacy_default = (Path.home() / LEGACY_GLOBAL_STATE_DIR_NAME).resolve()
+    if primary_default.exists() or not legacy_default.exists():
+        return primary_default
+    return legacy_default
 
 
 @dataclass(frozen=True)
@@ -71,8 +91,12 @@ class AgentCodexAuthStore:
     FILE_STORAGE_LINE = 'cli_auth_credentials_store = "file"'
 
     def __init__(self, global_state_dir: str | Path | None = None) -> None:
-        self._custom_global_state_dir = global_state_dir is not None or bool(os.environ.get("MOTORVIDEOJUEGOSIA_HOME", "").strip())
-        self.global_state_dir = self._resolve_global_state_dir(global_state_dir)
+        self._custom_global_state_dir = (
+            global_state_dir is not None
+            or bool(os.environ.get(PRIMARY_GLOBAL_STATE_ENV, "").strip())
+            or bool(os.environ.get(LEGACY_GLOBAL_STATE_ENV, "").strip())
+        )
+        self.global_state_dir = resolve_agent_global_state_dir(global_state_dir)
         self.managed_home = self.global_state_dir / "codex"
 
     def cli_available(self) -> bool:
@@ -214,14 +238,6 @@ class AgentCodexAuthStore:
             return self.managed_home.expanduser().resolve()
         return Path(home).expanduser().resolve()
 
-    def _resolve_global_state_dir(self, global_state_dir: str | Path | None) -> Path:
-        if global_state_dir is not None:
-            return Path(global_state_dir).expanduser().resolve()
-        env_override = os.environ.get("MOTORVIDEOJUEGOSIA_HOME", "").strip()
-        if env_override:
-            return Path(env_override).expanduser().resolve()
-        return (Path.home() / ".motorvideojuegosia").resolve()
-
 
 class AgentCredentialStore:
     """User-local credential store. Secrets are never written to project state."""
@@ -229,7 +245,7 @@ class AgentCredentialStore:
     FILE_NAME = "agent_credentials.json"
 
     def __init__(self, global_state_dir: str | Path | None = None) -> None:
-        self.global_state_dir = self._resolve_global_state_dir(global_state_dir)
+        self.global_state_dir = resolve_agent_global_state_dir(global_state_dir)
         self.path = self.global_state_dir / self.FILE_NAME
 
     def supports_local_secrets(self) -> bool:
@@ -276,14 +292,6 @@ class AgentCredentialStore:
         if self.load_api_key(provider_id):
             return "user_local"
         return "none"
-
-    def _resolve_global_state_dir(self, global_state_dir: str | Path | None) -> Path:
-        if global_state_dir is not None:
-            return Path(global_state_dir).expanduser().resolve()
-        env_override = os.environ.get("MOTORVIDEOJUEGOSIA_HOME", "").strip()
-        if env_override:
-            return Path(env_override).expanduser().resolve()
-        return (Path.home() / ".motorvideojuegosia").resolve()
 
     def _load(self) -> dict[str, Any]:
         if not self.path.exists():

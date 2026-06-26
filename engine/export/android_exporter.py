@@ -810,7 +810,7 @@ class AndroidExporter(PlatformExporter):
                 "-validity",
                 "10000",
                 "-dname",
-                "CN=Motor Local Release, O=MotorVideojuegosIA, C=ES",
+                "CN=Motor Local Release, O=OpenGame, C=ES",
             ]
             result = subprocess.run(command, cwd=str(ctx.project_root), capture_output=True, text=True)
             if result.returncode != 0:

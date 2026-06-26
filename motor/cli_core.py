@@ -1,5 +1,5 @@
 """
-motor/cli_core.py - Core CLI command implementations for MotorVideojuegosIA
+motor/cli_core.py - Core CLI command implementations for OpenGame
 
 This module contains all the command handler implementations for the motor CLI.
 It is designed to be independent of argument parsing and can be used programmatically.
@@ -715,7 +715,7 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
 
         data = {
             "engine": {
-                "name": "MotorVideojuegosIA",
+                "name": "OpenGame",
                 "version": ENGINE_VERSION,
             },
             "project": manifest,
@@ -749,7 +749,7 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
             "rules": {
                 "no_external_runtime": (
                     "Do not create or use an external runtime for this project; "
-                    "operate through MotorVideojuegosIA."
+                    "operate through OpenGame."
                 ),
                 "no_alternate_main_loop": (
                     "Do not deliver run_game.py or any alternate main loop as the "

@@ -1,5 +1,5 @@
 """
-engine/ai/capability_registry.py - Central AI-facing capability registry for MotorVideojuegosIA
+engine/ai/capability_registry.py - Central AI-facing capability registry for OpenGame
 
 Single source of truth for:
 - motor_ai.json generation
@@ -81,7 +81,7 @@ class CapabilityRegistry:
     Registry of all AI-facing capabilities.
     """
     schema_version: int = 1
-    engine_name: str = "MotorVideojuegosIA"
+    engine_name: str = "OpenGame"
     engine_version: str = ""
     _capabilities: Dict[str, Capability] = field(default_factory=dict)
     _index_by_mode: Dict[str, List[str]] = field(default_factory=lambda: {"edit": [], "play": [], "both": []})
@@ -149,7 +149,7 @@ class CapabilityRegistry:
     def from_dict(cls, data: Dict[str, Any]) -> "CapabilityRegistry":
         registry = cls(
             schema_version=int(data.get("schema_version", 1)),
-            engine_name=str(data.get("engine_name", data.get("engine", {}).get("name", "MotorVideojuegosIA"))),
+            engine_name=str(data.get("engine_name", data.get("engine", {}).get("name", "OpenGame"))),
             engine_version=str(data.get("engine_version", data.get("engine", {}).get("version", ""))),
         )
         for cap_data in data.get("capabilities", []):

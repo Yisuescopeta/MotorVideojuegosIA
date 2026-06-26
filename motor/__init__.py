@@ -1,5 +1,5 @@
 """
-motor - Official CLI package for MotorVideojuegosIA
+motor - Official CLI package for OpenGame
 
 ARCHITECTURE:
     This package provides the OFFICIAL command-line interface for AI-facing

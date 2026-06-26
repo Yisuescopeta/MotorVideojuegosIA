@@ -93,7 +93,10 @@ BOOTSTRAP_SCHEMA_VERSION = 1
 class ProjectService:
     """Resuelve proyecto activo, launcher, paths y estado local del editor."""
 
-    GLOBAL_DIR_NAME = ".motorvideojuegosia"
+    OPEN_GAME_HOME_ENV = "OPENGAME_HOME"
+    LEGACY_HOME_ENV = "MOTORVIDEOJUEGOSIA_HOME"
+    GLOBAL_DIR_NAME = ".opengame"
+    LEGACY_GLOBAL_DIR_NAME = ".motorvideojuegosia"
     RECENTS_FILE_NAME = "recent_projects.json"
     PROJECT_FILE = "project.json"
     PROJECT_STATE_DIR = ".motor"
@@ -191,7 +194,7 @@ class ProjectService:
         is_new_project = not manifest_path.exists()
         if is_new_project:
             manifest = ProjectManifest(
-                name=root.name or "MotorVideojuegosIA Project",
+                name=root.name or "OpenGame Project",
                 version=ProjectManifest.CURRENT_VERSION,
                 engine_version=ENGINE_VERSION,
                 template=ProjectManifest.DEFAULT_TEMPLATE,
@@ -895,10 +898,17 @@ class ProjectService:
     def _resolve_global_dir(self, global_state_dir: str | os.PathLike[str] | None) -> Path:
         if global_state_dir is not None:
             return Path(global_state_dir).expanduser().resolve()
-        env_override = os.environ.get("MOTORVIDEOJUEGOSIA_HOME", "").strip()
-        if env_override:
-            return Path(env_override).expanduser().resolve()
-        return (Path.home() / self.GLOBAL_DIR_NAME).resolve()
+        primary_env_override = os.environ.get(self.OPEN_GAME_HOME_ENV, "").strip()
+        if primary_env_override:
+            return Path(primary_env_override).expanduser().resolve()
+        legacy_env_override = os.environ.get(self.LEGACY_HOME_ENV, "").strip()
+        if legacy_env_override:
+            return Path(legacy_env_override).expanduser().resolve()
+        primary_default = (Path.home() / self.GLOBAL_DIR_NAME).resolve()
+        legacy_default = (Path.home() / self.LEGACY_GLOBAL_DIR_NAME).resolve()
+        if primary_default.exists() or not legacy_default.exists():
+            return primary_default
+        return legacy_default
 
     def _load_registry_entries(self) -> List[Dict[str, Any]]:
         if not self._recents_file.exists():
