@@ -1,0 +1,147 @@
+---
+import SectionWrapper from '../components/SectionWrapper.astro';
+import PixelCard from '../components/PixelCard.astro';
+---
+
+<SectionWrapper id="exportacion" style="padding: var(--section-padding) 0; background: var(--bg); border-top: 1px solid var(--border);">
+  <div class="container">
+    <h2 class="font-h1 stagger-child" style="text-align: center;">Exportacion de juegos</h2>
+    <p class="font-body stagger-child" style="color: var(--text-muted); text-align: center; margin-top: 12px;">
+      Pipeline de build multiplataforma
+    </p>
+
+    <!-- Pipeline diagram -->
+    <div class="pipeline stagger-child">
+      <div class="pipe-box">
+        <span class="font-label">Preset</span>
+      </div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-box">
+        <span class="font-label">Validacion</span>
+      </div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-box">
+        <span class="font-label">Build Graph</span>
+      </div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-box">
+        <span class="font-label">Content Pack</span>
+      </div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-box" style="border-color: var(--code-green);">
+        <span class="font-label" style="color: var(--code-green);">Platform Exporter</span>
+      </div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-box">
+        <span class="font-label">Build Report</span>
+      </div>
+    </div>
+
+    <!-- Platform cards -->
+    <div class="platform-grid">
+      <PixelCard className="stagger-child platform-card">
+        <div class="platform-dot" style="background: var(--code-green);"></div>
+        <span class="font-h3">Windows</span>
+      </PixelCard>
+
+      <PixelCard className="stagger-child platform-card">
+        <div class="platform-dot" style="background: var(--code-green);"></div>
+        <span class="font-h3">Linux</span>
+      </PixelCard>
+
+      <PixelCard className="stagger-child platform-card">
+        <div class="platform-dot" style="background: var(--code-green);"></div>
+        <span class="font-h3">macOS</span>
+      </PixelCard>
+
+      <PixelCard className="stagger-child platform-card">
+        <div class="platform-dot" style="background: var(--code-yellow);"></div>
+        <span class="font-h3">Android</span>
+      </PixelCard>
+
+      <PixelCard className="stagger-child platform-card">
+        <div class="platform-dot" style="background: var(--code-yellow);"></div>
+        <span class="font-h3">iOS</span>
+      </PixelCard>
+
+      <PixelCard className="stagger-child platform-card">
+        <div class="platform-dot" style="background: var(--code-green);"></div>
+        <span class="font-h3">Headless</span>
+      </PixelCard>
+    </div>
+
+    <p class="font-body-small stagger-child" style="color: var(--text-muted); text-align: center; margin-top: 32px;">
+      Algunas plataformas dependen de toolchains externas como Android SDK, Gradle, Xcode o PyInstaller.
+    </p>
+  </div>
+</SectionWrapper>
+
+<style>
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 48px;
+    flex-wrap: wrap;
+  }
+
+  .pipe-box {
+    background: var(--surface);
+    border: 1px solid var(--border-hover);
+    padding: 16px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .pipe-arrow {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 16px;
+    margin-top: 48px;
+  }
+
+  .platform-card {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .platform-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 991px) {
+    .platform-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (max-width: 767px) {
+    .pipeline {
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .pipe-arrow {
+      transform: rotate(90deg);
+      padding: 4px 0;
+    }
+
+    .platform-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

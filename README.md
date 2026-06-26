@@ -4,6 +4,8 @@ OpenGame es un motor/editor 2D experimental en Python orientado a
 authoring asistido por IA. El proyecto mantiene editor, runtime, CLI, tests y
 automatizacion alineados alrededor de un modelo serializable compartido.
 
+Landing: [https://yisuescopeta.github.io/OpenGame/](https://yisuescopeta.github.io/OpenGame/)
+
 La fuente persistente de verdad es `Scene`. `World` es una proyeccion operativa
 usada por editor y runtime. La automatizacion publica debe pasar por
 `EngineAPI` o por la CLI oficial `motor`.

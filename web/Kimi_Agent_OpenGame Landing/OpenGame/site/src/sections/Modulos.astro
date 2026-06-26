@@ -1,0 +1,98 @@
+---
+import SectionWrapper from '../components/SectionWrapper.astro';
+import PixelCard from '../components/PixelCard.astro';
+---
+
+<SectionWrapper id="modulos" style="padding: var(--section-padding) 0; background: var(--bg-alt); border-top: 1px solid var(--border);">
+  <div class="container">
+    <h2 class="font-h1 stagger-child" style="text-align: center;">Modulos del motor</h2>
+
+    <div class="modules-grid">
+      <!-- Column 1: Core -->
+      <PixelCard className="stagger-child module-card">
+        <h3 class="font-h2" style="color: var(--code-green);">Core obligatorio</h3>
+        <div class="module-divider"></div>
+        <ul class="module-list">
+          <li><span style="color: var(--code-green);">&#9656;</span> ECS</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> Scene</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> SceneManager</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> Serializacion</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> Editor base</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> EngineAPI</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> CLI</li>
+          <li><span style="color: var(--code-green);">&#9656;</span> Fisica base</li>
+        </ul>
+      </PixelCard>
+
+      <!-- Column 2: Optional -->
+      <PixelCard className="stagger-child module-card">
+        <h3 class="font-h2" style="color: var(--code-yellow);">Modulos oficiales opcionales</h3>
+        <div class="module-divider"></div>
+        <ul class="module-list">
+          <li><span style="color: var(--code-yellow);">&#9656;</span> Assets</li>
+          <li><span style="color: var(--code-yellow);">&#9656;</span> Prefabs</li>
+          <li><span style="color: var(--code-yellow);">&#9656;</span> Tilemap</li>
+          <li><span style="color: var(--code-yellow);">&#9656;</span> Parallax</li>
+          <li><span style="color: var(--code-yellow);">&#9656;</span> Audio</li>
+          <li><span style="color: var(--code-yellow);">&#9656;</span> UI serializable</li>
+          <li><span style="color: var(--code-yellow);">&#9656;</span> Export pipeline</li>
+        </ul>
+      </PixelCard>
+
+      <!-- Column 3: Experimental -->
+      <PixelCard className="stagger-child module-card">
+        <h3 class="font-h2" style="color: var(--code-red);">Experimental / tooling</h3>
+        <div class="module-divider"></div>
+        <ul class="module-list">
+          <li><span style="color: var(--code-red);">&#9656;</span> Navegacion</li>
+          <li><span style="color: var(--code-red);">&#9656;</span> RL</li>
+          <li><span style="color: var(--code-red);">&#9656;</span> Recetas IA</li>
+          <li><span style="color: var(--code-red);">&#9656;</span> Agente nativo</li>
+          <li><span style="color: var(--code-red);">&#9656;</span> Datasets</li>
+          <li><span style="color: var(--code-red);">&#9656;</span> Benchmarks</li>
+        </ul>
+      </PixelCard>
+    </div>
+  </div>
+</SectionWrapper>
+
+<style>
+  .modules-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--card-gap);
+    margin-top: 48px;
+  }
+
+  .module-card {
+    padding: 28px;
+  }
+
+  .module-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 0;
+  }
+
+  .module-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .module-list li {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  @media (max-width: 991px) {
+    .modules-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
