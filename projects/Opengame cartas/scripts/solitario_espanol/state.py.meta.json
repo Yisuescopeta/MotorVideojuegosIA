@@ -1,0 +1,21 @@
+{
+    "guid": "ast_dec97c5a26e241f0891524792df47194",
+    "source_path": "scripts/solitario_espanol/state.py",
+    "path": "scripts/solitario_espanol/state.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

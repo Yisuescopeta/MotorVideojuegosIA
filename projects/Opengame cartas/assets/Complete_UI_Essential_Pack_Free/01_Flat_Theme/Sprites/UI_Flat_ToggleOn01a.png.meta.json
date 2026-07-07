@@ -1,0 +1,21 @@
+{
+    "guid": "ast_b31b2f14ec9c484489b44a2cded27e82",
+    "source_path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_ToggleOn01a.png",
+    "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_ToggleOn01a.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

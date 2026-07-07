@@ -65,6 +65,22 @@ Versiones incompatibles producen `ANDROID_BUILD_TOOLS_INCOMPATIBLE`,
 Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
 [export_presets.md](export_presets.md), [troubleshooting_export.md](troubleshooting_export.md).
 
+## UI serializable
+
+```bash
+py -m motor ui preset list --project . --json
+py -m motor ui preset add main-menu --project . --json
+py -m motor ui preset add hud-platformer --scene levels/platformer_test_scene.json --project . --json
+py -m motor ui preset add main-menu --replace --project . --json
+```
+
+`motor ui preset list` devuelve presets UI deterministas expuestos por `UIAPI`.
+`motor ui preset add` crea arboles serializables usando `Canvas`,
+`RectTransform`, `UIText` y `UIButton` por la ruta publica del motor. Usa
+`--scene` para editar una escena concreta sin depender de la ultima escena
+activa. Usa `--replace` para regenerar solo la raiz estable de ese preset sin
+duplicar nodos.
+
 ## Mobile
 
 ```bash

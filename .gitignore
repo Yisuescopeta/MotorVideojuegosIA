@@ -63,6 +63,24 @@ zzz_test.txt
 projects/
 !projects/
 projects/*
+!projects/Opengame cartas/
+!projects/Opengame cartas/project.json
+!projects/Opengame cartas/settings/
+!projects/Opengame cartas/settings/**
+!projects/Opengame cartas/levels/
+!projects/Opengame cartas/levels/**
+projects/Opengame cartas/levels/*.meta.json
+!projects/Opengame cartas/scripts/
+!projects/Opengame cartas/scripts/**
+projects/Opengame cartas/scripts/**/__pycache__/
+projects/Opengame cartas/scripts/**/*.py[cod]
+!projects/Opengame cartas/assets/
+!projects/Opengame cartas/assets/spanish_deck/
+!projects/Opengame cartas/assets/spanish_deck/**
+!projects/Opengame cartas/runtime_config.json
+!projects/Opengame cartas/game.manifest.json
+projects/Opengame cartas/.motor/
+projects/Opengame cartas/.motor/**
 !projects/RPG/
 projects/RPG/*
 !projects/RPG/levels/

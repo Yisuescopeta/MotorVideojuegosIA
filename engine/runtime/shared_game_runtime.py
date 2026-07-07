@@ -175,7 +175,11 @@ class SharedGameRuntime:
     def run_frame(self, dt: float = 1.0 / 60.0, pointer_state: dict[str, Any] | None = None) -> None:
         if not self._active or self.world is None:
             return
-        self.game.step_runtime_frame(dt, self._viewport_size(), pointer_state=pointer_state)
+        payload = dict(pointer_state) if pointer_state is not None else None
+        device_profile = str(self._window_config.get("device_profile", "") or "")
+        if payload is not None and device_profile and "camera_profile_id" not in payload:
+            payload["camera_profile_id"] = device_profile
+        self.game.step_runtime_frame(dt, self._viewport_size(), pointer_state=payload)
         self._frame_count += 1
 
     def play_runtime(self, *, preload_resources: bool = True) -> None:

@@ -10,6 +10,7 @@ from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton
 from engine.components.uiimage import UIImage
 from engine.components.uitext import UIText
+from engine.ui.presets import get_ui_preset_definition, list_ui_preset_definitions
 
 
 class UIAPI(EngineAPIComponent):
@@ -346,6 +347,85 @@ class UIAPI(EngineAPIComponent):
             {"entity": overlay_name, "canvas": canvas_name, "target_entity": target, "profile": profile_name, "created": True},
         )
 
+    def list_ui_presets(self) -> ActionResult:
+        """List deterministic serializable UI presets."""
+        presets = []
+        for definition in list_ui_preset_definitions():
+            presets.append(
+                {
+                    "id": definition["id"],
+                    "name": definition["name"],
+                    "description": definition["description"],
+                    "root_entity": definition["root_entity"],
+                    "default_active": bool(definition["initial_active"]),
+                    "node_count": 1 + len(definition.get("nodes", [])),
+                }
+            )
+        return self.ok("UI presets listed", {"count": len(presets), "presets": presets})
+
+    def create_ui_preset(self, preset_id: str, replace: bool = False) -> ActionResult:
+        """Create a deterministic serializable UI preset in the active scene."""
+        self.ensure_edit_mode()
+        definition = get_ui_preset_definition(preset_id)
+        if definition is None:
+            return self.fail(f"Unknown UI preset '{preset_id}'")
+
+        root_entity = str(definition["root_entity"])
+        existing = self._entity_exists(root_entity)
+        if existing and not replace:
+            return self.fail(f"UI preset '{definition['id']}' already exists. Use --replace to regenerate.")
+
+        begin_result = self.api.begin_transaction(f"ui-preset:{definition['id']}")
+        if not begin_result["success"]:
+            return begin_result
+
+        created_entities: list[str] = []
+        try:
+            if existing:
+                for entity_name in self._collect_entity_tree_names(root_entity):
+                    delete_result = self.api.delete_entity(entity_name)
+                    if not delete_result["success"]:
+                        return self._rollback_ui_preset(delete_result)
+
+            create_canvas_result = self.create_canvas(
+                name=root_entity,
+                reference_width=int(definition.get("reference_width", 1280)),
+                reference_height=int(definition.get("reference_height", 720)),
+                sort_order=int(definition.get("sort_order", 0)),
+            )
+            if not create_canvas_result["success"]:
+                return self._rollback_ui_preset(create_canvas_result)
+            created_entities.append(root_entity)
+
+            for node in definition.get("nodes", []):
+                node_result = self._create_ui_preset_node(node)
+                if not node_result["success"]:
+                    return self._rollback_ui_preset(node_result)
+                created_entities.append(str(node["name"]))
+
+            if not bool(definition.get("initial_active", True)):
+                active_result = self.api.set_entity_active(root_entity, False)
+                if not active_result["success"]:
+                    return self._rollback_ui_preset(active_result)
+
+            commit_result = self.api.commit_transaction()
+            if not commit_result["success"]:
+                return self._rollback_ui_preset(commit_result)
+
+            message = "UI preset regenerated" if existing else "UI preset created"
+            return self.ok(
+                message,
+                {
+                    "preset_id": definition["id"],
+                    "root_entity": root_entity,
+                    "created_entities": created_entities,
+                    "created": True,
+                    "replaced": bool(existing),
+                },
+            )
+        except Exception as exc:
+            return self._rollback_ui_preset(self.fail(f"UI preset creation failed: {exc}"))
+
     def _entity_exists(self, entity_name: str) -> bool:
         try:
             self.api.get_entity(entity_name)
@@ -363,6 +443,73 @@ class UIAPI(EngineAPIComponent):
             if isinstance(components, dict) and "MobileControls2D" in components:
                 return str(entity.get("name", "") or "")
         return ""
+
+    def _collect_entity_tree_names(self, root_entity: str) -> list[str]:
+        try:
+            entities = self.api.list_entities(active=None)
+        except Exception:
+            return [root_entity]
+
+        children_by_parent: dict[str, list[str]] = {}
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+            name = str(entity.get("name", "") or "")
+            parent = str(entity.get("parent", "") or "")
+            if not name:
+                continue
+            children_by_parent.setdefault(parent, []).append(name)
+
+        ordered: list[str] = []
+
+        def visit(name: str) -> None:
+            for child_name in children_by_parent.get(name, []):
+                visit(child_name)
+            ordered.append(name)
+
+        visit(root_entity)
+        return ordered
+
+    def _rollback_ui_preset(self, result: ActionResult) -> ActionResult:
+        try:
+            self.api.rollback_transaction()
+        except Exception:
+            pass
+        return result
+
+    def _create_ui_preset_node(
+        self,
+        node: Dict[str, Union[str, int, float, bool, list, dict, None]] | dict[str, object],
+    ) -> ActionResult:
+        kind = str(node.get("kind", "") or "").strip().lower()
+        name = str(node.get("name", "") or "").strip()
+        parent = str(node.get("parent", "") or "").strip()
+        rect_transform = node.get("rect_transform")
+        rect_payload = rect_transform if isinstance(rect_transform, dict) else None
+
+        if not name or not parent or rect_payload is None:
+            return self.fail("Invalid UI preset node definition")
+
+        if kind == "container":
+            return self.create_ui_element(name=name, parent=parent, rect_transform=rect_payload)
+        if kind == "text":
+            return self.create_ui_text(
+                name=name,
+                text=str(node.get("text", "") or ""),
+                parent=parent,
+                rect_transform=rect_payload,
+                font_size=int(node.get("font_size", 24)),
+                alignment=str(node.get("alignment", "center") or "center"),
+            )
+        if kind == "button":
+            return self.create_ui_button(
+                name=name,
+                label=str(node.get("label", "") or ""),
+                parent=parent,
+                rect_transform=rect_payload,
+                on_click={"type": "emit_event", "name": str(node.get("button_event_name", "") or "")},
+            )
+        return self.fail(f"Unsupported UI preset node kind '{kind}'")
 
     def set_button_on_click(self, entity_name: str, on_click: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
         """Set the click action handler for a UIButton entity.

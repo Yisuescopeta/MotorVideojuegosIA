@@ -134,6 +134,84 @@ def resolve_world_viewport_rect(
     return resolved.rect if resolved is not None else None
 
 
+def screen_to_viewport(
+    screen_x: float,
+    screen_y: float,
+    *,
+    viewport_rect: Any | None = None,
+    viewport_size: Optional[tuple[float, float]] = None,
+) -> tuple[float, float]:
+    """Convert window/screen coordinates to logical viewport coordinates."""
+    if viewport_rect is None:
+        return float(screen_x), float(screen_y)
+
+    rect_x, rect_y, rect_w, rect_h = _unpack_rect(viewport_rect)
+    view_w, view_h = _normalize_viewport_size(viewport_size)
+    if rect_w <= 0.0 or rect_h <= 0.0:
+        return 0.0, 0.0
+    return (
+        (float(screen_x) - rect_x) * (view_w / rect_w),
+        (float(screen_y) - rect_y) * (view_h / rect_h),
+    )
+
+
+def viewport_to_world(
+    viewport_x: float,
+    viewport_y: float,
+    world: Optional["World"] = None,
+    viewport_size: Optional[tuple[float, float]] = None,
+    camera_profile_id: Optional[str] = None,
+    *,
+    camera_entity: Any | None = None,
+) -> tuple[float, float]:
+    """Convert logical viewport coordinates to world coordinates."""
+    resolved = resolve_effective_camera2d(
+        world,
+        viewport_size=viewport_size,
+        camera_profile_id=camera_profile_id,
+        camera_entity=camera_entity,
+    )
+    if resolved is None:
+        return float(viewport_x), float(viewport_y)
+    return _screen_to_world(
+        float(viewport_x),
+        float(viewport_y),
+        resolved.target_x,
+        resolved.target_y,
+        resolved.offset_x,
+        resolved.offset_y,
+        resolved.zoom,
+        resolved.rotation,
+    )
+
+
+def screen_to_world(
+    screen_x: float,
+    screen_y: float,
+    world: Optional["World"] = None,
+    viewport_size: Optional[tuple[float, float]] = None,
+    camera_profile_id: Optional[str] = None,
+    *,
+    viewport_rect: Any | None = None,
+    camera_entity: Any | None = None,
+) -> tuple[float, float]:
+    """Convert window/screen coordinates to world coordinates."""
+    viewport_x, viewport_y = screen_to_viewport(
+        screen_x,
+        screen_y,
+        viewport_rect=viewport_rect,
+        viewport_size=viewport_size,
+    )
+    return viewport_to_world(
+        viewport_x,
+        viewport_y,
+        world=world,
+        viewport_size=viewport_size,
+        camera_profile_id=camera_profile_id,
+        camera_entity=camera_entity,
+    )
+
+
 def _find_primary_camera_entity(world: "World") -> Any | None:
     for entity in world.get_entities_with(Transform, Camera2D):
         camera_component = entity.get_component(Camera2D)
@@ -146,6 +224,24 @@ def _normalize_viewport_size(viewport_size: Optional[tuple[float, float]]) -> tu
     if viewport_size is None:
         return DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT
     return max(1.0, float(viewport_size[0])), max(1.0, float(viewport_size[1]))
+
+
+def _unpack_rect(rect: Any) -> tuple[float, float, float, float]:
+    if isinstance(rect, dict):
+        return (
+            float(rect.get("x", rect.get("left", 0.0))),
+            float(rect.get("y", rect.get("top", 0.0))),
+            float(rect.get("width", 0.0)),
+            float(rect.get("height", 0.0)),
+        )
+    if isinstance(rect, (tuple, list)) and len(rect) >= 4:
+        return float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3])
+    return (
+        float(getattr(rect, "x", getattr(rect, "left", 0.0))),
+        float(getattr(rect, "y", getattr(rect, "top", 0.0))),
+        float(getattr(rect, "width", 0.0)),
+        float(getattr(rect, "height", 0.0)),
+    )
 
 
 def _camera_profile_override(camera_component: Camera2D, camera_profile_id: Optional[str]) -> dict[str, Any]:

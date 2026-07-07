@@ -1,0 +1,15 @@
+{
+    "name": "Opengame cartas",
+    "version": 2,
+    "engine_version": "2026.06",
+    "template": "empty",
+    "paths": {
+        "assets": "assets",
+        "levels": "levels",
+        "prefabs": "prefabs",
+        "scripts": "scripts",
+        "settings": "settings",
+        "meta": ".motor/meta",
+        "build": ".motor/build"
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "guid": "ast_8a353c9da6bc4da0b521f67e3fe786f9",
+    "source_path": "assets/BackgroudWood/BackgroudWoodBack.png",
+    "path": "assets/BackgroudWood/BackgroudWoodBack.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

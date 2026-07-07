@@ -1,0 +1,21 @@
+{
+    "guid": "ast_3dee65d29a97443c971be8e7fbc1db87",
+    "source_path": "scripts/solitario_espanol/scene_builder.py",
+    "path": "scripts/solitario_espanol/scene_builder.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

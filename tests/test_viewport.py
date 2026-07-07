@@ -7,7 +7,12 @@ import unittest
 from engine.components.camera2d import Camera2D
 from engine.components.transform import Transform
 from engine.ecs.world import World
-from engine.utils.viewport import resolve_effective_camera2d, resolve_world_viewport_rect
+from engine.utils.viewport import (
+    resolve_effective_camera2d,
+    resolve_world_viewport_rect,
+    screen_to_viewport,
+    viewport_to_world,
+)
 
 
 class ResolveWorldViewportRectTests(unittest.TestCase):
@@ -141,6 +146,25 @@ class ResolveWorldViewportRectTests(unittest.TestCase):
         assert resolved is not None
         self.assertEqual(resolved.target_x, 210.0)
         self.assertAlmostEqual(resolved.target_y, -21.28, places=2)
+
+    def test_viewport_to_world_uses_1280x720_camera_center(self) -> None:
+        world = World()
+        entity = world.create_entity("Camera")
+        entity.add_component(Transform(x=100.0, y=200.0))
+        entity.add_component(Camera2D(is_primary=True, zoom=1.0, offset_x=640.0, offset_y=360.0, framing_mode="locked"))
+
+        self.assertEqual(viewport_to_world(640.0, 360.0, world, viewport_size=(1280.0, 720.0)), (100.0, 200.0))
+        self.assertEqual(viewport_to_world(0.0, 0.0, None, viewport_size=(1280.0, 720.0)), (0.0, 0.0))
+
+    def test_screen_to_viewport_scales_letterboxed_rect(self) -> None:
+        viewport = screen_to_viewport(
+            637.5,
+            355.0,
+            viewport_rect=(100.0, 50.0, 1075.0, 610.0),
+            viewport_size=(1280.0, 720.0),
+        )
+
+        self.assertEqual(viewport, (640.0, 360.0))
 
 
 if __name__ == "__main__":

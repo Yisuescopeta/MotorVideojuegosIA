@@ -47,6 +47,8 @@ from engine.physics.backend import (
 )
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
+from engine.runtime.runtime_input import RuntimeInputService
+from engine.runtime.runtime_picking import RuntimeRenderQueryService
 
 if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
@@ -259,6 +261,12 @@ class Game:
         self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
         self._raycast_2d_system: Optional["RayCast2DSystem"] = None
         self._ui_focus_system: Optional["UIFocusSystem"] = None
+        self._runtime_input: RuntimeInputService = RuntimeInputService()
+        self._runtime_render_queries: RuntimeRenderQueryService = RuntimeRenderQueryService(
+            get_world=lambda: self.world,
+            get_render_system=lambda: self._render_system,
+            input_service=self._runtime_input,
+        )
 
         self.script_executor: Optional["ScriptExecutor"] = None
 
@@ -616,6 +624,14 @@ class Game:
         return self._input_system
 
     @property
+    def runtime_input(self) -> RuntimeInputService:
+        return self._runtime_input
+
+    @property
+    def runtime_render_queries(self) -> RuntimeRenderQueryService:
+        return self._runtime_render_queries
+
+    @property
     def project_service(self) -> Optional[ProjectService]:
         return self._project_service
 
@@ -681,6 +697,7 @@ class Game:
     # === MÉTODOS DE CONTROL DE ESTADO ===
 
     def play(self) -> None:
+        self._runtime_input.reset()
         self._runtime_controller.play()
 
     def pause(self) -> None:
@@ -688,6 +705,7 @@ class Game:
 
     def stop(self) -> None:
         self._runtime_controller.stop()
+        self._runtime_input.reset()
 
     def reset_profiler(self, run_label: str = "default") -> None:
         self.enable_deep_profiling = False
@@ -767,6 +785,7 @@ class Game:
 
     def set_script_behaviour_system(self, system: "ScriptBehaviourSystem") -> None:
         self._script_behaviour_system = system
+        self._wire_script_runtime_services()
         if self.hot_reload_manager is not None:
             self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
         self._script_behaviour_system.set_scene_flow_loader(self._load_scene_flow_target_from_script)
@@ -774,6 +793,15 @@ class Game:
             self._script_behaviour_system.set_scene_manager(self._scene_manager)
         if self._project_service is not None and hasattr(self._script_behaviour_system, "set_project_service"):
             self._script_behaviour_system.set_project_service(self._project_service)
+
+    def _wire_script_runtime_services(self) -> None:
+        if self._script_behaviour_system is None or not hasattr(self._script_behaviour_system, "set_runtime_services"):
+            return
+        self._script_behaviour_system.set_runtime_services(
+            input_service=self._runtime_input,
+            render_service=self._runtime_render_queries,
+            picking_service=self._runtime_render_queries,
+        )
 
     def set_inspector_system(self, system: "InspectorSystem") -> None:
         self._inspector_system = system
@@ -1128,6 +1156,7 @@ class Game:
         viewport_size: tuple[float, float],
         pointer_state: Optional[dict[str, Any]] = None,
     ) -> RuntimeTickPlan:
+        self._update_runtime_input_from_pointer(pointer_state, viewport_size)
         if pointer_state is not None and self._ui_system is not None:
             self._ui_system.inject_pointer_state(
                 float(pointer_state.get("x", 0.0)),
@@ -1688,6 +1717,8 @@ class Game:
         on_edit_scripts_ran: Optional[Callable[[], None]] = None,
     ) -> RuntimeTickPlan:
         plan = self._runtime_controller.build_tick_plan(dt, should_render_like=should_render_like)
+        if self.editor_layout is not None:
+            self._update_runtime_input_from_editor(viewport_size, active_tab=active_tab)
 
         gameplay_elapsed = 0.0
         animation_elapsed = 0.0
@@ -1741,6 +1772,72 @@ class Game:
 
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
         self._runtime_controller.update_animation(world, dt)
+
+    def _update_runtime_input_from_pointer(
+        self,
+        pointer_state: Optional[dict[str, Any]],
+        viewport_size: tuple[float, float],
+    ) -> None:
+        camera_profile_id = (
+            str(pointer_state.get("camera_profile_id", "") or "") if isinstance(pointer_state, dict) else ""
+        )
+        self._runtime_input.update(
+            pointer_state,
+            world=self.world,
+            viewport_size=viewport_size,
+            camera_profile_id=camera_profile_id or self._runtime_camera_profile_id("GAME"),
+        )
+
+    def _update_runtime_input_from_editor(
+        self,
+        viewport_size: tuple[float, float],
+        *,
+        active_tab: Optional[str] = None,
+    ) -> None:
+        if self.editor_layout is None:
+            return
+        tab = active_tab or self.editor_layout.active_tab
+        mouse = rl.get_mouse_position()
+        payload = {
+            "screen_x": float(mouse.x),
+            "screen_y": float(mouse.y),
+            "down": bool(rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT)),
+            "pressed": bool(rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)),
+            "released": bool(rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)),
+            "keys_pressed": self._runtime_pressed_keys(),
+        }
+        viewport_rect = self.editor_layout.get_center_view_rect()
+        if tab == "GAME" and hasattr(self.editor_layout, "map_game_view_screen_point_to_texture"):
+            viewport_x, viewport_y = self.editor_layout.map_game_view_screen_point_to_texture(
+                float(mouse.x),
+                float(mouse.y),
+            )
+            payload["viewport_x"] = float(viewport_x)
+            payload["viewport_y"] = float(viewport_y)
+            viewport_rect = None
+        elif tab == "GAME" and hasattr(self.editor_layout, "get_game_view_content_rect"):
+            viewport_rect = self.editor_layout.get_game_view_content_rect()
+        self._runtime_input.update(
+            payload,
+            world=self.world,
+            viewport_size=viewport_size,
+            viewport_rect=viewport_rect,
+            camera_profile_id=self._runtime_camera_profile_id(tab),
+        )
+
+    def _runtime_camera_profile_id(self, active_tab: Optional[str]) -> str | None:
+        if active_tab == "GAME" and self.editor_layout is not None:
+            return str(getattr(self.editor_layout, "game_view_device_profile", "") or "") or None
+        return None
+
+    def _runtime_pressed_keys(self) -> list[str]:
+        names = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ("SPACE", "ENTER", "ESCAPE")
+        pressed: list[str] = []
+        for name in names:
+            key_code = getattr(rl, f"KEY_{name}", None)
+            if key_code is not None and rl.is_key_pressed(key_code):
+                pressed.append(name)
+        return pressed
 
     def _update_ui_overlay(
         self,

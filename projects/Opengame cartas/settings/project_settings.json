@@ -1,0 +1,10 @@
+{
+    "startup_scene": "levels/main_scene.json",
+    "template": "empty",
+    "terminal": {
+        "execution_policy": "inherit"
+    },
+    "api": {
+        "path_sandbox": false
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "guid": "ast_01f1e2aee2fa46bab27ce586d191f21a",
+    "source_path": "scripts/solitario_espanol/controller.py",
+    "path": "scripts/solitario_espanol/controller.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

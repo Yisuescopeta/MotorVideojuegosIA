@@ -172,6 +172,9 @@ class World:
         self._component_index: dict[type, set[int]] = defaultdict(set)
         self._component_owner_index: dict[int, int] = {}
         self._component_query_cache: dict[tuple[type, ...], tuple[int, ...]] = {}
+        self._component_query_cache_hits: int = 0
+        self._component_query_cache_misses: int = 0
+        self._component_query_cache_invalidations: int = 0
         # Legacy compatibility: tests and old callers still poke these fields
         # directly, so keep them available alongside the canonical indexes.
         self._entities_by_name: dict[str, Entity] = {}
@@ -369,20 +372,24 @@ class World:
 
         query_key = tuple(component_types)
         candidate_ids = self._component_query_cache.get(query_key)
-        if candidate_ids is None and all(component_type in self._component_index for component_type in component_types):
-            indexed_sets = [self._component_index[component_type] for component_type in component_types]
-            smallest = min(indexed_sets, key=len)
-            if len(indexed_sets) == 1:
-                candidate_ids = tuple(sorted(smallest))
-            else:
-                intersection = set(smallest)
-                for indexed_ids in indexed_sets:
-                    if indexed_ids is not smallest:
-                        intersection.intersection_update(indexed_ids)
-                    if not intersection:
-                        break
-                candidate_ids = tuple(sorted(intersection))
-            self._component_query_cache[query_key] = candidate_ids
+        if candidate_ids is None:
+            self._component_query_cache_misses += 1
+            if all(component_type in self._component_index for component_type in component_types):
+                indexed_sets = [self._component_index[component_type] for component_type in component_types]
+                smallest = min(indexed_sets, key=len)
+                if len(indexed_sets) == 1:
+                    candidate_ids = tuple(sorted(smallest))
+                else:
+                    intersection = set(smallest)
+                    for indexed_ids in indexed_sets:
+                        if indexed_ids is not smallest:
+                            intersection.intersection_update(indexed_ids)
+                        if not intersection:
+                            break
+                    candidate_ids = tuple(sorted(intersection))
+                self._component_query_cache[query_key] = candidate_ids
+        else:
+            self._component_query_cache_hits += 1
 
         if candidate_ids is not None:
             return [
@@ -420,7 +427,7 @@ class World:
         self._children_index.clear()
         self._component_index.clear()
         self._component_owner_index.clear()
-        self._component_query_cache.clear()
+        self._clear_component_query_cache()
         self._entities_by_name.clear()
         self._entities_by_component.clear()
         self.group_registry.clear()
@@ -547,7 +554,7 @@ class World:
         self._children_index.clear()
         self._component_index.clear()
         self._component_owner_index.clear()
-        self._component_query_cache.clear()
+        self._clear_component_query_cache()
         self.group_registry.clear()
         for entity in self._entities.values():
             self._index_entity(entity)
@@ -580,7 +587,7 @@ class World:
     def _index_component(self, entity: Entity, component_type: type, component: Component) -> None:
         self._component_index[component_type].add(entity.id)
         self._component_owner_index[id(component)] = entity.id
-        self._component_query_cache.clear()
+        self._invalidate_component_query_cache(component_type)
 
     def _deindex_component(self, entity: Entity, component_type: type, component: Component) -> None:
         component_ids = self._component_index.get(component_type)
@@ -589,7 +596,22 @@ class World:
             if not component_ids:
                 self._component_index.pop(component_type, None)
         self._component_owner_index.pop(id(component), None)
-        self._component_query_cache.clear()
+        self._invalidate_component_query_cache(component_type)
+
+    def _clear_component_query_cache(self) -> None:
+        if self._component_query_cache:
+            self._component_query_cache_invalidations += len(self._component_query_cache)
+            self._component_query_cache.clear()
+
+    def _invalidate_component_query_cache(self, component_type: type) -> None:
+        stale_keys = [
+            query_key
+            for query_key in self._component_query_cache
+            if component_type in query_key
+        ]
+        for query_key in stale_keys:
+            del self._component_query_cache[query_key]
+        self._component_query_cache_invalidations += len(stale_keys)
 
     def _legacy_remove_name(self, entity: Entity) -> None:
         if self._entities_by_name.get(entity.name) is entity:

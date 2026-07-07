@@ -1,0 +1,21 @@
+{
+    "guid": "ast_5d14a0fe56f840dfbd291ea5b2aeb1f7",
+    "source_path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_IconPlay01c.png",
+    "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_IconPlay01c.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

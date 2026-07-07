@@ -440,6 +440,8 @@ class TestExportedGameWindowed(unittest.TestCase):
                 "down": True,
                 "pressed": False,
                 "released": True,
+                "keys_pressed": [],
+                "camera_profile_id": "",
             },
         )
         fake_runtime.render.assert_called_once_with((320.0, 180.0))

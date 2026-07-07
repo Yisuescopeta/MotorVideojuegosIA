@@ -1,0 +1,21 @@
+{
+    "guid": "ast_60c3d20f76624ca08b01b1603aa49b8e",
+    "source_path": "assets/BackgroudWood/Backgroud5.bmp",
+    "path": "assets/BackgroudWood/Backgroud5.bmp",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

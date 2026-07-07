@@ -277,6 +277,68 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual(render_system._sort_cache_hits, 0)
         self.assertEqual(render_system._sort_cache_misses, 2)
 
+    def test_visual_bounds_use_sprite_scale(self) -> None:
+        world = World()
+        entity = self._make_sprite_entity(world, "Card", x=100.0)
+        transform = entity.get_component(Transform)
+        sprite = entity.get_component(Sprite)
+        self.assertIsNotNone(transform)
+        self.assertIsNotNone(sprite)
+        transform.y = 100.0
+        transform.scale_x = 2.0
+        transform.scale_y = 0.5
+        sprite.width = 90
+        sprite.height = 140
+        render_system = RenderSystem()
+
+        bounds = render_system.get_visual_bounds(entity)
+
+        self.assertEqual(bounds, {"left": 10.0, "top": 65.0, "width": 180.0, "height": 70.0})
+        self.assertIs(render_system.pick_sprite_at_world(world, 10.0, 65.0), entity)
+        self.assertIsNone(render_system.pick_sprite_at_world(world, 9.0, 65.0))
+
+    def test_pick_sprite_at_world_prefers_top_render_order(self) -> None:
+        world = World()
+        lower = self._make_sprite_entity(world, "Lower", x=100.0, order_in_layer=1)
+        upper = self._make_sprite_entity(world, "Upper", x=100.0, order_in_layer=5)
+        for entity in (lower, upper):
+            transform = entity.get_component(Transform)
+            self.assertIsNotNone(transform)
+            transform.y = 100.0
+        render_system = RenderSystem()
+
+        self.assertIs(render_system.pick_sprite_at_world(world, 100.0, 100.0), upper)
+
+    def test_pick_sprite_at_world_ignores_inactive_and_disabled_sprites(self) -> None:
+        world = World()
+        active = self._make_sprite_entity(world, "Active", x=100.0, order_in_layer=1)
+        inactive = self._make_sprite_entity(world, "Inactive", x=100.0, order_in_layer=5)
+        disabled = self._make_sprite_entity(world, "Disabled", x=100.0, order_in_layer=10)
+        for entity in (active, inactive, disabled):
+            transform = entity.get_component(Transform)
+            self.assertIsNotNone(transform)
+            transform.y = 100.0
+        inactive.active = False
+        disabled_sprite = disabled.get_component(Sprite)
+        self.assertIsNotNone(disabled_sprite)
+        disabled_sprite.enabled = False
+        render_system = RenderSystem()
+
+        self.assertIs(render_system.pick_sprite_at_world(world, 100.0, 100.0), active)
+
+    def test_visual_bounds_and_picking_support_polygon2d(self) -> None:
+        world = World()
+        entity = world.create_entity("Slot")
+        entity.add_component(Transform(x=50.0, y=60.0))
+        entity.add_component(Polygon2D(points=[[-10.0, -5.0], [10.0, -5.0], [10.0, 5.0], [-10.0, 5.0]]))
+        entity.add_component(RenderOrder2D(order_in_layer=1))
+        render_system = RenderSystem()
+
+        bounds = render_system.get_visual_bounds(entity)
+
+        self.assertEqual(bounds, {"left": 40.0, "top": 55.0, "width": 20.0, "height": 10.0})
+        self.assertIs(render_system.pick_sprite_at_world(world, 50.0, 60.0), entity)
+
     def test_transform_move_invalidates_render_graph_cache(self) -> None:
         world = World()
         self._make_camera_entity(world)

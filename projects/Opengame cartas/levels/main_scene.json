@@ -1,0 +1,4767 @@
+{
+    "schema_version": 2,
+    "name": "Solitario Espanol",
+    "entities": [
+        {
+            "name": "BoardBackground",
+            "active": true,
+            "tag": "Background",
+            "layer": "Default",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 640.0,
+                    "y": 360.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/BackgroudWood/Backgroud1.png"
+                    },
+                    "texture_path": "assets/BackgroudWood/Backgroud1.png",
+                    "width": 1280,
+                    "height": 720,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Default",
+                    "order_in_layer": -1000,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_a67bcc11e888"
+        },
+        {
+            "name": "Slot_Stock",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 115.0,
+                    "y": 118.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        42,
+                        98,
+                        76,
+                        180
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 10,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_df4d78bccd1a"
+        },
+        {
+            "name": "Slot_Waste",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 233.0,
+                    "y": 118.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        42,
+                        98,
+                        76,
+                        180
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 11,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_bede04d7bfb6"
+        },
+        {
+            "name": "Slot_Foundation_oros",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 735.0,
+                    "y": 118.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        56,
+                        118,
+                        88,
+                        190
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 20,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_13d654aefc5d"
+        },
+        {
+            "name": "Slot_Foundation_copas",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 847.0,
+                    "y": 118.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        56,
+                        118,
+                        88,
+                        190
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 21,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_05133aca7286"
+        },
+        {
+            "name": "Slot_Foundation_espadas",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 959.0,
+                    "y": 118.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        56,
+                        118,
+                        88,
+                        190
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 22,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_e9d54cad340e"
+        },
+        {
+            "name": "Slot_Foundation_bastos",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 1071.0,
+                    "y": 118.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        56,
+                        118,
+                        88,
+                        190
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 23,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_80eb82fae071"
+        },
+        {
+            "name": "Slot_Tableau_1",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 115.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 40,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_2315e1b989f0"
+        },
+        {
+            "name": "Slot_Tableau_2",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 233.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 41,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_75339df7ee52"
+        },
+        {
+            "name": "Slot_Tableau_3",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 351.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 42,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_40e4ea3ae4dd"
+        },
+        {
+            "name": "Slot_Tableau_4",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 469.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 43,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_e2f955b0f192"
+        },
+        {
+            "name": "Slot_Tableau_5",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 587.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 44,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_9c11cbc11ed6"
+        },
+        {
+            "name": "Slot_Tableau_6",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 705.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 45,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_31a9bb84bdfa"
+        },
+        {
+            "name": "Slot_Tableau_7",
+            "active": true,
+            "tag": "Board",
+            "layer": "Board",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 823.0,
+                    "y": 296.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Polygon2D": {
+                    "enabled": true,
+                    "points": [
+                        [
+                            -45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            -70.0
+                        ],
+                        [
+                            45.0,
+                            70.0
+                        ],
+                        [
+                            -45.0,
+                            70.0
+                        ]
+                    ],
+                    "color": [
+                        35,
+                        68,
+                        86,
+                        160
+                    ],
+                    "texture": {
+                        "guid": "",
+                        "path": ""
+                    },
+                    "texture_path": "",
+                    "offset_x": 0.0,
+                    "offset_y": 0.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Board",
+                    "order_in_layer": 46,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Polygon2D": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_7fa3b106c17b"
+        },
+        {
+            "name": "Card_oros_1",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/1.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/1.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1000,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_1922005f3d0a"
+        },
+        {
+            "name": "Card_oros_2",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/2.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/2.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1001,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_c85d76469c1c"
+        },
+        {
+            "name": "Card_oros_3",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/3.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/3.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1002,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_8f0790392c88"
+        },
+        {
+            "name": "Card_oros_4",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/4.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/4.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1003,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_ec3f3e3102dd"
+        },
+        {
+            "name": "Card_oros_5",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/5.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/5.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1004,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_911b407b83a5"
+        },
+        {
+            "name": "Card_oros_6",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/6.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/6.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1005,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_61934a264081"
+        },
+        {
+            "name": "Card_oros_7",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/7.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/7.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1006,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_9147ffc84104"
+        },
+        {
+            "name": "Card_oros_10",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/8.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/8.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1007,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_eb6c1c0f6fce"
+        },
+        {
+            "name": "Card_oros_11",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/9.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/9.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1008,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_28be1247f11c"
+        },
+        {
+            "name": "Card_oros_12",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/10.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/10.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1009,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_632d94eea4e4"
+        },
+        {
+            "name": "Card_copas_1",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/11.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/11.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1010,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_b9a33136b598"
+        },
+        {
+            "name": "Card_copas_2",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/12.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/12.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1011,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_45ab2f644610"
+        },
+        {
+            "name": "Card_copas_3",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/13.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/13.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1012,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_7c75babeaa7c"
+        },
+        {
+            "name": "Card_copas_4",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/14.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/14.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1013,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_c0857b4dd0a4"
+        },
+        {
+            "name": "Card_copas_5",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/15.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/15.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1014,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_1d449549e179"
+        },
+        {
+            "name": "Card_copas_6",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/16.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/16.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1015,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_1089087c3460"
+        },
+        {
+            "name": "Card_copas_7",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/17.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/17.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1016,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_124d28719c0c"
+        },
+        {
+            "name": "Card_copas_10",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/18.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/18.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1017,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_775c29bced14"
+        },
+        {
+            "name": "Card_copas_11",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/19.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/19.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1018,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_2d2a4094165f"
+        },
+        {
+            "name": "Card_copas_12",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/20.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/20.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1019,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_f70f68643eda"
+        },
+        {
+            "name": "Card_espadas_1",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/21.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/21.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1020,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_126e3d486630"
+        },
+        {
+            "name": "Card_espadas_2",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/22.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/22.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1021,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_78eff52601e3"
+        },
+        {
+            "name": "Card_espadas_3",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/23.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/23.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1022,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_0e07b8c39047"
+        },
+        {
+            "name": "Card_espadas_4",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/24.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/24.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1023,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_b2b742d3ac3b"
+        },
+        {
+            "name": "Card_espadas_5",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/25.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/25.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1024,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_f36db9a48afc"
+        },
+        {
+            "name": "Card_espadas_6",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/26.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/26.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1025,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_11913375ecd5"
+        },
+        {
+            "name": "Card_espadas_7",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/27.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/27.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1026,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_f9217ebad57d"
+        },
+        {
+            "name": "Card_espadas_10",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/28.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/28.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1027,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_eaa8054a8823"
+        },
+        {
+            "name": "Card_espadas_11",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/29.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/29.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1028,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_05afa97668f7"
+        },
+        {
+            "name": "Card_espadas_12",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/30.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/30.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1029,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_ecf9aa6561c0"
+        },
+        {
+            "name": "Card_bastos_1",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/31.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/31.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1030,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_350776c1be79"
+        },
+        {
+            "name": "Card_bastos_2",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/32.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/32.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1031,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_fa5468b7778d"
+        },
+        {
+            "name": "Card_bastos_3",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/33.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/33.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1032,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_14f40162a3a8"
+        },
+        {
+            "name": "Card_bastos_4",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/34.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/34.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1033,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_ec35bb1b4a89"
+        },
+        {
+            "name": "Card_bastos_5",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/35.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/35.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1034,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_f8bf05ec8a6d"
+        },
+        {
+            "name": "Card_bastos_6",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/36.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/36.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1035,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_aa3cf6da3246"
+        },
+        {
+            "name": "Card_bastos_7",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/37.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/37.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1036,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_bd020a99ecb7"
+        },
+        {
+            "name": "Card_bastos_10",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/38.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/38.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1037,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_138985f99614"
+        },
+        {
+            "name": "Card_bastos_11",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/39.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/39.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1038,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_68de5ccb018c"
+        },
+        {
+            "name": "Card_bastos_12",
+            "active": true,
+            "tag": "Card",
+            "layer": "Cards",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -400.0,
+                    "y": -400.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/spanish_deck/40.PNG"
+                    },
+                    "texture_path": "assets/spanish_deck/40.PNG",
+                    "width": 90,
+                    "height": 140,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": ""
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 90.0,
+                    "height": 140.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 45.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RenderOrder2D": {
+                    "enabled": true,
+                    "sorting_layer": "Cards",
+                    "order_in_layer": 1039,
+                    "render_pass": "World"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RenderOrder2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_d60c1710bce8"
+        },
+        {
+            "name": "SolitaireDirector",
+            "active": true,
+            "tag": "Game",
+            "layer": "Default",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "ScriptBehaviour": {
+                    "enabled": true,
+                    "script": {
+                        "guid": "",
+                        "path": "scripts/solitario_espanol/controller.py"
+                    },
+                    "module_path": "solitario_espanol.controller",
+                    "run_in_edit_mode": false,
+                    "public_data": {
+                        "seed": ""
+                    }
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "ScriptBehaviour": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_4b4aab03330b"
+        },
+        {
+            "name": "SolitaireCanvas",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": null,
+            "components": {
+                "Canvas": {
+                    "enabled": true,
+                    "render_mode": "screen_space_overlay",
+                    "reference_width": 1280,
+                    "reference_height": 720,
+                    "match_mode": "stretch",
+                    "sort_order": 100
+                }
+            },
+            "component_metadata": {
+                "Canvas": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_986cfb8ed72f"
+        },
+        {
+            "name": "TitleBanner",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 68,
+                    "anchored_y": 14,
+                    "width": 320,
+                    "height": 100,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner01a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_a46ec4d15626"
+        },
+        {
+            "name": "TitleText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 84,
+                    "anchored_y": 36,
+                    "width": 288,
+                    "height": 34,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Solitario Espanol",
+                    "font_size": 26,
+                    "color": [
+                        35,
+                        37,
+                        41,
+                        255
+                    ],
+                    "alignment": "center",
+                    "wrap": false
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_8142ebc1ed8b"
+        },
+        {
+            "name": "TitleAccentBar",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 86,
+                    "anchored_y": 118,
+                    "width": 160,
+                    "height": 40,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Bar01a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        45,
+                        58,
+                        68,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_9a6e9532ee02"
+        },
+        {
+            "name": "StockBadge",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 72,
+                    "anchored_y": 142,
+                    "width": 36,
+                    "height": 36,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_FrameSlot01a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_b67827b24c11"
+        },
+        {
+            "name": "StockBadgeText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 114,
+                    "anchored_y": 142,
+                    "width": 120,
+                    "height": 24,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Mazo",
+                    "font_size": 18,
+                    "color": [
+                        244,
+                        244,
+                        236,
+                        255
+                    ],
+                    "alignment": "left",
+                    "wrap": false
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_85b1b5b46fdd"
+        },
+        {
+            "name": "WasteBadge",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 184,
+                    "anchored_y": 142,
+                    "width": 36,
+                    "height": 36,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_FrameSlot01a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_ec99a6289272"
+        },
+        {
+            "name": "WasteBadgeText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 226,
+                    "anchored_y": 142,
+                    "width": 140,
+                    "height": 24,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Descarte",
+                    "font_size": 18,
+                    "color": [
+                        244,
+                        244,
+                        236,
+                        255
+                    ],
+                    "alignment": "left",
+                    "wrap": false
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_7f011f988f96"
+        },
+        {
+            "name": "FoundationsBadge",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 702,
+                    "anchored_y": 142,
+                    "width": 36,
+                    "height": 36,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_FrameSlot01a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_79e1e2ad8b6a"
+        },
+        {
+            "name": "FoundationsBadgeText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 744,
+                    "anchored_y": 142,
+                    "width": 150,
+                    "height": 24,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Bases",
+                    "font_size": 18,
+                    "color": [
+                        244,
+                        244,
+                        236,
+                        255
+                    ],
+                    "alignment": "left",
+                    "wrap": false
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_fcb0872e2dd5"
+        },
+        {
+            "name": "MovesPanel",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 922,
+                    "anchored_y": 14,
+                    "width": 240,
+                    "height": 160,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Frame02a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        236,
+                        238,
+                        242,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_4f30f956931c"
+        },
+        {
+            "name": "MovesText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 950,
+                    "anchored_y": 44,
+                    "width": 184,
+                    "height": 54,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Movimientos: 0",
+                    "font_size": 22,
+                    "color": [
+                        34,
+                        37,
+                        43,
+                        255
+                    ],
+                    "alignment": "center",
+                    "wrap": false
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_e33ca8c5e9e1"
+        },
+        {
+            "name": "RestartButton",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 916,
+                    "anchored_y": 188,
+                    "width": 240,
+                    "height": 75,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIButton": {
+                    "enabled": true,
+                    "interactable": true,
+                    "label": "Reiniciar",
+                    "normal_color": [
+                        72,
+                        86,
+                        98,
+                        255
+                    ],
+                    "hover_color": [
+                        84,
+                        100,
+                        112,
+                        255
+                    ],
+                    "pressed_color": [
+                        56,
+                        70,
+                        80,
+                        255
+                    ],
+                    "disabled_color": [
+                        48,
+                        48,
+                        48,
+                        200
+                    ],
+                    "transition_scale_pressed": 0.96,
+                    "on_click": {
+                        "type": "load_scene",
+                        "path": "levels/main_scene.json"
+                    },
+                    "normal_sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner01a.png"
+                    },
+                    "hover_sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner02a.png"
+                    },
+                    "pressed_sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner03a.png"
+                    },
+                    "disabled_sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner04a.png"
+                    },
+                    "normal_slice": "",
+                    "hover_slice": "",
+                    "pressed_slice": "",
+                    "disabled_slice": "",
+                    "image_tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIButton": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_dcee9f80b11f"
+        },
+        {
+            "name": "StatusPanel",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 922,
+                    "anchored_y": 310,
+                    "width": 324,
+                    "height": 216,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": true,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Frame02a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        238,
+                        233,
+                        220,
+                        255
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_0caabb2cd0e4"
+        },
+        {
+            "name": "StatusText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 944,
+                    "anchored_y": 336,
+                    "width": 280,
+                    "height": 168,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Seleccion: ninguna. R o Reiniciar.",
+                    "font_size": 19,
+                    "color": [
+                        34,
+                        37,
+                        43,
+                        255
+                    ],
+                    "alignment": "left",
+                    "wrap": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_b58189c54678"
+        },
+        {
+            "name": "VictoryPanel",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 400,
+                    "anchored_y": 200,
+                    "width": 480,
+                    "height": 320,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIImage": {
+                    "enabled": false,
+                    "sprite": {
+                        "guid": "",
+                        "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Frame03a.png"
+                    },
+                    "slice_name": "",
+                    "tint": [
+                        255,
+                        248,
+                        210,
+                        245
+                    ],
+                    "preserve_aspect": true
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIImage": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_7b4067adf192"
+        },
+        {
+            "name": "VictoryText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "SolitaireCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 0.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 438,
+                    "anchored_y": 282,
+                    "width": 404,
+                    "height": 120,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "",
+                    "font_size": 34,
+                    "color": [
+                        35,
+                        37,
+                        41,
+                        255
+                    ],
+                    "alignment": "center",
+                    "wrap": false
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIText": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_e1634321fb0f"
+        }
+    ],
+    "rules": [],
+    "feature_metadata": {
+        "render_2d": {
+            "sorting_layers": [
+                "Default",
+                "Board",
+                "Cards",
+                "UI"
+            ]
+        }
+    }
+}
