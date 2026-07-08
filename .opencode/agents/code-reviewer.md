@@ -84,6 +84,18 @@ validator.
   when those subsystems apply.
 - Any serious testing failure must be reported with `must_fix: true`.
 
+### 7. Subagent Evidence / Harness Truth
+
+Reportar hallazgo con `must_fix: true` si ocurre cualquiera:
+
+- Falta salida estructurada de un subagente obligatorio.
+- `builder` no demuestra escritura cuando la prueba o plan la requeria.
+- `validator` no demuestra ejecucion de comandos minimos aplicables.
+- Se interpreta ausencia de diff como exito sin comprobar `git status` o lectura
+  directa del archivo objetivo.
+- Un reporte de subagente es vacio, no parseable o no cumple su contrato de
+  salida.
+
 ## Output Format
 
 ```json

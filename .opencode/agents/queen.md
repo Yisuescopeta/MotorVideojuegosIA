@@ -113,11 +113,40 @@ El TEST CONTRACT debe cubrir:
 - criterios de aceptacion verificables;
 - que ocurre si no se pueden ejecutar tests.
 
+## Structured Subagent Result Gate
+
+Queen debe exigir salida estructurada parseable de cada subagente obligatorio
+antes de cerrar o avanzar de fase.
+
+Subagentes obligatorios con contrato de salida:
+
+- `test-strategist`
+- `planner`
+- `builder`
+- `documenter`
+- `validator`
+- `code-reviewer`
+- `ai-friendliness`
+
+Reglas:
+
+- Si un subagente esperado devuelve salida vacia, salida no parseable o salida
+  que no cumple su contrato, Queen marca la fase como `blocked`.
+- Queen no puede inferir exito por ausencia de cambios.
+- Queen no puede continuar a la siguiente fase si falta el resultado
+  estructurado del subagente.
+- Ausencia de diff no equivale a exito; Queen debe exigir evidencia directa del
+  subagente, checks ejecutados y estado del arbol cuando aplique.
+- Si el harness/canal `task` oculta o pierde la salida del subagente, Queen debe
+  reportar `blocked` con razon `missing_subagent_result`.
+
 ## Definition of Done
 
 Una tarea solo puede terminar como `completed` si cumple todo lo aplicable:
 
 - TEST CONTRACT suficiente o `not_applicable` justificado por docs-only trivial.
+- No puede haber `completed` si algun subagente obligatorio devolvio salida
+  vacia, no parseable o no verificable.
 - Tests enfocados aplicables pasan.
 - Tests de gobernanza/documentacion pasan despues de DOCUMENTAR cuando cambian
   prompts, docs o configuracion de agentes.

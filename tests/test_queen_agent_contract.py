@@ -11,6 +11,7 @@ import tools.queen_state as queen_state
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS_DIR = ROOT / ".opencode" / "agents"
 WORKFLOW_DOC = ROOT / "docs" / "queen_engine_workflow.md"
+PERMISSION_SANDBOX = ROOT / "tests" / "fixtures" / "queen_permission_smoke" / "permission_sandbox.md"
 NORMAL_CYCLE = (
     "RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> "
     "DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE"
@@ -218,11 +219,44 @@ class QueenAgentContractTests(unittest.TestCase):
         self.assertIn("minimum_focused_commands", prompt)
         self.assertIn("Never relax tests", prompt)
 
+    def test_builder_has_verifiable_output_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "builder.md")
+        for field in (
+            "builder_id",
+            "status",
+            "files_changed",
+            "tests_added_or_modified",
+            "tests_deliberately_not_changed",
+            "commands_run",
+            "write_scope_violations",
+            "risks",
+        ):
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn('"status": "completed|partial|blocked|failed"', prompt)
+        self.assertIn("required writes and no file was written", prompt)
+        self.assertIn("Empty output is invalid", prompt)
+
     def test_planner_consumes_test_contract(self) -> None:
         prompt = read_text(AGENTS_DIR / "planner.md")
         self.assertIn("test_contract", prompt)
         self.assertIn("existing_tests_authority", prompt)
         self.assertIn("minimum_focused_commands", prompt)
+
+    def test_documenter_has_verifiable_output_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "documenter.md")
+        for field in (
+            "documenter_id",
+            "status",
+            "docs_changed",
+            "reason",
+            "canonical_docs_required",
+            "operational_docs_required",
+            "risks",
+        ):
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn('"status": "completed|not_applicable|blocked|failed"', prompt)
+        self.assertIn("devolver `not_applicable`", prompt)
+        self.assertIn("Salida vacia o no parseable", prompt)
 
     def test_validator_validates_against_test_contract_after_documentation(self) -> None:
         prompt = read_text(AGENTS_DIR / "validator.md")
@@ -235,12 +269,31 @@ class QueenAgentContractTests(unittest.TestCase):
         self.assertIn("git diff", prompt)
         self.assertIn("relaxed", prompt.lower())
 
+    def test_validator_cannot_pass_without_minimum_command_evidence(self) -> None:
+        prompt = read_text(AGENTS_DIR / "validator.md")
+        self.assertIn("`commands_run` no puede estar vacio", prompt)
+        self.assertIn("Si no ejecuta comandos minimos aplicables", prompt)
+        self.assertIn("nunca `pass`", prompt)
+        self.assertIn("salida de comandos no es visible", prompt)
+        self.assertIn('"results": "pass|fail|partial|not_run|blocked"', prompt)
+
     def test_code_reviewer_has_test_quality_truth_dimension(self) -> None:
         prompt = read_text(AGENTS_DIR / "code-reviewer.md")
         self.assertIn("Test Quality / Test Truth", prompt)
         self.assertIn("tests existing were relaxed", prompt)
         self.assertIn("test contract was respected", prompt)
         self.assertIn("must_fix: true", prompt)
+
+    def test_code_reviewer_must_fix_missing_subagent_or_git_evidence(self) -> None:
+        prompt = read_text(AGENTS_DIR / "code-reviewer.md")
+        for phrase in (
+            "Falta salida estructurada de un subagente obligatorio",
+            "`builder` no demuestra escritura",
+            "`validator` no demuestra ejecucion de comandos minimos aplicables",
+            "ausencia de diff como exito sin comprobar `git status`",
+            "vacio, no parseable o no cumple su contrato",
+        ):
+            self.assertIn(phrase, prompt)
 
     def test_primary_testing_commands_follow_unittest_contract(self) -> None:
         pyproject = tomllib.loads(read_text(ROOT / "pyproject.toml"))
@@ -317,6 +370,37 @@ class QueenAgentContractTests(unittest.TestCase):
         self.assertIn("docs-only trivial", self.queen_prompt.lower())
         self.assertIn("cannot delegate implementation", self.queen_prompt.lower())
 
+    def test_queen_blocks_empty_or_non_parseable_mandatory_subagent_output(self) -> None:
+        for phrase in (
+            "salida vacia",
+            "salida no parseable",
+            "no cumple su contrato",
+            "marca la fase como `blocked`",
+            "missing_subagent_result",
+        ):
+            self.assertIn(phrase, self.queen_prompt)
+
+        for subagent in (
+            "test-strategist",
+            "planner",
+            "builder",
+            "documenter",
+            "validator",
+            "code-reviewer",
+            "ai-friendliness",
+        ):
+            self.assertIn(f"`{subagent}`", self.queen_prompt)
+
+    def test_queen_cannot_complete_without_structured_mandatory_subagent_result(self) -> None:
+        for phrase in (
+            "No puede haber `completed`",
+            "salida vacia",
+            "no verificable",
+            "Queen no puede inferir exito por ausencia de cambios",
+        ):
+            self.assertIn(phrase, self.queen_prompt)
+        self.assertRegex(self.queen_prompt, r"resultado\s+estructurado del subagente")
+
     def test_queen_can_block_for_clarification(self) -> None:
         question_perm = self.agent_config["queen"]["permission"].get("question")
         is_not_denied = question_perm != "deny"
@@ -345,6 +429,23 @@ class QueenAgentContractTests(unittest.TestCase):
             has_not_applicable or has_exception,
             "AI-friendliness must be able to declare not_applicable with reason",
         )
+
+    def test_ai_friendliness_has_verifiable_output_or_not_applicable_reason(self) -> None:
+        ai_prompt = read_text(AGENTS_DIR / "ai-friendliness.md")
+        self.assertIn("Return exactly one JSON object", ai_prompt)
+        self.assertIn("non-parseable output", ai_prompt)
+        self.assertIn('"applicable": true', ai_prompt)
+        self.assertIn('"not_applicable_reason"', ai_prompt)
+        self.assertIn("If no score applies", ai_prompt)
+        self.assertIn("not_applicable", ai_prompt)
+
+    def test_permission_smoke_sandbox_fixture_exists_and_is_git_verifiable(self) -> None:
+        self.assertTrue(PERMISSION_SANDBOX.exists())
+        content = read_text(PERMISSION_SANDBOX)
+        self.assertIn("Authority: test-fixture", content)
+        self.assertIn("Queen/OpenCode permission smoke tests", content)
+        self.assertIn("## Current marker", content)
+        self.assertIn("initial", content)
 
     def test_no_engine_files_touched_by_harness_change(self) -> None:
         self.assertTrue((ROOT / "engine").is_dir(), "engine/ directory must exist")
@@ -396,6 +497,17 @@ class QueenAgentContractTests(unittest.TestCase):
 
         agents_md = read_text(ROOT / "AGENTS.md")
         self.assertLess(agents_md.count("docs-only"), 2, "AGENTS.md must link the matrix, not duplicate it")
+
+    def test_engine_workflow_documents_git_verifiable_permission_smoke_sandbox(self) -> None:
+        workflow = read_text(WORKFLOW_DOC)
+        self.assertIn("no usar `.motor/queen_state`", workflow)
+        self.assertIn("tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("lectura antes y despues", workflow)
+        self.assertIn("git diff --name-only -- tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("git diff -- tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("git status --short -- tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("No usar solo `git diff --name-only`", workflow)
+        self.assertIn("git status --short --untracked-files=all -- <ruta>", workflow)
 
 
 if __name__ == "__main__":

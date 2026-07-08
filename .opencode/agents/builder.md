@@ -93,11 +93,28 @@ py -m motor doctor --project . --json
 
 ## Report
 
-Return:
+Return exactly one JSON object or one clearly fenced structured block with this
+schema:
 
-- Files changed.
-- What changed in each file.
-- Tests added or modified and why.
-- Tests deliberately not changed and why.
-- Commands run and exact result.
-- Remaining risks or blockers.
+```json
+{
+  "builder_id": "builder-<task_id>",
+  "status": "completed|partial|blocked|failed",
+  "files_changed": [],
+  "tests_added_or_modified": [],
+  "tests_deliberately_not_changed": [],
+  "commands_run": [],
+  "write_scope_violations": [],
+  "risks": []
+}
+```
+
+Rules:
+
+- If the plan or TEST CONTRACT required writes and no file was written, return
+  `blocked` or `failed` with the reason in `risks`.
+- `files_changed` must list every file edited by this builder.
+- `commands_run` must include exact commands executed and result summaries.
+- `write_scope_violations` must be non-empty if any attempted or completed edit
+  touched a forbidden file.
+- Empty output is invalid and must be treated by Queen as blocked.

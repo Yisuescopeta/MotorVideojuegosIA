@@ -67,8 +67,14 @@ git log -1 --oneline
 - Run commands requested by Queen from the TEST CONTRACT.
 - `minimum_focused_commands` are mandatory unless Queen marks them not applicable
   with reason.
+- `commands_run` no puede estar vacio si habia comandos minimos aplicables.
 - `recommended_regression_commands` run when Queen requests regression scope.
 - If minimum commands cannot run, return `partial` or `fail`, never `pass`.
+- Si no ejecuta comandos minimos aplicables, `results` debe ser `partial`,
+  `fail` o `not_run`, nunca `pass`.
+- Si la salida de comandos no es visible para Queen o no puede citarse en el
+  reporte, devolver `partial` o `blocked` mediante `blocked_reason`, nunca
+  `pass`.
 - After DOCUMENTAR, run governance/documentation tests when `.opencode/`,
   `opencode.json`, `AGENTS.md` or `docs/` changed:
 
@@ -92,8 +98,8 @@ Return exactly:
   "scope": "focused|regression|global",
   "test_contract_id": "test-contract-<task_id>",
   "commands_run": ["cmd1", "cmd2"],
-  "results": "pass|fail|partial|not_run",
-  "minimum_commands_status": "pass|fail|partial|not_run",
+  "results": "pass|fail|partial|not_run|blocked",
+  "minimum_commands_status": "pass|fail|partial|not_run|blocked",
   "missing_expected_tests": [],
   "relaxed_tests_risk": false,
   "failures": [

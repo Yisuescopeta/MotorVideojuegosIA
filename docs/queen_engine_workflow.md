@@ -18,6 +18,32 @@ RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR 
 `TEST CONTRACT` ocurre antes de implementar. `validator` hace la validacion
 final despues de documentar.
 
+## Smoke tests de permisos Queen/OpenCode
+
+Para smoke tests verificables por Git, no usar `.motor/queen_state` como
+sandbox. Ese arbol puede estar ignorado por Git y no sirve como evidencia de
+diff versionable.
+
+Para validar permisos de escritura de subagentes, usar este fixture trackeado:
+
+```text
+tests/fixtures/queen_permission_smoke/permission_sandbox.md
+```
+
+La smoke test debe registrar:
+
+- lectura antes y despues del archivo;
+- `git diff --name-only -- tests/fixtures/queen_permission_smoke/permission_sandbox.md`;
+- `git diff -- tests/fixtures/queen_permission_smoke/permission_sandbox.md`;
+- `git status --short -- tests/fixtures/queen_permission_smoke/permission_sandbox.md`.
+
+No usar solo `git diff --name-only` para detectar archivos nuevos sin trackear.
+Si la prueba valida creacion de archivos nuevos, usar tambien:
+
+```bash
+git status --short --untracked-files=all -- <ruta>
+```
+
 ## Matriz de validacion
 
 Si un test recomendado no existe, Queen debe localizar el equivalente real con

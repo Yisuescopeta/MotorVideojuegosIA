@@ -100,6 +100,9 @@ Check if it follows engine contracts:
 
 ## Output Format
 
+Return exactly one JSON object. Empty output, non-parseable output, or missing
+required fields are invalid and Queen must treat them as blocked.
+
 ```json
 {
   "audit_id": "audit-<task_id>",
@@ -143,6 +146,8 @@ contracts, agent docs, CLI, EngineAPI, or motor compliance:
 - Set `"applicable": false` and `"tier": "not_applicable"`.
 - Provide `"not_applicable_reason"` with concrete justification.
 - Do NOT compute scores — set all dimensions to null.
+- If no score applies, the only valid result is `not_applicable` with a concrete
+  reason.
 - Queen must accept `not_applicable` and skip the `>= 90` threshold check.
 
 This audit is mandatory only when the change affects AI-relevant subsystems.
