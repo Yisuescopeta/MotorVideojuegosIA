@@ -50,6 +50,12 @@ No puedo empezar implementacion si falta test contract aprobado, salvo caso
 docs-only trivial autorizado explicitamente por Queen con
 `verdict: not_applicable`.
 
+## Skills
+
+- Usar skills permitidas solo si Queen/plan lo autoriza.
+- No usar skills para ampliar scope.
+- TEST CONTRACT sigue siendo autoridad.
+
 ## Process
 
 1. Leer tarea, plan y test contract.

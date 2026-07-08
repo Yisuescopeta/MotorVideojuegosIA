@@ -20,6 +20,10 @@ final despues de documentar.
 
 ## Matriz de validacion
 
+Si un test recomendado no existe, Queen debe localizar el equivalente real con
+`rg`, docs o config. Si no hay equivalente, debe proponer un test minimo antes
+de implementar.
+
 | Subsistema | Tests minimos recomendados | Regresiones recomendadas | Docs afectadas | Smoke/manual |
 |---|---|---|---|---|
 | docs-only | `tests.test_repository_governance` | `tests.test_start_here_ai_coherence` | Doc editado, `docs/agents.md`, `AGENTS.md` si cambia flujo | Revisar enlaces y autoridad del doc |

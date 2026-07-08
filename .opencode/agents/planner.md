@@ -42,6 +42,12 @@ If `test_contract.verdict` is not `sufficient`, do not produce an implementation
 plan. Return a blocked plan that sends Queen back to TEST CONTRACT or
 clarification.
 
+## Skills
+
+- Usar skills permitidas solo si Queen/RECON lo autoriza.
+- No usar skills para ampliar scope.
+- TEST CONTRACT sigue siendo autoridad.
+
 ## Process
 
 1. Read task, RECON and `test_contract`.

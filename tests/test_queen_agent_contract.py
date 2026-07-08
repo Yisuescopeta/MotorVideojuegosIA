@@ -38,6 +38,7 @@ TEST_CONTRACT_FIELDS = [
     "auxiliary_inspection_commands_run",
     "auxiliary_inspection_results",
     "verdict",
+    "verdict_reason",
 ]
 EXPECTED_SUBAGENTS = {
     "ai-friendliness",
@@ -205,6 +206,8 @@ class QueenAgentContractTests(unittest.TestCase):
         self.assertIn("inspection only", prompt.lower())
         self.assertIn("not final validation", prompt.lower())
         self.assertIn("sufficient|insufficient|not_applicable", prompt)
+        self.assertIn("verdict_reason", prompt)
+        self.assertRegex(prompt.lower(), r"verdict_reason[\s\S]{0,160}reason")
 
     def test_builder_requires_approved_test_contract_and_cannot_relax_tests(self) -> None:
         prompt = read_text(AGENTS_DIR / "builder.md")

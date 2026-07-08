@@ -76,17 +76,20 @@ Return one JSON object with exactly this conceptual schema:
   "risks": [],
   "auxiliary_inspection_commands_run": [],
   "auxiliary_inspection_results": [],
-  "verdict": "sufficient|insufficient|not_applicable"
+  "verdict": "sufficient|insufficient|not_applicable",
+  "verdict_reason": "short reason for sufficient|insufficient|not_applicable"
 }
 ```
 
 ## Verdict Rules
 
+- Always include `verdict_reason`. It is the required reason for the verdict.
 - `sufficient`: implementation can be planned. Existing authority, required new
   tests, minimum commands and acceptance criteria are clear.
 - `insufficient`: Queen must re-plan or block before implementation.
-- `not_applicable`: only for docs-only trivial tasks. Include explicit reason in
-  `risks` or `acceptance_criteria`.
+  `verdict_reason` explains the blocker.
+- `not_applicable`: only for docs-only trivial tasks. `verdict_reason` explains
+  why TEST CONTRACT does not apply.
 
 ## Required Reasoning
 
