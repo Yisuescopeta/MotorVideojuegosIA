@@ -4,7 +4,7 @@ description: >-
   per documentation_governance.md rules, and writes/updates them. Follows docs layer
   separation strictly. Never edits code — only docs.
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow
@@ -125,3 +125,31 @@ Si hay errores de contrato documental, los resuelvo. Luego reporto a la Reina:
   "status": "ok"
 }
 ```
+
+## Output Contract
+
+Este contrato reemplaza cualquier ejemplo previo de `status: ok`. La salida
+final obligatoria debe ser exactamente un objeto JSON o un bloque estructurado
+con este contrato:
+
+```json
+{
+  "documenter_id": "documenter-<task_id>",
+  "status": "completed|not_applicable|blocked|failed",
+  "docs_changed": [],
+  "reason": "",
+  "canonical_docs_required": false,
+  "operational_docs_required": false,
+  "risks": []
+}
+```
+
+Reglas de salida:
+
+- Si no aplica documentacion, devolver `not_applicable` y explicar la razon en
+  `reason`.
+- Si aplica documentacion y no se pudo editar, devolver `blocked` o `failed`.
+- `docs_changed` debe listar todos los docs modificados.
+- `canonical_docs_required` y `operational_docs_required` deben reflejar la
+  clasificacion hecha desde `git diff`.
+- Salida vacia o no parseable es invalida y Queen debe bloquear.

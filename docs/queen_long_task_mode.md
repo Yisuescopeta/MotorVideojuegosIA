@@ -13,6 +13,15 @@ arquitectonicas o que requieren multiples sesiones. En lugar del ciclo unico
 normal, Queen opera sobre un plan persistente externalizado como artefacto
 estable de sesion.
 
+El ciclo por fase es:
+
+```text
+LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK
+```
+
+El TEST CONTRACT se define antes de implementar. El resultado de AI AUDIT se
+registra en UPDATE PLAN antes de avanzar, bloquear o cerrar.
+
 ## Cuando usarlo
 
 Queen activa Long Task Plan Mode automaticamente si:
@@ -78,6 +87,7 @@ Mode: long-task-plan
 - Status: pending|in_progress|done|blocked
 - Allowed files: <archivos que esta fase puede tocar>
 - Forbidden files: <archivos que NO debe tocar>
+- Test contract: <test-contract-id o not_applicable con razon>
 - Acceptance checks: <que debe cumplirse para dar la fase por buena>
 - Docs affected: <docs canonicas que requieren actualizacion>
 - Risks: <riesgos detectados>
@@ -112,6 +122,20 @@ Risks: <lista>
 - AI audit: <score|not_applicable>
 ```
 
+## TEST CONTRACT por fase
+
+Despues de PLAN SYNC y antes de IMPLEMENTAR FASE, Queen invoca
+`test-strategist` salvo docs-only trivial. El contrato define tests autoridad,
+tests nuevos o modificados, tests que no se pueden relajar, comandos minimos
+enfocados, regresiones recomendadas y criterios de aceptacion.
+
+Si `test-strategist` ejecuta `py -m unittest ...`, ese resultado es solo
+inspeccion auxiliar. La validacion final corresponde a `validator` despues de
+DOCUMENTAR.
+
+La matriz operativa de tests por subsistema vive en
+`docs/queen_engine_workflow.md`.
+
 ## Como Queen sincroniza el plan
 
 ### Antes de cada fase (PLAN SYNC)
@@ -129,9 +153,10 @@ Queen actualiza el plan con:
 
 1. **Current phase** → marca `done` y avanza `Current phase` a la siguiente.
 2. **Progress log**: entrada con resumen, checks y riesgos.
-3. **Decisions**: si se tomaron decisiones arquitectonicas o de alcance.
-4. **Risks**: nuevos riesgos detectados.
-5. **Updated at**: timestamp.
+3. **AI AUDIT**: resultado, score o `not_applicable` con razon.
+4. **Decisions**: si se tomaron decisiones arquitectonicas o de alcance.
+5. **Risks**: nuevos riesgos detectados.
+6. **Updated at**: timestamp.
 
 ## Que pasa si el plan contradice codigo/tests/docs
 
@@ -156,4 +181,5 @@ Al terminar la tarea (completed, partial, blocked o failed):
 
 - `AGENTS.md` — contrato operativo de agentes.
 - `.opencode/agents/queen.md` — prompt del agente Queen.
+- `docs/queen_engine_workflow.md` — matriz operativa de validacion por subsistema.
 - `docs/plans/README.md` — ciclo de vida de planes operativos.

@@ -3,7 +3,7 @@ description: >-
   Git committer. Crea commits en espanol con staging explicito, validacion de
   alcance y bloqueo de secretos/temporales.
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow

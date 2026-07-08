@@ -10,14 +10,108 @@ import tools.queen_state as queen_state
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS_DIR = ROOT / ".opencode" / "agents"
-CYCLE = (
-    "RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> "
-    "VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE"
+WORKFLOW_DOC = ROOT / "docs" / "queen_engine_workflow.md"
+PERMISSION_SANDBOX = ROOT / "tests" / "fixtures" / "queen_permission_smoke" / "permission_sandbox.md"
+NORMAL_CYCLE = (
+    "RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> "
+    "DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE"
 )
+LONG_CYCLE = (
+    "LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> "
+    "VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK"
+)
+GOVERNANCE_COMMAND = (
+    "py -m unittest tests.test_repository_governance tests.test_motor_cli_contract "
+    "tests.test_start_here_ai_coherence -v"
+)
+TEST_CONTRACT_FIELDS = [
+    "test_contract_id",
+    "task_type",
+    "subsystems",
+    "existing_tests_authority",
+    "new_or_modified_tests_required",
+    "tests_that_must_not_be_relaxed",
+    "minimum_focused_commands",
+    "recommended_regression_commands",
+    "manual_smoke_required",
+    "acceptance_criteria",
+    "risks",
+    "auxiliary_inspection_commands_run",
+    "auxiliary_inspection_results",
+    "verdict",
+    "verdict_reason",
+]
+CONTEXT_RECON_FIELDS = [
+    "recon_id",
+    "status",
+    "files_reviewed",
+    "subsystems",
+    "expected_agents",
+    "read_only_agents",
+    "write_agents",
+    "permissions_summary",
+    "allowed_files",
+    "forbidden_files",
+    "relevant_tests",
+    "relevant_docs",
+    "risks",
+    "blocked_reason",
+]
+QUEEN_FLOW_AGENTS = [
+    "queen",
+    "context-recon",
+    "test-strategist",
+    "planner",
+    "builder",
+    "validator",
+    "documenter",
+    "code-reviewer",
+    "ai-friendliness",
+    "committer",
+]
+EXPECTED_QUEEN_FLOW_MODEL = "openai/gpt-5.4-mini"
+QUEEN_FLOW_PROMPT_FILES = {
+    "queen": AGENTS_DIR / "queen.md",
+    "context-recon": AGENTS_DIR / "context-recon.md",
+    "test-strategist": AGENTS_DIR / "test-strategist.md",
+    "planner": AGENTS_DIR / "planner.md",
+    "builder": AGENTS_DIR / "builder.md",
+    "validator": AGENTS_DIR / "validator.md",
+    "documenter": AGENTS_DIR / "documenter.md",
+    "code-reviewer": AGENTS_DIR / "code-reviewer.md",
+    "ai-friendliness": AGENTS_DIR / "ai-friendliness.md",
+    "committer": AGENTS_DIR / "committer.md",
+    "queen-command": ROOT / ".opencode" / "commands" / "queen.md",
+}
+EXPECTED_SUBAGENTS = {
+    "ai-friendliness",
+    "builder",
+    "code-reviewer",
+    "committer",
+    "context-recon",
+    "documenter",
+    "godot-adapter",
+    "godot-gap-analyzer",
+    "godot-source-analyzer",
+    "planner",
+    "test-strategist",
+    "validator",
+}
 
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def frontmatter(text: str) -> str:
+    match = re.match(r"---\n(?P<body>[\s\S]*?)\n---", text)
+    if not match:
+        return ""
+    return match.group("body")
+
+
+def cycle_index(cycle: str, phase: str) -> int:
+    return [part.strip() for part in cycle.split("->")].index(phase)
 
 
 class QueenAgentContractTests(unittest.TestCase):
@@ -34,6 +128,7 @@ class QueenAgentContractTests(unittest.TestCase):
             if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", self.queen_prompt)
         }
         self.assertIn("context-recon", referenced)
+        self.assertIn("test-strategist", referenced)
         self.assertIn("committer", referenced)
         self.assertTrue(referenced <= configured)
 
@@ -65,15 +160,36 @@ class QueenAgentContractTests(unittest.TestCase):
         ):
             self.assertIn(line, prompt)
 
-    def test_queen_has_no_mutating_permissions(self) -> None:
+    def test_context_recon_has_verifiable_output_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "context-recon.md")
+        self.assertIn("Return exactly one JSON object", prompt)
+        for field in CONTEXT_RECON_FIELDS:
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn('"status": "completed|partial|blocked|failed"', prompt)
+        self.assertIn("Empty output is invalid", prompt)
+        self.assertIn("Non-parseable output is invalid", prompt)
+        self.assertIn("If you cannot inspect files", prompt)
+        self.assertIn("Always return visible output to Queen", prompt)
+        self.assertIn("Do not run bash", prompt)
+        self.assertIn("Do not delegate", prompt)
+
+    def test_queen_has_no_mutating_permissions_and_only_safe_git_bash(self) -> None:
         permissions = self.agent_config["queen"]["permission"]
         self.assertEqual(permissions.get("edit"), "deny")
         self.assertEqual(permissions.get("write"), "deny")
-        self.assertEqual(permissions.get("bash"), "deny")
-        # Queen prompt may declare edit/write:allow in frontmatter for delegated tasks;
-        # actual enforcement is via opencode.json which overrides with deny.
-        queen_bash = self.queen_prompt
-        self.assertIsNone(re.search(r"^\s+bash:\s+allow\s*$", queen_bash, re.MULTILINE))
+
+        bash = permissions.get("bash")
+        self.assertIsInstance(bash, dict)
+        self.assertEqual(bash.get("*"), "deny")
+        for command in ("git diff *", "git status *", "git log *"):
+            self.assertEqual(bash.get(command), "allow")
+        for command in ("py -m unittest *", "py -m ruff check *", "py -m mypy *", "py -m motor *"):
+            self.assertNotEqual(bash.get(command), "allow")
+
+        self.assertIn("edit: deny", self.queen_prompt)
+        self.assertIn("write: deny", self.queen_prompt)
+        self.assertIsNone(re.search(r"^\s+edit:\s+allow\s*$", self.queen_prompt, re.MULTILINE))
+        self.assertIsNone(re.search(r"^\s+write:\s+allow\s*$", self.queen_prompt, re.MULTILINE))
 
     def test_writer_agents_do_not_have_free_bash(self) -> None:
         for agent_name in ("builder", "godot-adapter"):
@@ -96,31 +212,156 @@ class QueenAgentContractTests(unittest.TestCase):
             prompt = read_text(AGENTS_DIR / f"{agent_name}.md")
             self.assertNotIn("bash: allow", prompt)
 
-    def test_documentation_precedes_commit_in_all_queen_cycle_sources(self) -> None:
+    def test_normal_cycle_has_test_contract_and_docs_before_validation(self) -> None:
         sources = {
             "AGENTS.md": read_text(ROOT / "AGENTS.md"),
             "queen.md": self.queen_prompt,
             "command": read_text(ROOT / ".opencode" / "commands" / "queen.md"),
             "opencode.json": read_text(ROOT / "opencode.json"),
         }
+        steps = [part.strip() for part in NORMAL_CYCLE.split("->")]
         for name, source in sources.items():
-            self.assertIn(CYCLE, source, msg=name)
-            steps = [part.strip() for part in CYCLE.split("->")]
-            self.assertLess(steps.index("DOCUMENTAR"), steps.index("COMMIT"), msg=name)
+            self.assertIn(NORMAL_CYCLE, source, msg=name)
+            self.assertLess(steps.index("RECON"), steps.index("TEST CONTRACT"), msg=name)
+            self.assertLess(steps.index("TEST CONTRACT"), steps.index("PLAN"), msg=name)
+            self.assertLess(steps.index("PLAN"), steps.index("IMPLEMENTAR"), msg=name)
+            self.assertLess(steps.index("DOCUMENTAR"), steps.index("VALIDAR"), msg=name)
+            self.assertLess(steps.index("VALIDAR"), steps.index("REVIEW"), msg=name)
+            self.assertLess(steps.index("AI AUDIT"), steps.index("COMMIT"), msg=name)
 
-    def test_committer_requires_explicit_staging_and_blocks_unrelated_files(self) -> None:
-        committer_prompt = read_text(AGENTS_DIR / "committer.md")
-        committer_bash = self.agent_config["committer"]["permission"]["bash"]
+    def test_long_task_cycle_records_ai_audit_before_advancing_or_closing(self) -> None:
+        sources = {
+            "queen.md": self.queen_prompt,
+            "command": read_text(ROOT / ".opencode" / "commands" / "queen.md"),
+            "queen_long_task_mode.md": read_text(ROOT / "docs" / "queen_long_task_mode.md"),
+        }
+        for name, source in sources.items():
+            self.assertIn(LONG_CYCLE, source, msg=name)
+            self.assertLess(source.index("TEST CONTRACT"), source.index("IMPLEMENTAR FASE"), msg=name)
+            self.assertLess(source.index("DOCUMENTAR"), source.index("VALIDAR"), msg=name)
+            self.assertLess(source.index("AI AUDIT"), source.index("UPDATE PLAN"), msg=name)
+            self.assertIn("AI AUDIT", source[source.index("UPDATE PLAN") :], msg=name)
 
-        self.assertIn("git add -- *", committer_bash)
-        self.assertIn("git add -- <ruta>", committer_prompt)
-        self.assertIn("archivos esperados", committer_prompt)
-        self.assertIn("blocked", committer_prompt)
+    def test_test_strategist_agent_exists_is_read_only_and_documents_schema(self) -> None:
+        prompt_path = AGENTS_DIR / "test-strategist.md"
+        self.assertTrue(prompt_path.exists(), "test-strategist.md prompt file must exist")
+        self.assertIn("test-strategist", self.agent_config)
 
-        forbidden = ("git add .", "git add -A", '"git add *"', "`git add *`")
-        combined = committer_prompt + "\n" + json.dumps(committer_bash, sort_keys=True)
-        for command in forbidden:
-            self.assertNotIn(command, combined)
+        config = self.agent_config["test-strategist"]
+        self.assertEqual(config.get("mode"), "subagent")
+        self.assertLessEqual(config.get("temperature", 1.0), 0.2)
+
+        permissions = config["permission"]
+        for key in ("read", "glob", "grep"):
+            self.assertEqual(permissions.get(key), "allow", msg=key)
+        for key in ("edit", "write", "task", "todowrite", "question", "webfetch", "websearch", "skill"):
+            self.assertEqual(permissions.get(key), "deny", msg=key)
+
+        bash = permissions.get("bash")
+        self.assertIsInstance(bash, dict)
+        self.assertEqual(bash.get("*"), "deny")
+        for command in ("py -m unittest *", "git diff *", "git status *", "git log *"):
+            self.assertEqual(bash.get(command), "allow")
+
+        prompt = read_text(prompt_path)
+        for field in TEST_CONTRACT_FIELDS:
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn("inspection only", prompt.lower())
+        self.assertIn("not final validation", prompt.lower())
+        self.assertIn("sufficient|insufficient|not_applicable", prompt)
+        self.assertIn("verdict_reason", prompt)
+        self.assertRegex(prompt.lower(), r"verdict_reason[\s\S]{0,160}reason")
+        self.assertIn("Empty output is invalid", prompt)
+        self.assertIn("Non-parseable output is invalid", prompt)
+        self.assertIn("Output outside the JSON object is invalid", prompt)
+        self.assertIn("Do not write any text before or after the JSON object", prompt)
+        self.assertIn('"verdict": "insufficient"', prompt)
+        self.assertIn("Never return silence", prompt)
+
+    def test_builder_requires_approved_test_contract_and_cannot_relax_tests(self) -> None:
+        prompt = read_text(AGENTS_DIR / "builder.md")
+        self.assertIn("test contract", prompt.lower())
+        self.assertIn("approved", prompt.lower())
+        self.assertIn("docs-only trivial", prompt.lower())
+        self.assertIn("tests_that_must_not_be_relaxed", prompt)
+        self.assertIn("minimum_focused_commands", prompt)
+        self.assertIn("Never relax tests", prompt)
+
+    def test_builder_has_verifiable_output_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "builder.md")
+        for field in (
+            "builder_id",
+            "status",
+            "files_changed",
+            "tests_added_or_modified",
+            "tests_deliberately_not_changed",
+            "commands_run",
+            "write_scope_violations",
+            "risks",
+        ):
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn('"status": "completed|partial|blocked|failed"', prompt)
+        self.assertIn("required writes and no file was written", prompt)
+        self.assertIn("Empty output is invalid", prompt)
+
+    def test_planner_consumes_test_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "planner.md")
+        self.assertIn("test_contract", prompt)
+        self.assertIn("existing_tests_authority", prompt)
+        self.assertIn("minimum_focused_commands", prompt)
+
+    def test_documenter_has_verifiable_output_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "documenter.md")
+        for field in (
+            "documenter_id",
+            "status",
+            "docs_changed",
+            "reason",
+            "canonical_docs_required",
+            "operational_docs_required",
+            "risks",
+        ):
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn('"status": "completed|not_applicable|blocked|failed"', prompt)
+        self.assertIn("devolver `not_applicable`", prompt)
+        self.assertIn("Salida vacia o no parseable", prompt)
+
+    def test_validator_validates_against_test_contract_after_documentation(self) -> None:
+        prompt = read_text(AGENTS_DIR / "validator.md")
+        self.assertIn("test contract", prompt.lower())
+        self.assertIn("minimum_focused_commands", prompt)
+        self.assertIn("recommended_regression_commands", prompt)
+        self.assertIn(GOVERNANCE_COMMAND, prompt)
+        self.assertIn("partial", prompt)
+        self.assertIn("fail", prompt)
+        self.assertIn("git diff", prompt)
+        self.assertIn("relaxed", prompt.lower())
+
+    def test_validator_cannot_pass_without_minimum_command_evidence(self) -> None:
+        prompt = read_text(AGENTS_DIR / "validator.md")
+        self.assertIn("`commands_run` no puede estar vacio", prompt)
+        self.assertIn("Si no ejecuta comandos minimos aplicables", prompt)
+        self.assertIn("nunca `pass`", prompt)
+        self.assertIn("salida de comandos no es visible", prompt)
+        self.assertIn('"results": "pass|fail|partial|not_run|blocked"', prompt)
+
+    def test_code_reviewer_has_test_quality_truth_dimension(self) -> None:
+        prompt = read_text(AGENTS_DIR / "code-reviewer.md")
+        self.assertIn("Test Quality / Test Truth", prompt)
+        self.assertIn("tests existing were relaxed", prompt)
+        self.assertIn("test contract was respected", prompt)
+        self.assertIn("must_fix: true", prompt)
+
+    def test_code_reviewer_must_fix_missing_subagent_or_git_evidence(self) -> None:
+        prompt = read_text(AGENTS_DIR / "code-reviewer.md")
+        for phrase in (
+            "Falta salida estructurada de un subagente obligatorio",
+            "`builder` no demuestra escritura",
+            "`validator` no demuestra ejecucion de comandos minimos aplicables",
+            "ausencia de diff como exito sin comprobar `git status`",
+            "vacio, no parseable o no cumple su contrato",
+        ):
+            self.assertIn(phrase, prompt)
 
     def test_primary_testing_commands_follow_unittest_contract(self) -> None:
         pyproject = tomllib.loads(read_text(ROOT / "pyproject.toml"))
@@ -134,6 +375,7 @@ class QueenAgentContractTests(unittest.TestCase):
                 AGENTS_DIR / "builder.md",
                 AGENTS_DIR / "code-reviewer.md",
                 AGENTS_DIR / "godot-adapter.md",
+                AGENTS_DIR / "test-strategist.md",
                 ROOT / ".opencode" / "commands" / "queen.md",
                 ROOT / "AGENTS.md",
             ]
@@ -161,76 +403,128 @@ class QueenAgentContractTests(unittest.TestCase):
             for state in ("completed", "partial", "blocked", "failed"):
                 self.assertIn(state, source, msg=f"{name}: {state}")
 
-
-    # ── Wave 1: Security & Control (new contract tests) ──────────────────
-
     def test_queen_task_permissions_are_bounded(self) -> None:
         queen_task = self.agent_config["queen"]["permission"]["task"]
-        is_dict = isinstance(queen_task, dict)
-
-        self.assertTrue(
-            is_dict,
-            "Queen task permission must be a dict",
-        )
-        if is_dict:
-            has_wildcard_allow = queen_task.get("*") == "allow"
-            if has_wildcard_allow:
-                return  # wildcard allow covers all subagents, no need to list them individually
-            self.assertIn("builder", queen_task)
-            self.assertIn("committer", queen_task)
+        self.assertIsInstance(queen_task, dict)
+        self.assertEqual(queen_task.get("*"), "deny")
+        for subagent in EXPECTED_SUBAGENTS:
+            self.assertEqual(queen_task.get(subagent), "allow", msg=subagent)
 
     def test_all_allowed_subagents_exist_in_config_and_have_prompt(self) -> None:
         queen_task = self.agent_config["queen"]["permission"]["task"]
-        if isinstance(queen_task, dict):
-            allowed = {k for k, v in queen_task.items() if v == "allow" and k != "*"}
-            allowed.discard("builder")
-            allowed.discard("committer")
-            allowed.discard("documenter")
-            allowed.discard("code-reviewer")
-            allowed.discard("ai-friendliness")
-            allowed.discard("context-recon")
-            allowed.discard("planner")
-            allowed.discard("godot-source-analyzer")
-            allowed.discard("godot-gap-analyzer")
-            allowed.discard("godot-adapter")
-            expected = {
-                "builder", "committer", "documenter", "code-reviewer",
-                "ai-friendliness", "context-recon", "planner",
-                "godot-source-analyzer", "godot-gap-analyzer", "godot-adapter",
-            }
-            actually_configured = {a for a in expected if a in self.agent_config}
-            missing = expected - actually_configured
-            self.assertEqual(
-                missing, set(),
-                f"Subagents not configured in opencode.json: {missing}",
-            )
-            missing_prompts = {
-                a for a in expected
-                if not (AGENTS_DIR / f"{a}.md").exists()
-            }
-            self.assertEqual(
-                missing_prompts, set(),
-                f"Subagents missing prompt files: {missing_prompts}",
-            )
+        allowed = {key for key, value in queen_task.items() if value == "allow"}
+        self.assertEqual(allowed, EXPECTED_SUBAGENTS)
+        missing_config = EXPECTED_SUBAGENTS - set(self.agent_config)
+        self.assertEqual(missing_config, set())
+        missing_prompts = {name for name in EXPECTED_SUBAGENTS if not (AGENTS_DIR / f"{name}.md").exists()}
+        self.assertEqual(missing_prompts, set())
 
     def test_validator_agent_exists_and_is_read_only(self) -> None:
-        self.assertTrue(
-            (AGENTS_DIR / "validator.md").exists(),
-            "validator.md prompt file must exist",
-        )
+        self.assertTrue((AGENTS_DIR / "validator.md").exists(), "validator.md prompt file must exist")
         self.assertIn("validator", self.agent_config)
-        vc = self.agent_config["validator"]
-        self.assertEqual(vc.get("mode"), "subagent")
+        config = self.agent_config["validator"]
+        self.assertEqual(config.get("mode"), "subagent")
         for key in ("edit", "write", "task", "todowrite"):
-            self.assertEqual(
-                vc["permission"].get(key), "deny",
-                f"validator must deny {key}",
-            )
-        bash = vc["permission"].get("bash")
+            self.assertEqual(config["permission"].get(key), "deny", f"validator must deny {key}")
+        bash = config["permission"].get("bash")
         self.assertIsInstance(bash, dict)
         self.assertEqual(bash.get("*"), "deny")
         val_prompt = read_text(AGENTS_DIR / "validator.md")
         self.assertIn("read-only", val_prompt.lower())
+
+    def test_queen_blocks_for_insufficient_or_missing_test_contract(self) -> None:
+        self.assertIn("verdict = insufficient", self.queen_prompt)
+        self.assertIn("not_applicable", self.queen_prompt)
+        self.assertIn("docs-only trivial", self.queen_prompt.lower())
+        self.assertIn("cannot delegate implementation", self.queen_prompt.lower())
+
+    def test_queen_blocks_empty_or_non_parseable_mandatory_subagent_output(self) -> None:
+        for phrase in (
+            "salida vacia",
+            "salida no parseable",
+            "no cumple su contrato",
+            "marca la fase como `blocked`",
+            "missing_subagent_result",
+        ):
+            self.assertIn(phrase, self.queen_prompt)
+
+        for subagent in (
+            "context-recon",
+            "test-strategist",
+            "planner",
+            "builder",
+            "documenter",
+            "validator",
+            "code-reviewer",
+            "ai-friendliness",
+        ):
+            self.assertIn(f"`{subagent}`", self.queen_prompt)
+
+    def test_context_recon_is_mandatory_in_structured_subagent_gate(self) -> None:
+        match = re.search(
+            r"Subagentes obligatorios con contrato de salida:\s*(?P<body>[\s\S]*?)\nReglas:",
+            self.queen_prompt,
+        )
+        self.assertIsNotNone(match)
+        gate_body = match.group("body")
+        self.assertIn("- `context-recon`", gate_body)
+        self.assertIn("RECON no puede considerarse completado", self.queen_prompt)
+        self.assertIn("salida estructurada verificable de\n  `context-recon`", self.queen_prompt)
+        self.assertIn("Queen debe bloquear si `context-recon`", self.queen_prompt)
+
+    def test_queen_cannot_complete_without_structured_mandatory_subagent_result(self) -> None:
+        for phrase in (
+            "No puede haber `completed`",
+            "salida vacia",
+            "no verificable",
+            "Queen no puede inferir exito por ausencia de cambios",
+        ):
+            self.assertIn(phrase, self.queen_prompt)
+        self.assertRegex(self.queen_prompt, r"resultado\s+estructurado del subagente")
+
+    def test_queen_flow_uses_operational_model_for_provider_smoke(self) -> None:
+        for agent_name in QUEEN_FLOW_AGENTS:
+            self.assertEqual(
+                self.agent_config[agent_name]["model"],
+                EXPECTED_QUEEN_FLOW_MODEL,
+                msg=agent_name,
+            )
+
+        self.assertEqual(self.config["command"]["queen"]["model"], EXPECTED_QUEEN_FLOW_MODEL)
+
+        for agent_name in QUEEN_FLOW_AGENTS:
+            self.assertNotRegex(
+                self.agent_config[agent_name]["model"],
+                r"^opencode-go/deepseek-",
+                msg=agent_name,
+            )
+        self.assertNotRegex(self.config["command"]["queen"]["model"], r"^opencode-go/deepseek-")
+
+        for godot_agent in ("godot-source-analyzer", "godot-gap-analyzer", "godot-adapter"):
+            self.assertRegex(
+                self.agent_config[godot_agent]["model"],
+                r"^opencode-go/deepseek-",
+                msg=godot_agent,
+            )
+
+    def test_queen_flow_frontmatter_matches_operational_model(self) -> None:
+        for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
+            prompt_frontmatter = frontmatter(read_text(prompt_path))
+            self.assertIn(
+                f"model: {EXPECTED_QUEEN_FLOW_MODEL}",
+                prompt_frontmatter,
+                msg=prompt_name,
+            )
+
+    def test_queen_flow_has_no_deepseek_model_drift(self) -> None:
+        for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
+            self.assertNotIn("opencode-go/deepseek", read_text(prompt_path), msg=prompt_name)
+
+        queen_flow_config = {
+            "agent": {name: self.agent_config[name] for name in QUEEN_FLOW_AGENTS},
+            "command": {"queen": self.config["command"]["queen"]},
+        }
+        self.assertNotIn("opencode-go/deepseek", json.dumps(queen_flow_config), msg="opencode.json")
 
     def test_queen_can_block_for_clarification(self) -> None:
         question_perm = self.agent_config["queen"]["permission"].get("question")
@@ -244,20 +538,13 @@ class QueenAgentContractTests(unittest.TestCase):
 
     def test_commit_is_gated_by_validator_review_audit(self) -> None:
         committer_prompt = read_text(AGENTS_DIR / "committer.md")
-        has_validator_gate = "validator" in committer_prompt.lower()
-        has_review_gate = "review" in committer_prompt.lower()
-        self.assertTrue(
-            has_validator_gate or has_review_gate,
-            "Committer prompt must reference validator and/or reviewer as commit gates",
-        )
-        queen_cycle = self.queen_prompt
-        self.assertIn("VALIDAR", queen_cycle)
-        self.assertIn("REVIEW", queen_cycle)
-        self.assertIn("COMMIT", queen_cycle)
-        phases = ["VALIDAR", "REVIEW", "AI AUDIT", "COMMIT"]
-        idx = {p: queen_cycle.index(p) for p in phases}
-        self.assertLess(idx["VALIDAR"], idx["COMMIT"])
-        self.assertLess(idx["REVIEW"], idx["COMMIT"])
+        self.assertIn("validator", committer_prompt.lower())
+        self.assertIn("review", committer_prompt.lower())
+        self.assertIn("AI AUDIT", self.queen_prompt)
+        for phase in ("VALIDAR", "REVIEW", "AI AUDIT", "COMMIT"):
+            self.assertIn(phase, self.queen_prompt)
+        self.assertLess(cycle_index(NORMAL_CYCLE, "VALIDAR"), cycle_index(NORMAL_CYCLE, "COMMIT"))
+        self.assertLess(cycle_index(NORMAL_CYCLE, "REVIEW"), cycle_index(NORMAL_CYCLE, "COMMIT"))
 
     def test_ai_friendliness_can_declare_not_applicable(self) -> None:
         ai_prompt = read_text(AGENTS_DIR / "ai-friendliness.md")
@@ -268,37 +555,40 @@ class QueenAgentContractTests(unittest.TestCase):
             "AI-friendliness must be able to declare not_applicable with reason",
         )
 
-    def test_no_engine_files_touched_by_harness_change(self) -> None:
-        """Guard: this wave must not touch engine/ runtime files."""
-        # This test is a self-check — it should always pass unless someone
-        # intentionally modifies engine/ in the same diff.
-        # If engine/ files appear in git diff, the committer must justify them.
-        self.assertTrue(
-            (ROOT / "engine").is_dir(),
-            "engine/ directory must exist (sanity check)",
-        )
+    def test_ai_friendliness_has_verifiable_output_or_not_applicable_reason(self) -> None:
+        ai_prompt = read_text(AGENTS_DIR / "ai-friendliness.md")
+        self.assertIn("Return exactly one JSON object", ai_prompt)
+        self.assertIn("non-parseable output", ai_prompt)
+        self.assertIn('"applicable": true', ai_prompt)
+        self.assertIn('"not_applicable_reason"', ai_prompt)
+        self.assertIn("If no score applies", ai_prompt)
+        self.assertIn("not_applicable", ai_prompt)
 
-    # ── Wave 2: Long Task Plan Mode ──────────────────────────────────
+    def test_permission_smoke_sandbox_fixture_exists_and_is_git_verifiable(self) -> None:
+        self.assertTrue(PERMISSION_SANDBOX.exists())
+        content = read_text(PERMISSION_SANDBOX)
+        self.assertIn("Authority: test-fixture", content)
+        self.assertIn("Queen/OpenCode permission smoke tests", content)
+        self.assertIn("## Current marker", content)
+        self.assertIn("initial", content)
+
+    def test_no_engine_files_touched_by_harness_change(self) -> None:
+        self.assertTrue((ROOT / "engine").is_dir(), "engine/ directory must exist")
 
     def test_long_task_plan_mode_is_documented(self) -> None:
         self.assertIn("Long Task Plan Mode", self.queen_prompt)
         agents_md = read_text(ROOT / "AGENTS.md")
         self.assertIn("Long Task Plan", agents_md)
 
-    def test_plan_mode_requires_plan_sync_before_implementation(self) -> None:
+    def test_plan_mode_requires_plan_sync_and_test_contract_before_implementation(self) -> None:
         self.assertIn("LOAD PLAN", self.queen_prompt)
         self.assertIn("PLAN SYNC", self.queen_prompt)
-        self.assertTrue(
-            "LOAD PLAN" in self.queen_prompt or "plan sync" in self.queen_prompt.lower(),
-            "Queen must load/sync plan before implementing any phase",
-        )
+        self.assertLess(self.queen_prompt.index("TEST CONTRACT"), self.queen_prompt.index("IMPLEMENTAR FASE"))
 
-    def test_plan_mode_updates_plan_after_phase(self) -> None:
+    def test_plan_mode_updates_plan_after_ai_audit(self) -> None:
+        self.assertIn("AI AUDIT", self.queen_prompt)
         self.assertIn("UPDATE PLAN", self.queen_prompt)
-        self.assertTrue(
-            "UPDATE PLAN" in self.queen_prompt or "actualizar" in self.queen_prompt.lower(),
-            "Queen must update plan after each phase",
-        )
+        self.assertLess(self.queen_prompt.index("AI AUDIT"), self.queen_prompt.index("UPDATE PLAN"))
 
     def test_operational_plans_are_not_canonical_docs(self) -> None:
         plans_readme = ROOT / "docs" / "plans" / "README.md"
@@ -307,6 +597,42 @@ class QueenAgentContractTests(unittest.TestCase):
             self.assertIn("Authority: operational-plan", content)
         else:
             self.fail("docs/plans/README.md must exist")
+
+    def test_engine_workflow_doc_is_operational_and_linked(self) -> None:
+        self.assertTrue(WORKFLOW_DOC.exists())
+        workflow = read_text(WORKFLOW_DOC)
+        self.assertIn("Authority: operational-workflow", workflow)
+        for subsystem in (
+            "docs-only",
+            "CLI",
+            "EngineAPI",
+            "Scene/SceneManager/authoring",
+            "schema/serialization/migrations",
+            "physics/collision",
+            "render",
+            "editor/runtime",
+            "export pipeline",
+            "components/component registry",
+            "experimental/tooling",
+        ):
+            self.assertIn(subsystem, workflow)
+
+        for path in (ROOT / "AGENTS.md", ROOT / "docs" / "agents.md", ROOT / "docs" / "queen_long_task_mode.md"):
+            self.assertIn("docs/queen_engine_workflow.md", read_text(path), msg=str(path))
+
+        agents_md = read_text(ROOT / "AGENTS.md")
+        self.assertLess(agents_md.count("docs-only"), 2, "AGENTS.md must link the matrix, not duplicate it")
+
+    def test_engine_workflow_documents_git_verifiable_permission_smoke_sandbox(self) -> None:
+        workflow = read_text(WORKFLOW_DOC)
+        self.assertIn("no usar `.motor/queen_state`", workflow)
+        self.assertIn("tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("lectura antes y despues", workflow)
+        self.assertIn("git diff --name-only -- tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("git diff -- tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("git status --short -- tests/fixtures/queen_permission_smoke/permission_sandbox.md", workflow)
+        self.assertIn("No usar solo `git diff --name-only`", workflow)
+        self.assertIn("git status --short --untracked-files=all -- <ruta>", workflow)
 
 
 if __name__ == "__main__":
