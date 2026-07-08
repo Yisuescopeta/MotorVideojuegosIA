@@ -638,6 +638,10 @@ ejecuta la validacion final despues de DOCUMENTAR. En tareas largas,
 UPDATE PLAN registra el resultado de AI AUDIT antes de avanzar, bloquear o
 cerrar.
 
+Queen usa Model Router: clasifica `simple|normal|complex|critical` despues de
+RECON, selecciona variantes de subagente `fast|standard|deep` y no edita modelos
+en caliente. Cada variante tiene modelo fijo en frontmatter y `opencode.json`.
+
 Definition of Done:
 
 - TEST CONTRACT suficiente o no aplicable con razon explicita.

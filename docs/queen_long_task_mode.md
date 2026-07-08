@@ -22,6 +22,17 @@ LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VAL
 El TEST CONTRACT se define antes de implementar. El resultado de AI AUDIT se
 registra en UPDATE PLAN antes de avanzar, bloquear o cerrar.
 
+## Model Router por fase
+
+En Long Task Plan Mode, Queen recalcula `model_route` al inicio de cada fase,
+despues de `PLAN SYNC` y antes de `TEST CONTRACT`. Queen selecciona variantes de
+subagente, no edita configuracion dinamica de modelos.
+
+Si una fase falla en `validator` o `code-reviewer` por razones no triviales, la
+siguiente iteracion sube `planner` y `code-reviewer` a variantes `deep`. Si el
+TEST CONTRACT fue insuficiente por falta de analisis, Queen puede reintentar una
+vez con `test-strategist-deep` antes de bloquear.
+
 ## Cuando usarlo
 
 Queen activa Long Task Plan Mode automaticamente si:

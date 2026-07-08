@@ -801,6 +801,10 @@ si cambia contrato, cero `must_fix` del reviewer, score AI `>= 90` cuando
 aplique, sin cambios fuera de alcance y reporte final claro si termina
 `partial`, `blocked` o `failed`.
 
+Queen usa Model Router: clasifica `simple|normal|complex|critical`, selecciona
+variantes `fast|standard|deep` y no edita modelos en caliente. Cada variante
+tiene modelo fijo en frontmatter y `opencode.json`.
+
 `context-recon` vive en `.opencode/agents/context-recon.md` y es read-only:
 `read`, `glob` y `grep` permitidos; `bash`, `edit`, `write`, `webfetch`,
 `websearch`, `task` y `todowrite` denegados.
