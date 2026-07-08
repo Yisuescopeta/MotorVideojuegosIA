@@ -4,7 +4,7 @@ description: >-
   CONTRACT antes de implementar, valida Definition of Done y solo permite commit
   al final.
 mode: primary
-model: opencode-go/deepseek-v4-pro
+model: openai/gpt-5.4-mini
 temperature: 0.2
 permission:
   read: allow
@@ -120,6 +120,7 @@ antes de cerrar o avanzar de fase.
 
 Subagentes obligatorios con contrato de salida:
 
+- `context-recon`
 - `test-strategist`
 - `planner`
 - `builder`
@@ -135,6 +136,8 @@ Reglas:
 - Queen no puede inferir exito por ausencia de cambios.
 - Queen no puede continuar a la siguiente fase si falta el resultado
   estructurado del subagente.
+- Queen debe bloquear si `context-recon` devuelve salida vacia, salida no
+  parseable o no demuestra contrato estructurado verificable.
 - Ausencia de diff no equivale a exito; Queen debe exigir evidencia directa del
   subagente, checks ejecutados y estado del arbol cuando aplique.
 - Si el harness/canal `task` oculta o pierde la salida del subagente, Queen debe
@@ -186,6 +189,10 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 - Generar `task_id` con formato `queen-YYYYMMDD-NNN`.
 - Invocar `context-recon` para mapear subsistema, archivos, contratos, tests,
   docs canonicas y riesgos.
+- Exigir JSON parseable con el schema documentado en
+  `.opencode/agents/context-recon.md`.
+- RECON no puede considerarse completado sin salida estructurada verificable de
+  `context-recon`.
 - Confirmar archivos prohibidos y archivos permitidos.
 - Confirmar que el alcance no requiere tocar `engine/` salvo necesidad explicita.
 

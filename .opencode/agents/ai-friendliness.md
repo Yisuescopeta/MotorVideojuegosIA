@@ -2,9 +2,9 @@
 description: >-
   AI-friendliness auditor. Evaluates how well a feature/subsystem can be used
   by AI agents without human intervention. Scores 0-100 across 4 dimensions.
-  Also checks compliance with engine contracts. Read-only. Uses Flash model.
+  Also checks compliance with engine contracts. Read-only.
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow

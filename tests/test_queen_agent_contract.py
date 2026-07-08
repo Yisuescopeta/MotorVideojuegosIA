@@ -41,6 +41,48 @@ TEST_CONTRACT_FIELDS = [
     "verdict",
     "verdict_reason",
 ]
+CONTEXT_RECON_FIELDS = [
+    "recon_id",
+    "status",
+    "files_reviewed",
+    "subsystems",
+    "expected_agents",
+    "read_only_agents",
+    "write_agents",
+    "permissions_summary",
+    "allowed_files",
+    "forbidden_files",
+    "relevant_tests",
+    "relevant_docs",
+    "risks",
+    "blocked_reason",
+]
+QUEEN_FLOW_AGENTS = [
+    "queen",
+    "context-recon",
+    "test-strategist",
+    "planner",
+    "builder",
+    "validator",
+    "documenter",
+    "code-reviewer",
+    "ai-friendliness",
+    "committer",
+]
+EXPECTED_QUEEN_FLOW_MODEL = "openai/gpt-5.4-mini"
+QUEEN_FLOW_PROMPT_FILES = {
+    "queen": AGENTS_DIR / "queen.md",
+    "context-recon": AGENTS_DIR / "context-recon.md",
+    "test-strategist": AGENTS_DIR / "test-strategist.md",
+    "planner": AGENTS_DIR / "planner.md",
+    "builder": AGENTS_DIR / "builder.md",
+    "validator": AGENTS_DIR / "validator.md",
+    "documenter": AGENTS_DIR / "documenter.md",
+    "code-reviewer": AGENTS_DIR / "code-reviewer.md",
+    "ai-friendliness": AGENTS_DIR / "ai-friendliness.md",
+    "committer": AGENTS_DIR / "committer.md",
+    "queen-command": ROOT / ".opencode" / "commands" / "queen.md",
+}
 EXPECTED_SUBAGENTS = {
     "ai-friendliness",
     "builder",
@@ -59,6 +101,13 @@ EXPECTED_SUBAGENTS = {
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def frontmatter(text: str) -> str:
+    match = re.match(r"---\n(?P<body>[\s\S]*?)\n---", text)
+    if not match:
+        return ""
+    return match.group("body")
 
 
 def cycle_index(cycle: str, phase: str) -> int:
@@ -110,6 +159,19 @@ class QueenAgentContractTests(unittest.TestCase):
             "todowrite: deny",
         ):
             self.assertIn(line, prompt)
+
+    def test_context_recon_has_verifiable_output_contract(self) -> None:
+        prompt = read_text(AGENTS_DIR / "context-recon.md")
+        self.assertIn("Return exactly one JSON object", prompt)
+        for field in CONTEXT_RECON_FIELDS:
+            self.assertIn(f'"{field}"', prompt)
+        self.assertIn('"status": "completed|partial|blocked|failed"', prompt)
+        self.assertIn("Empty output is invalid", prompt)
+        self.assertIn("Non-parseable output is invalid", prompt)
+        self.assertIn("If you cannot inspect files", prompt)
+        self.assertIn("Always return visible output to Queen", prompt)
+        self.assertIn("Do not run bash", prompt)
+        self.assertIn("Do not delegate", prompt)
 
     def test_queen_has_no_mutating_permissions_and_only_safe_git_bash(self) -> None:
         permissions = self.agent_config["queen"]["permission"]
@@ -209,6 +271,12 @@ class QueenAgentContractTests(unittest.TestCase):
         self.assertIn("sufficient|insufficient|not_applicable", prompt)
         self.assertIn("verdict_reason", prompt)
         self.assertRegex(prompt.lower(), r"verdict_reason[\s\S]{0,160}reason")
+        self.assertIn("Empty output is invalid", prompt)
+        self.assertIn("Non-parseable output is invalid", prompt)
+        self.assertIn("Output outside the JSON object is invalid", prompt)
+        self.assertIn("Do not write any text before or after the JSON object", prompt)
+        self.assertIn('"verdict": "insufficient"', prompt)
+        self.assertIn("Never return silence", prompt)
 
     def test_builder_requires_approved_test_contract_and_cannot_relax_tests(self) -> None:
         prompt = read_text(AGENTS_DIR / "builder.md")
@@ -381,6 +449,7 @@ class QueenAgentContractTests(unittest.TestCase):
             self.assertIn(phrase, self.queen_prompt)
 
         for subagent in (
+            "context-recon",
             "test-strategist",
             "planner",
             "builder",
@@ -391,6 +460,18 @@ class QueenAgentContractTests(unittest.TestCase):
         ):
             self.assertIn(f"`{subagent}`", self.queen_prompt)
 
+    def test_context_recon_is_mandatory_in_structured_subagent_gate(self) -> None:
+        match = re.search(
+            r"Subagentes obligatorios con contrato de salida:\s*(?P<body>[\s\S]*?)\nReglas:",
+            self.queen_prompt,
+        )
+        self.assertIsNotNone(match)
+        gate_body = match.group("body")
+        self.assertIn("- `context-recon`", gate_body)
+        self.assertIn("RECON no puede considerarse completado", self.queen_prompt)
+        self.assertIn("salida estructurada verificable de\n  `context-recon`", self.queen_prompt)
+        self.assertIn("Queen debe bloquear si `context-recon`", self.queen_prompt)
+
     def test_queen_cannot_complete_without_structured_mandatory_subagent_result(self) -> None:
         for phrase in (
             "No puede haber `completed`",
@@ -400,6 +481,50 @@ class QueenAgentContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, self.queen_prompt)
         self.assertRegex(self.queen_prompt, r"resultado\s+estructurado del subagente")
+
+    def test_queen_flow_uses_operational_model_for_provider_smoke(self) -> None:
+        for agent_name in QUEEN_FLOW_AGENTS:
+            self.assertEqual(
+                self.agent_config[agent_name]["model"],
+                EXPECTED_QUEEN_FLOW_MODEL,
+                msg=agent_name,
+            )
+
+        self.assertEqual(self.config["command"]["queen"]["model"], EXPECTED_QUEEN_FLOW_MODEL)
+
+        for agent_name in QUEEN_FLOW_AGENTS:
+            self.assertNotRegex(
+                self.agent_config[agent_name]["model"],
+                r"^opencode-go/deepseek-",
+                msg=agent_name,
+            )
+        self.assertNotRegex(self.config["command"]["queen"]["model"], r"^opencode-go/deepseek-")
+
+        for godot_agent in ("godot-source-analyzer", "godot-gap-analyzer", "godot-adapter"):
+            self.assertRegex(
+                self.agent_config[godot_agent]["model"],
+                r"^opencode-go/deepseek-",
+                msg=godot_agent,
+            )
+
+    def test_queen_flow_frontmatter_matches_operational_model(self) -> None:
+        for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
+            prompt_frontmatter = frontmatter(read_text(prompt_path))
+            self.assertIn(
+                f"model: {EXPECTED_QUEEN_FLOW_MODEL}",
+                prompt_frontmatter,
+                msg=prompt_name,
+            )
+
+    def test_queen_flow_has_no_deepseek_model_drift(self) -> None:
+        for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
+            self.assertNotIn("opencode-go/deepseek", read_text(prompt_path), msg=prompt_name)
+
+        queen_flow_config = {
+            "agent": {name: self.agent_config[name] for name in QUEEN_FLOW_AGENTS},
+            "command": {"queen": self.config["command"]["queen"]},
+        }
+        self.assertNotIn("opencode-go/deepseek", json.dumps(queen_flow_config), msg="opencode.json")
 
     def test_queen_can_block_for_clarification(self) -> None:
         question_perm = self.agent_config["queen"]["permission"].get("question")

@@ -3,7 +3,7 @@ description: >-
   Code reviewer. Reviews implementation for correctness, SOLID, security,
   project conventions, engine invariants, and Test Quality / Test Truth.
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow

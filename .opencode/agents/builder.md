@@ -3,7 +3,7 @@ description: >-
   Code implementer. Writes scoped changes only from approved plan and approved
   TEST CONTRACT, runs allowed focused checks, and reports files/results.
 mode: subagent
-model: opencode-go/deepseek-v4-pro
+model: openai/gpt-5.4-mini
 temperature: 0.3
 permission:
   read: allow

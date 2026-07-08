@@ -24,6 +24,19 @@ Para smoke tests verificables por Git, no usar `.motor/queen_state` como
 sandbox. Ese arbol puede estar ignorado por Git y no sirve como evidencia de
 diff versionable.
 
+Si un subagente devuelve `<task_result></task_result>` vacio, no asumir fallo de
+permisos. Revisar primero si el proveedor/modelo del subagente fallo. Si el
+harness no propaga el error real, Queen debe bloquear con
+`missing_subagent_result`. Para smoke tests de permisos, usar un proveedor/modelo
+con saldo y salida visible confirmada.
+
+Durante smoke tests de permisos, todos los agentes del flujo Queen principal
+deben usar un proveedor operativo. Si `opencode.json` y el frontmatter del
+agente difieren, hay riesgo de drift de modelo efectivo. Mantener el `model:`
+del frontmatter sincronizado con `opencode.json`. Si aparece
+`<task_result></task_result>`, revisar primero proveedor/modelo efectivo y drift
+de frontmatter antes de diagnosticar permisos.
+
 Para validar permisos de escritura de subagentes, usar este fixture trackeado:
 
 ```text

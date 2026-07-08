@@ -3,7 +3,7 @@ description: >-
   Implementation planner. Produces structured plans from task, RECON and TEST
   CONTRACT. Read-only.
 mode: subagent
-model: opencode-go/deepseek-v4-pro
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow
