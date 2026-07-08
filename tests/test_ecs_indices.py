@@ -16,6 +16,10 @@ class Velocity(Component):
         self.enabled = enabled
 
 
+class Acceleration(Component):
+    pass
+
+
 class ECSIndexTests(unittest.TestCase):
     def test_add_remove_and_replace_component_keep_indexes_synchronized(self) -> None:
         world = World()
@@ -105,6 +109,47 @@ class ECSIndexTests(unittest.TestCase):
         first.get_component(Velocity).enabled = False
         second.get_component(Velocity).enabled = True
         self.assertEqual(world.get_entities_with(Position, Velocity), [second])
+
+    def test_component_query_cache_invalidates_only_queries_using_changed_component(self) -> None:
+        world = World()
+        position_only = world.create_entity("PositionOnly")
+        velocity_only = world.create_entity("VelocityOnly")
+        position_only.add_component(Position())
+        velocity_only.add_component(Velocity())
+
+        self.assertEqual(world.get_entities_with(Position), [position_only])
+        self.assertEqual(world.get_entities_with(Velocity), [velocity_only])
+        self.assertEqual(world.get_entities_with(Position, Velocity), [])
+        cached_position_ids = world._component_query_cache[(Position,)]
+        initial_misses = world._component_query_cache_misses
+
+        position_only.add_component(Velocity())
+
+        self.assertIs(world._component_query_cache[(Position,)], cached_position_ids)
+        self.assertNotIn((Velocity,), world._component_query_cache)
+        self.assertNotIn((Position, Velocity), world._component_query_cache)
+        self.assertEqual(world._component_query_cache_invalidations, 2)
+        self.assertEqual(world.get_entities_with(Position), [position_only])
+        self.assertEqual(world._component_query_cache_hits, 1)
+        self.assertEqual(world._component_query_cache_misses, initial_misses)
+        self.assertEqual(world.get_entities_with(Velocity), [position_only, velocity_only])
+        self.assertEqual(world.get_entities_with(Position, Velocity), [position_only])
+
+    def test_unrelated_component_membership_keeps_existing_query_cache(self) -> None:
+        world = World()
+        position_entity = world.create_entity("Position")
+        other_entity = world.create_entity("Other")
+        position_entity.add_component(Position())
+
+        self.assertEqual(world.get_entities_with(Position), [position_entity])
+        cached_position_ids = world._component_query_cache[(Position,)]
+
+        other_entity.add_component(Acceleration())
+
+        self.assertIs(world._component_query_cache[(Position,)], cached_position_ids)
+        self.assertEqual(world._component_query_cache_invalidations, 0)
+        self.assertEqual(world.get_entities_with(Position), [position_entity])
+        self.assertEqual(world._component_query_cache_hits, 1)
 
     def test_legacy_fallback_uses_component_lists_without_world_scan(self) -> None:
         world = World()

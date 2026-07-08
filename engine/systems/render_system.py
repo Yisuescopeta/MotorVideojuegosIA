@@ -429,6 +429,68 @@ class RenderSystem:
         self._sorted_entities_cache_key = cache_key
         return self._sorted_entities_cache
 
+    def get_visual_bounds(self, entity: Entity) -> dict[str, float] | None:
+        """Return current visual AABB for runtime queries and picking."""
+        if entity is None or not bool(getattr(entity, "active", True)):
+            return None
+        transform = entity.get_component(Transform)
+        if transform is None or not bool(getattr(transform, "enabled", True)):
+            return None
+
+        polygon = entity.get_component(Polygon2D)
+        if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
+            return self._polygon_visual_bounds(transform, polygon)
+
+        animator = entity.get_component(Animator)
+        if animator is not None and animator.enabled:
+            bounds = self._animator_visual_bounds(transform, animator)
+            if bounds is not None:
+                return bounds
+
+        sprite = entity.get_component(Sprite)
+        if sprite is not None and sprite.enabled:
+            bounds = self._sprite_visual_bounds(transform, sprite)
+            if bounds is not None:
+                return bounds
+        return None
+
+    def get_entity_visual_bounds(self, world: World, entity_name: str) -> dict[str, float] | None:
+        entity = world.get_entity_by_name(str(entity_name)) if world is not None else None
+        return self.get_visual_bounds(entity) if entity is not None else None
+
+    def pick_sprite_at_world(
+        self,
+        world: World,
+        x: float,
+        y: float,
+        layer: str | None = None,
+    ) -> Entity | None:
+        if world is None:
+            return None
+        for entity in reversed(self._sorted_render_entities(world)):
+            if not self._entity_matches_pick_layer(entity, layer):
+                continue
+            bounds = self.get_visual_bounds(entity)
+            if bounds is None:
+                continue
+            left = float(bounds["left"])
+            top = float(bounds["top"])
+            right = left + float(bounds["width"])
+            bottom = top + float(bounds["height"])
+            px = float(x)
+            py = float(y)
+            if min(left, right) <= px <= max(left, right) and min(top, bottom) <= py <= max(top, bottom):
+                return entity
+        return None
+
+    def _entity_matches_pick_layer(self, entity: Entity, layer: str | None) -> bool:
+        if layer is None:
+            return True
+        expected = str(layer)
+        render_order = entity.get_component(RenderOrder2D)
+        sorting_layer = self._get_sorting_layer(render_order)
+        return sorting_layer == expected or str(getattr(entity, "layer", "")) == expected
+
     def _build_render_graph(
         self,
         world: World,
@@ -2187,69 +2249,117 @@ class RenderSystem:
         }
 
     def _selection_bounds(self, entity: Entity) -> dict[str, float] | None:
+        visual_bounds = self.get_visual_bounds(entity)
+        if visual_bounds is not None:
+            return visual_bounds
+
         transform = entity.get_component(Transform)
         if transform is None:
             return None
+        width = float(self.PLACEHOLDER_WIDTH) * transform.scale_x
+        height = float(self.PLACEHOLDER_HEIGHT) * transform.scale_y
+        left = transform.x - (width * 0.5)
+        top = transform.y - (height * 0.5)
+        return self._normalize_bounds(left, top, width, height)
 
-        width = float(self.PLACEHOLDER_WIDTH)
-        height = float(self.PLACEHOLDER_HEIGHT)
-        offset_x = 0.5
-        offset_y = 0.5
+    def _sprite_visual_bounds(self, transform: Transform, sprite: Sprite) -> dict[str, float] | None:
+        size = self._sprite_visual_size(sprite)
+        if size is None:
+            return None
+        width = float(size[0]) * float(transform.scale_x)
+        height = float(size[1]) * float(transform.scale_y)
+        left = float(transform.x) - (width * float(sprite.origin_x))
+        top = float(transform.y) - (height * float(sprite.origin_y))
+        return self._normalize_bounds(left, top, width, height)
 
-        sprite = entity.get_component(Sprite)
-        if sprite is not None and sprite.enabled:
-            if sprite.width > 0:
-                width = sprite.width
-            if sprite.height > 0:
-                height = sprite.height
-            offset_x = sprite.origin_x
-            offset_y = sprite.origin_y
+    def _animator_visual_bounds(self, transform: Transform, animator: Animator) -> dict[str, float] | None:
+        size = self._animator_visual_size(animator)
+        if size is None:
+            return None
+        width = float(size[0]) * float(transform.scale_x)
+        height = float(size[1]) * float(transform.scale_y)
+        left = float(transform.x) - (width * 0.5)
+        top = float(transform.y) - (height * 0.5)
+        return self._normalize_bounds(left, top, width, height)
 
-        animator = entity.get_component(Animator)
-        if animator is not None and animator.enabled:
-            current_slice = animator.get_current_slice_name()
-            slice_rect = self._asset_service.get_slice_rect(animator.get_sprite_sheet_reference(), current_slice) if (self._asset_service is not None and current_slice) else None
+    def _polygon_visual_bounds(self, transform: Transform, polygon: Polygon2D) -> dict[str, float] | None:
+        if len(polygon.points) < 3:
+            return None
+        cos_r = math.cos(float(transform.rotation))
+        sin_r = math.sin(float(transform.rotation))
+        sx = float(transform.scale_x)
+        sy = float(transform.scale_y)
+        points: list[tuple[float, float]] = []
+        for point in polygon.points:
+            wx = float(point[0]) * sx
+            wy = float(point[1]) * sy
+            rx = wx * cos_r - wy * sin_r
+            ry = wx * sin_r + wy * cos_r
+            points.append(
+                (
+                    float(transform.x) + rx + float(polygon.offset_x),
+                    float(transform.y) + ry + float(polygon.offset_y),
+                )
+            )
+        if not points:
+            return None
+        min_x = min(point[0] for point in points)
+        min_y = min(point[1] for point in points)
+        max_x = max(point[0] for point in points)
+        max_y = max(point[1] for point in points)
+        return self._normalize_bounds(min_x, min_y, max_x - min_x, max_y - min_y)
+
+    def _sprite_visual_size(self, sprite: Sprite) -> tuple[float, float] | None:
+        if sprite.width > 0 and sprite.height > 0:
+            return float(sprite.width), float(sprite.height)
+        if sprite.source_slice and self._asset_service is not None:
+            slice_rect = self._asset_service.get_slice_rect(sprite.get_texture_reference(), sprite.source_slice)
             if slice_rect is not None:
-                width = int(slice_rect["width"])
-                height = int(slice_rect["height"])
-            else:
-                if animator.frame_width > 0:
-                    width = animator.frame_width
-                if animator.frame_height > 0:
-                    height = animator.frame_height
+                width = float(slice_rect.get("width", 0.0))
+                height = float(slice_rect.get("height", 0.0))
+                if width > 0.0 and height > 0.0:
+                    return width, height
+        if not sprite.texture_path:
+            return None
+        texture = self._texture_resolution_cache.resolve(
+            sprite.get_texture_reference(),
+            sprite.texture_path,
+            sync_callback=sprite.sync_texture_reference,
+        )
+        width = float(getattr(texture, "width", 0.0))
+        height = float(getattr(texture, "height", 0.0))
+        if int(getattr(texture, "id", 0)) != 0 and width > 0.0 and height > 0.0:
+            return width, height
+        return None
 
-        polygon = entity.get_component(Polygon2D)
-        if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
-            min_x = float("inf")
-            min_y = float("inf")
-            max_x = float("-inf")
-            max_y = float("-inf")
-            sx = transform.scale_x
-            sy = transform.scale_y
-            for pt in polygon.points:
-                wx = pt[0] * sx + polygon.offset_x
-                wy = pt[1] * sy + polygon.offset_y
-                if wx < min_x:
-                    min_x = wx
-                if wy < min_y:
-                    min_y = wy
-                if wx > max_x:
-                    max_x = wx
-                if wy > max_y:
-                    max_y = wy
-            width = max_x - min_x
-            height = max_y - min_y
-            left = transform.x + min_x
-            top = transform.y + min_y
-            offset_x = -min_x / width if width > 0 else 0.0
-            offset_y = -min_y / height if height > 0 else 0.0
-            return {"left": float(left), "top": float(top), "width": float(width), "height": float(height)}
+    def _animator_visual_size(self, animator: Animator) -> tuple[float, float] | None:
+        current_slice = animator.get_current_slice_name()
+        slice_rect = (
+            self._asset_service.get_slice_rect(animator.get_sprite_sheet_reference(), current_slice)
+            if (self._asset_service is not None and current_slice)
+            else None
+        )
+        if slice_rect is not None:
+            width = float(slice_rect.get("width", 0.0))
+            height = float(slice_rect.get("height", 0.0))
+            if width > 0.0 and height > 0.0:
+                return width, height
+        if animator.frame_width > 0 and animator.frame_height > 0:
+            return float(animator.frame_width), float(animator.frame_height)
+        return None
 
-        width *= transform.scale_x
-        height *= transform.scale_y
-        left = transform.x - (width * offset_x)
-        top = transform.y - (height * offset_y)
-        return {"left": float(left), "top": float(top), "width": float(width), "height": float(height)}
+    @staticmethod
+    def _normalize_bounds(left: float, top: float, width: float, height: float) -> dict[str, float]:
+        right = float(left) + float(width)
+        bottom = float(top) + float(height)
+        normalized_left = min(float(left), right)
+        normalized_top = min(float(top), bottom)
+        return {
+            "left": normalized_left,
+            "top": normalized_top,
+            "width": max(float(left), right) - normalized_left,
+            "height": max(float(top), bottom) - normalized_top,
+        }
 
     def _build_camera_geometry(
         self,

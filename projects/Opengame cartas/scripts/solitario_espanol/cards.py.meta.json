@@ -1,0 +1,21 @@
+{
+    "guid": "ast_01c7d201706943cd80ddb42814f92f73",
+    "source_path": "scripts/solitario_espanol/cards.py",
+    "path": "scripts/solitario_espanol/cards.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

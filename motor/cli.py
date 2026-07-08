@@ -163,6 +163,8 @@ from motor.cli_core import (
     cmd_ui_create_button,
     cmd_ui_create_canvas,
     cmd_ui_create_image,
+    cmd_ui_preset_add,
+    cmd_ui_preset_list,
     cmd_ui_create_text,
 )
 
@@ -1868,6 +1870,46 @@ Documentation:
     )
     ui_create_image_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    ui_preset_parser = ui_subparsers.add_parser(
+        "preset",
+        help="Serializable UI preset operations",
+    )
+    ui_preset_subparsers = ui_preset_parser.add_subparsers(dest="ui_preset_subcommand", required=True)
+
+    ui_preset_list_parser = ui_preset_subparsers.add_parser(
+        "list",
+        help="List deterministic serializable UI presets",
+    )
+    ui_preset_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    ui_preset_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ui_preset_add_parser = ui_preset_subparsers.add_parser(
+        "add",
+        help="Add a deterministic serializable UI preset to a scene",
+    )
+    ui_preset_add_parser.add_argument(
+        "preset_id",
+        help="UI preset id",
+    )
+    ui_preset_add_parser.add_argument(
+        "--scene",
+        default=None,
+        help="Scene path to edit instead of the last active scene",
+    )
+    ui_preset_add_parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Replace an existing preset root and regenerate it",
+    )
+    ui_preset_add_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    ui_preset_add_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === mobile ===
     mobile_parser = subparsers.add_parser(
         "mobile",
@@ -2953,6 +2995,20 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 parent=parsed.parent,
                 json_output=parsed.json,
             )
+        elif parsed.ui_subcommand == "preset":
+            if parsed.ui_preset_subcommand == "list":
+                return cmd_ui_preset_list(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
+            if parsed.ui_preset_subcommand == "add":
+                return cmd_ui_preset_add(
+                    project_path=Path(parsed.project_root).resolve(),
+                    preset_id=parsed.preset_id,
+                    replace=parsed.replace,
+                    scene_path=parsed.scene,
+                    json_output=parsed.json,
+                )
 
     # === mobile ===
     elif parsed.command == "mobile":

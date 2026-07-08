@@ -41,6 +41,19 @@ class SpatialHash2DTests(unittest.TestCase):
 
         self.assertEqual(grid.query((0.0, 0.0, 20.0, 10.0)), set())
 
+    def test_reset_updates_cell_size_and_clears_all_state(self) -> None:
+        grid = SpatialHash2D(cell_size=10.0, max_cells_per_entry=1)
+        grid.insert(1, (0.0, 0.0, 5.0, 5.0))
+        grid.insert(2, (-100.0, -100.0, 100.0, 100.0))
+
+        grid.reset(cell_size=5.0)
+
+        self.assertEqual(grid.cell_size, 5.0)
+        self.assertEqual(grid.cell_count, 0)
+        self.assertEqual(grid.reference_count, 0)
+        self.assertEqual(grid.oversized_entry_count, 0)
+        self.assertEqual(grid.query((-200.0, -200.0, 200.0, 200.0)), set())
+
     def test_cell_boundaries_and_zero_sized_aabbs_match_existing_contract(self) -> None:
         grid = SpatialHash2D(cell_size=10.0)
 
@@ -69,6 +82,36 @@ class SpatialHash2DTests(unittest.TestCase):
         self.assertLessEqual(grid.reference_count, 1)
         self.assertEqual(grid.query((0.0, 0.0, 5.0, 5.0)), {1, 2})
         self.assertEqual(grid.query((5000.0, 5000.0, 5010.0, 5010.0)), {1})
+
+    def test_query_ray_candidates_returns_axis_aligned_candidate_sets(self) -> None:
+        grid = SpatialHash2D(cell_size=10.0)
+        grid.insert(1, (0.0, 0.0, 5.0, 5.0))
+        grid.insert(2, (20.0, 0.0, 25.0, 5.0))
+        grid.insert(3, (0.0, 20.0, 5.0, 25.0))
+        grid.insert(4, (-20.0, -20.0, -15.0, -15.0))
+
+        self.assertEqual(grid.query_ray_candidates(0.0, 0.0, 1.0, 0.0, 25.0), {1, 2})
+        self.assertEqual(grid.query_ray_candidates(0.0, 0.0, 0.0, 1.0, 25.0), {1, 3})
+        self.assertEqual(grid.query_ray_candidates(0.0, 0.0, -1.0, -1.0, 25.0), {4})
+        self.assertEqual(grid.query_ray_candidates(20.0, 0.0, 1.0, 0.0, 0.0), {2})
+
+    def test_query_ray_candidates_returns_diagonal_swept_aabb_candidate_set(self) -> None:
+        grid = SpatialHash2D(cell_size=10.0)
+        grid.insert(1, (0.0, 0.0, 5.0, 5.0))
+        grid.insert(2, (20.0, 0.0, 25.0, 5.0))
+        grid.insert(3, (0.0, 20.0, 5.0, 25.0))
+        grid.insert(4, (20.0, 20.0, 25.0, 25.0))
+        grid.insert(5, (40.0, 40.0, 45.0, 45.0))
+
+        self.assertEqual(grid.query_ray_candidates(0.0, 0.0, 1.0, 1.0, 25.0), {1, 2, 3, 4})
+
+    def test_query_ray_candidates_always_include_oversized_entries(self) -> None:
+        grid = SpatialHash2D(cell_size=10.0, max_cells_per_entry=1)
+        grid.insert(1, (-1000.0, -1000.0, 1000.0, 1000.0))
+        grid.insert(2, (20.0, 0.0, 25.0, 5.0))
+
+        self.assertEqual(grid.query_ray_candidates(20.0, 0.0, 1.0, 0.0, 0.0), {1, 2})
+        self.assertEqual(grid.query_ray_candidates(5000.0, 5000.0, 1.0, 1.0, 10.0), {1})
 
     def test_different_cell_sizes_return_equivalent_exact_candidates(self) -> None:
         entries = {

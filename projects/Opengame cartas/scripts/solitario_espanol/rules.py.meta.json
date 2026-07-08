@@ -1,0 +1,21 @@
+{
+    "guid": "ast_cacb9365e9294a898f4d300c75bf78ad",
+    "source_path": "scripts/solitario_espanol/rules.py",
+    "path": "scripts/solitario_espanol/rules.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

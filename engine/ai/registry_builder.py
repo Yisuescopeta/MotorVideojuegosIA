@@ -1985,6 +1985,38 @@ class CapabilityRegistryBuilder:
             notes="Creates child entity with UIImage component using the specified asset.",
             tags=["ui", "authoring"],
         ))
+        self._add(Capability(
+            id="ui:preset:list",
+            summary="List deterministic serializable UI presets",
+            mode="edit",
+            api_methods=["UIAPI.list_ui_presets"],
+            cli_command="motor ui preset list [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="List available serializable UI presets",
+                api_calls=[
+                    {"method": "list_ui_presets", "args": {}},
+                ],
+                expected_outcome="Returns five deterministic UI preset definitions",
+            ),
+            notes="Lists built-in UI presets exposed through the public UIAPI surface.",
+            tags=["ui", "query", "authoring"],
+        ))
+        self._add(Capability(
+            id="ui:preset:add",
+            summary="Add a deterministic serializable UI preset to a scene",
+            mode="edit",
+            api_methods=["UIAPI.create_ui_preset"],
+            cli_command="motor ui preset add <preset_id> [--scene <path>] [--replace] [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Create the main menu preset in the selected scene",
+                api_calls=[
+                    {"method": "create_ui_preset", "args": {"preset_id": "main-menu"}},
+                ],
+                expected_outcome="Creates a deterministic UI preset tree with stable entity names",
+            ),
+            notes="Uses transactional public UI authoring. --replace regenerates only the preset root tree. --scene targets a specific scene path.",
+            tags=["ui", "authoring", "preset"],
+        ))
 
     def _register_mobile_capabilities(self) -> None:
         self._add(Capability(

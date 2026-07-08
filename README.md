@@ -59,6 +59,8 @@ py -m motor --help
 py -m motor doctor --project . --json
 py -m motor capabilities --json
 py -m motor scene list --project . --json
+py -m motor ui preset list --project . --json
+py -m motor ui preset add main-menu --project . --json
 py -m motor project bootstrap-ai --project .
 ```
 

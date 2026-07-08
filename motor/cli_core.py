@@ -3872,6 +3872,78 @@ def cmd_ui_create_image(
                 pass
 
 
+def cmd_ui_preset_list(
+    project_path: Path,
+    json_output: bool,
+) -> int:
+    """List deterministic serializable UI presets."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path, read_only=True)
+        result = api.list_ui_presets()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "UI preset list failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"UI preset list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_ui_preset_add(
+    project_path: Path,
+    preset_id: str,
+    replace: bool,
+    scene_path: str | None,
+    json_output: bool,
+) -> int:
+    """Create a deterministic serializable UI preset in a scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        if scene_path:
+            scene_candidate = Path(scene_path)
+            if not scene_candidate.is_absolute():
+                scene_candidate = project_path / scene_candidate
+            load_result = api.load_scene(scene_candidate.as_posix())
+            if not load_result.get("success"):
+                return _output(False, load_result.get("message", "Failed to load scene"), None, json_output)
+        else:
+            success, message = _auto_load_scene(api)
+            if not success:
+                return _output(False, message, None, json_output)
+        result = api.create_ui_preset(preset_id=preset_id, replace=replace)
+        if result.get("success") and bool(result.get("data", {}).get("created")):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "UI preset add failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"UI preset add failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_mobile_controls_add(
     project_path: Path,
     target_entity: str,

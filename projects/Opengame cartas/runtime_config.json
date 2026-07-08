@@ -1,0 +1,10 @@
+{
+    "schema_version": 1,
+    "entry_scene": "levels/main_scene.json",
+    "project_name": "Solitario Espanol",
+    "version": "0.1.0",
+    "window": {
+        "width": 1280,
+        "height": 720
+    }
+}

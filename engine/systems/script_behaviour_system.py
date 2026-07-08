@@ -13,6 +13,8 @@ from engine.assets.asset_service import AssetService
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.core.runtime_logging import log_err, log_info
 from engine.ecs.world import World
+from engine.runtime.runtime_input import NULL_RUNTIME_INPUT
+from engine.runtime.runtime_picking import NULL_RUNTIME_RENDER_QUERIES
 
 ScriptHook = Callable[..., Any]
 ScriptMembershipSignature = tuple[tuple[int, str, int], ...]
@@ -27,6 +29,9 @@ class ScriptBehaviourContext:
     public_data: dict[str, Any]
     scene_manager: Any = None
     scene_flow_loader: Optional[Callable[[str], bool]] = None
+    input: Any = NULL_RUNTIME_INPUT
+    render: Any = NULL_RUNTIME_RENDER_QUERIES
+    picking: Any = NULL_RUNTIME_RENDER_QUERIES
 
     def get_entity(self):
         return self.world.get_entity_by_name(self.entity_name)
@@ -75,6 +80,9 @@ class ScriptBehaviourSystem:
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
         self._scene_flow_loader: Optional[Callable[[str], bool]] = None
+        self._runtime_input: Any = NULL_RUNTIME_INPUT
+        self._runtime_render_queries: Any = NULL_RUNTIME_RENDER_QUERIES
+        self._runtime_picking: Any = NULL_RUNTIME_RENDER_QUERIES
         self._runtime_compiled_scripts: list[CompiledScriptBehaviour] = []
         self._runtime_world: World | None = None
         self._runtime_world_structure_version: int | None = None
@@ -97,6 +105,18 @@ class ScriptBehaviourSystem:
 
     def set_scene_flow_loader(self, loader: Optional[Callable[[str], bool]]) -> None:
         self._scene_flow_loader = loader
+        self._runtime_cache_dirty = True
+
+    def set_runtime_services(
+        self,
+        *,
+        input_service: Any = None,
+        render_service: Any = None,
+        picking_service: Any = None,
+    ) -> None:
+        self._runtime_input = input_service if input_service is not None else NULL_RUNTIME_INPUT
+        self._runtime_render_queries = render_service if render_service is not None else NULL_RUNTIME_RENDER_QUERIES
+        self._runtime_picking = picking_service if picking_service is not None else self._runtime_render_queries
         self._runtime_cache_dirty = True
 
     def on_play(self, world: World) -> None:
@@ -396,6 +416,9 @@ class ScriptBehaviourSystem:
             public_data=script_behaviour.public_data,
             scene_manager=self._scene_manager,
             scene_flow_loader=self._scene_flow_loader,
+            input=self._runtime_input,
+            render=self._runtime_render_queries,
+            picking=self._runtime_picking,
         )
 
     def _resolve_module_name(self, script_behaviour: ScriptBehaviour) -> str:

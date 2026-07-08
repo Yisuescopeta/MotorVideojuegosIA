@@ -264,6 +264,8 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
                 "down": bool(pyray.is_mouse_button_down(pyray.MOUSE_BUTTON_LEFT)),
                 "pressed": bool(pyray.is_mouse_button_pressed(pyray.MOUSE_BUTTON_LEFT)),
                 "released": bool(pyray.is_mouse_button_released(pyray.MOUSE_BUTTON_LEFT)),
+                "keys_pressed": _runtime_pressed_keys(pyray),
+                "camera_profile_id": str(window_config.get("device_profile", "") or ""),
             }
             runtime.run_frame(1.0 / 60.0, pointer_state=pointer_state)
 
@@ -278,6 +280,16 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
         if hasattr(pyray, "close_window"):
             pyray.close_window()
     return 0
+
+
+def _runtime_pressed_keys(pyray_module) -> list[str]:  # type: ignore[no-untyped-def]
+    names = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + ("SPACE", "ENTER", "ESCAPE")
+    pressed: list[str] = []
+    for name in names:
+        key_code = getattr(pyray_module, f"KEY_{name}", None)
+        if key_code is not None and pyray_module.is_key_pressed(key_code):
+            pressed.append(name)
+    return pressed
 
 
 if __name__ == "__main__":

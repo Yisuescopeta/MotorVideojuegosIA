@@ -10,6 +10,7 @@ from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.core.hot_reload import HotReloadManager
 from engine.ecs.component import Component
 from engine.ecs.world import World
+from engine.runtime.runtime_input import RuntimeInputService
 from engine.systems.script_behaviour_system import ScriptBehaviourContext, ScriptBehaviourSystem
 
 
@@ -253,6 +254,33 @@ class ScriptBehaviourSystemTests(unittest.TestCase):
         context = ScriptBehaviourContext(world=world, entity_name="Actor", public_data={})
 
         self.assertIs(context.get_component("ProbeComponent"), component)
+
+    def test_context_exposes_compatible_null_runtime_input(self) -> None:
+        world = World()
+        world.create_entity("Actor")
+        context = ScriptBehaviourContext(world=world, entity_name="Actor", public_data={})
+
+        self.assertTrue(hasattr(context, "input"))
+        self.assertFalse(context.input.left_pressed)
+        self.assertFalse(context.input.key_pressed("R"))
+
+    def test_runtime_script_can_read_context_input_left_pressed(self) -> None:
+        module_name = self._module_name("input_actor")
+        self._write_module(
+            module_name,
+            "def on_update(context, dt):\n"
+            "    context.public_data['left_pressed'] = bool(context.input.left_pressed)\n",
+        )
+        world, script = self._world_with_script(module_name, public_data={})
+        runtime_input = RuntimeInputService()
+        runtime_input.update({"x": 10.0, "y": 20.0, "down": True, "pressed": True}, viewport_size=(1280.0, 720.0))
+        self.system.set_runtime_services(input_service=runtime_input)
+
+        self.system.on_play(world)
+        invoked = self.system.update(world, 0.016)
+
+        self.assertTrue(invoked)
+        self.assertTrue(script.public_data["left_pressed"])
 
     def test_hot_reload_invalidates_runtime_cache(self) -> None:
         module_name = self._module_name("reload_actor")

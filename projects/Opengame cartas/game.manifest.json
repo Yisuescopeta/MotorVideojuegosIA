@@ -1,0 +1,242 @@
+{
+    "schema_version": 1,
+    "entry_scene": "levels/main_scene.json",
+    "assets": [
+        {
+            "path": "assets/BackgroudWood/Backgroud1.png",
+            "sha256": "7f4e9b73dd594ca262c044cda9577504f2aa9c5de9fcf00d07e98f65b8ae75d0"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner01a.png",
+            "sha256": "011974c704777d98d712d815f45e9b5f5536a8a027c8ca6307d8a78efb9a8bb9"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner02a.png",
+            "sha256": "474c2b657e9fd5cc276a6b0ff017053eddd9f8f7766a1b12d47a816f330efee9"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner03a.png",
+            "sha256": "e35a7890af7ebd31a80b687245e1e8c31f56db61c1eb3f423df6a563bf85f50d"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Banner04a.png",
+            "sha256": "b0bacade92e49355588c3053e71c233c33954ea78dee85a66e7ec4464c5823cb"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Bar01a.png",
+            "sha256": "6582e363e4fc94fb2bbd6d8d0f55288e57ba0ce767c563b4c5c84dbeffadb6e3"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Frame02a.png",
+            "sha256": "4a387fe49b296214f19b2479313ce20d0b4777f7210f322c2d66c4f3f336e914"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_Frame03a.png",
+            "sha256": "1ed43b6c63d944b97924bc9da21f287c7693e08eec7e05008ebfaa0f4bb06f09"
+        },
+        {
+            "path": "assets/Complete_UI_Essential_Pack_Free/01_Flat_Theme/Sprites/UI_Flat_FrameSlot01a.png",
+            "sha256": "51eb6b1a9698fcf77b42309ecfa4d2c55d05c94acc066c5b4fbc3693d23aab8d"
+        },
+        {
+            "path": "assets/spanish_deck/1.PNG",
+            "sha256": "56c9b9fcfe21495957fed9de732619c635868d7274c3b33182a44ec3ce8b6881"
+        },
+        {
+            "path": "assets/spanish_deck/10.PNG",
+            "sha256": "e254ce3d38ee8e29de256a4a31a50cc9705e21cedcdfa88bea46e40cfd32254a"
+        },
+        {
+            "path": "assets/spanish_deck/11.PNG",
+            "sha256": "a47f5efaf6736ae2854fb3a6d5a9e257e8dda9cdb813262ad390f5579f5a1e14"
+        },
+        {
+            "path": "assets/spanish_deck/12.PNG",
+            "sha256": "7a8ca18b5b9065df40aee1b33130777d4ee374c7bb53035a0d28ca47f6e1e466"
+        },
+        {
+            "path": "assets/spanish_deck/13.PNG",
+            "sha256": "e5f81fd4e487fac0f8e03d6377779c08e49238b5356e1e4e29d0f9a161537205"
+        },
+        {
+            "path": "assets/spanish_deck/14.PNG",
+            "sha256": "685f31303b06ab115e79218ccd9b3c873c36c493c983817f4ec52c01d79b486b"
+        },
+        {
+            "path": "assets/spanish_deck/15.PNG",
+            "sha256": "c52059eb5bbdabefb4f149cd56d2fc3d5b00a066a2589f217a4d964204e22afc"
+        },
+        {
+            "path": "assets/spanish_deck/16.PNG",
+            "sha256": "3aac1ff1e5d6c7c71113f84bc33f26e6a9f25782eb684f8c47b6f965f6d0ddf9"
+        },
+        {
+            "path": "assets/spanish_deck/17.PNG",
+            "sha256": "5de32d95c5568487a01aa8bb04fa680ab8079d5db46b357aebfdc39bb3a0122f"
+        },
+        {
+            "path": "assets/spanish_deck/18.PNG",
+            "sha256": "2e00050ffff530d1d8e5a660fdcb2241ac4362e1dc3f404fe9bfe2b1d02897b2"
+        },
+        {
+            "path": "assets/spanish_deck/19.PNG",
+            "sha256": "8f443e56117cf6452389ad609341747aa02bf9765a82dcd3267b472eb0d9fdda"
+        },
+        {
+            "path": "assets/spanish_deck/2.PNG",
+            "sha256": "4733a2c938a8680f8db970b425cebedcc02d25d5b5ada29ae43c7da64ed831fd"
+        },
+        {
+            "path": "assets/spanish_deck/20.PNG",
+            "sha256": "56db0b6c5a11a84b3085e934e8d889cf3f8ac42c820cee6737293c9f74a98cae"
+        },
+        {
+            "path": "assets/spanish_deck/21.PNG",
+            "sha256": "3d4bf03c43b7ad8a5f91a209ed77c9ea4cc4cfbe1cb7164ef357ef486c7fc19a"
+        },
+        {
+            "path": "assets/spanish_deck/22.PNG",
+            "sha256": "e2bf5f08129415aaddfbd8b4c372f116a322a50b8a437b6ece63da18f97e5b47"
+        },
+        {
+            "path": "assets/spanish_deck/23.PNG",
+            "sha256": "62c0b51f83e8009e6c15a7c721ef07cfc8d9f55aab69acc41cd1b3eafe4f6cc1"
+        },
+        {
+            "path": "assets/spanish_deck/24.PNG",
+            "sha256": "5055c4122f5c1540270afcfcf0a3ec1ebaf39b580042a18a3f30489070302ff6"
+        },
+        {
+            "path": "assets/spanish_deck/25.PNG",
+            "sha256": "1d6e8e27b7f441b284d76cd3e5896c6379c13dad4ced14cab1f41cb5833289eb"
+        },
+        {
+            "path": "assets/spanish_deck/26.PNG",
+            "sha256": "55c68f4c844540aabdc7d1868387946509e7495af53662c1fa57243855588da4"
+        },
+        {
+            "path": "assets/spanish_deck/27.PNG",
+            "sha256": "738197c4f375ae0a8d1a660de67c173f0b04afe241c1e733a6c866617c2dd506"
+        },
+        {
+            "path": "assets/spanish_deck/28.PNG",
+            "sha256": "2f7d048ba3afb98b123ffe3db28e4f8224701fd639c70b03d12cf5215ab06ad1"
+        },
+        {
+            "path": "assets/spanish_deck/29.PNG",
+            "sha256": "d155e6ad0052cbc19bcef929478ea613ac1ab1453ef53a40a8da1f160be4bd3f"
+        },
+        {
+            "path": "assets/spanish_deck/3.PNG",
+            "sha256": "946733682a0a594b5a5a8767ff322161d838b83f28704362f2bff9273f59d773"
+        },
+        {
+            "path": "assets/spanish_deck/30.PNG",
+            "sha256": "4e573d55a87392056e4363a4604a0f6ee6348c0060f68f7235663e1bd849b56e"
+        },
+        {
+            "path": "assets/spanish_deck/31.PNG",
+            "sha256": "035daac7da36d6ef0f1b751618fcef0c092fb6a6d3625e9f236dfb778d51c903"
+        },
+        {
+            "path": "assets/spanish_deck/32.PNG",
+            "sha256": "7e61e6f76c5d69b30d2000dcc0063195b33971301781359e3fef7d8f9d4567e0"
+        },
+        {
+            "path": "assets/spanish_deck/33.PNG",
+            "sha256": "8eedcb8770beefba8611592a1bf5d82d4d88d8f5c30595928a303686ced50386"
+        },
+        {
+            "path": "assets/spanish_deck/34.PNG",
+            "sha256": "8b94386fa1e36c34bee30e6c2a7d7303cd08b5ea82653eed9b4330edc6af0005"
+        },
+        {
+            "path": "assets/spanish_deck/35.PNG",
+            "sha256": "0be93b07dc1588a1bf96959e03c12994b4a78653b3be591ac3d284455307b187"
+        },
+        {
+            "path": "assets/spanish_deck/36.PNG",
+            "sha256": "0fd131de594e60ad6f8df8b2165e6ac7b647caf9ed1e8c0e3ee5cf958071859c"
+        },
+        {
+            "path": "assets/spanish_deck/37.PNG",
+            "sha256": "8306d77699c27c8ca27442326787b3fc57d4b967b639b58288fb5893089e43f7"
+        },
+        {
+            "path": "assets/spanish_deck/38.PNG",
+            "sha256": "b98b31b320238864d5e35b186f1f8a6775a4336a082d73a98e2f05f273115cfb"
+        },
+        {
+            "path": "assets/spanish_deck/39.PNG",
+            "sha256": "733e465c3bc578fa3815953f3f2e70bfcaf40f2a6a3f28a5f8381b2f3f23d444"
+        },
+        {
+            "path": "assets/spanish_deck/4.PNG",
+            "sha256": "cf3e4487984b90bc5433c19f2ddec9ae712d40c22ce082efb13d9584bb3e81d0"
+        },
+        {
+            "path": "assets/spanish_deck/40.PNG",
+            "sha256": "f8335c5a5bb1a0d651d5e80a9b1e459cba6c772382da4720e571c0e8c83b2a1c"
+        },
+        {
+            "path": "assets/spanish_deck/5.PNG",
+            "sha256": "8a2dd8ea7e068ba15fa16cb86a33a337858b483e8018937fae5125ade8d99829"
+        },
+        {
+            "path": "assets/spanish_deck/6.PNG",
+            "sha256": "7af98bc7cac7c1930c98f8d995939f8aaaed76c8511f484cf2ca2e08060dc607"
+        },
+        {
+            "path": "assets/spanish_deck/7.PNG",
+            "sha256": "271b018fc87e08149f85b050820ef7a302f357aa19a2e57a051574677118294e"
+        },
+        {
+            "path": "assets/spanish_deck/8.PNG",
+            "sha256": "e24a129eefd61ef3e8c60d049c051213bf2c1df5c468a970cdb8b49477a3d019"
+        },
+        {
+            "path": "assets/spanish_deck/9.PNG",
+            "sha256": "6f9e2bcda258cf8986b73c26d3aad116a567d29e51a25139c0289d7910924ef9"
+        },
+        {
+            "path": "assets/spanish_deck/back.PNG",
+            "sha256": "347dfee877231955565099f69c164cc33c25b35ee42bf72fe2faf9b1c6f0d947"
+        }
+    ],
+    "scripts": [
+        {
+            "path": "scripts/solitario_espanol/__init__.py",
+            "sha256": "e991247afd09e65f052ee07ef3f0a0f0e359aae9b291c69214f6f2e26ec19fab"
+        },
+        {
+            "path": "scripts/solitario_espanol/cards.py",
+            "sha256": "9242609b77ebe3c573fb6b8d087d5ba6ccbfb2409aeca132b74dda8a8ab4ae81"
+        },
+        {
+            "path": "scripts/solitario_espanol/controller.py",
+            "sha256": "ed039bc4647bc2a5b4d78ce894c0d868154ee2b1e86884d605892b1481eec5db"
+        },
+        {
+            "path": "scripts/solitario_espanol/layout.py",
+            "sha256": "c42f4eb6aed2d892c9200931c72c398c71f37189ee90a60cc9e5a0f48ea47814"
+        },
+        {
+            "path": "scripts/solitario_espanol/rules.py",
+            "sha256": "6e574f72f81ee3c80d572780e3a0526f0264ab7f8ea4b028aec2dd251ef0def1"
+        },
+        {
+            "path": "scripts/solitario_espanol/scene_builder.py",
+            "sha256": "51729e5b0def4401fe06f728803a7c654f711c1996a84c3a761a71a0ed191e51"
+        },
+        {
+            "path": "scripts/solitario_espanol/state.py",
+            "sha256": "26971439143cd8def806130434f82a51d471c3dc32a1ce1a489d3a90e8d614b6"
+        }
+    ],
+    "scenes": [
+        {
+            "path": "levels/main_scene.json",
+            "sha256": "496073c2327ce15ca8787576363bf26c0501c856194685f0d52201e1b3a4d33b"
+        }
+    ]
+}

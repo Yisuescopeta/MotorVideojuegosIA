@@ -1,0 +1,21 @@
+{
+    "guid": "ast_29c2693f743841cd84d0dd1ee2d61780",
+    "source_path": "assets/spanish_deck/35.PNG",
+    "path": "assets/spanish_deck/35.PNG",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}
