@@ -57,7 +57,7 @@ Antes de tocar código funcional, el agente debe ejecutar la suite disponible y 
 Comando orientativo:
 
 ```bash
-python -m pytest
+py -m unittest discover -s tests
 ```
 
 Si el comando falla porque el entorno no está preparado, el agente debe documentar el fallo y localizar el sistema de dependencias real antes de continuar.
@@ -518,12 +518,11 @@ Antes de considerar terminada una tarea, el agente debe ejecutar los tests relev
 Comandos orientativos:
 
 ```bash
-python -m pytest
-python -m pytest tests -k "ecs or world or component"
-python -m pytest tests -k "scene or serialization or prefab"
-python -m pytest tests -k "play or stop or runtime"
-python -m pytest tests -k "physics or collision"
-python -m pytest tests -k "render or particles"
+py -m unittest discover -s tests
+py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
+py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+py -m unittest tests.test_physics_backend tests.test_collision_system -v
+py -m unittest tests.test_render_graph tests.test_render_safety -v
 ```
 
 No todos los comandos aplican a todas las tareas. El agente debe elegir los relevantes y documentar por qué.
@@ -534,7 +533,7 @@ Para Rust/PyO3:
 cargo test
 python -m maturin develop
 python -c "import engine.native"
-python -m pytest tests -k "native or spatial_hash"
+py -m unittest tests.test_spatial_hash -v
 ```
 
 Si un comando no existe, el agente debe localizar el equivalente real y documentarlo.
@@ -611,3 +610,49 @@ Debe preferir:
 Si una optimización no demuestra valor real, se descarta o se deja desactivada.
 
 Si Python resuelve el cuello de botella con menor riesgo, Python gana.
+
+---
+
+## 13. Sistema Queen OpenCode
+
+Queen es tooling multiagente experimental para programar, refactorizar,
+endurecer y mantener el motor OpenGame. No debe crear juegos como objetivo
+principal; las escenas o juegos generados solo sirven como fixtures, demos
+minimas, smoke tests o validacion del motor.
+
+Normal Task Mode:
+
+```text
+RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+```
+
+Long Task Plan Mode:
+
+```text
+LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK
+```
+
+`max_cycles = 5`. Queen no implementa directamente; delega en subagentes.
+`test-strategist` define TEST CONTRACT antes de implementar. `validator`
+ejecuta la validacion final despues de DOCUMENTAR. En tareas largas,
+UPDATE PLAN registra el resultado de AI AUDIT antes de avanzar, bloquear o
+cerrar.
+
+Definition of Done:
+
+- TEST CONTRACT suficiente o no aplicable con razon explicita.
+- Tests enfocados aplicables pasan.
+- Tests de gobernanza/documentacion pasan si cambian prompts, docs o config.
+- `validator`, `code-reviewer` y AI AUDIT no bloquean.
+- No se relajaron tests.
+- No hay cambios fuera de alcance.
+- Estado final reportado como `completed`, `partial`, `blocked` o `failed`.
+
+Matriz operativa de validacion por subsistema:
+`docs/queen_engine_workflow.md`.
+
+Comando base de suite amplia:
+
+```bash
+py -m unittest discover -s tests
+```

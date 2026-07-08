@@ -775,24 +775,38 @@ con tipo, offset, flags y geometría.
 
 ## Queen OpenCode
 
-Queen es tooling multiagente experimental de OpenCode. No cambia el contrato del
-motor 2D y no debe tocar `engine/` salvo necesidad estricta y justificada.
+Queen es tooling multiagente experimental de OpenCode para programar,
+refactorizar, endurecer y mantener el motor OpenGame. No cambia el contrato del
+motor 2D y no debe tocar `engine/` salvo necesidad estricta y justificada. No
+crea juegos como objetivo principal; las escenas o juegos generados solo sirven
+como fixtures, demos minimas, smoke tests o validacion del motor.
 
 Ciclo operativo:
 
 ```text
-RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
 ```
 
-`max_cycles = 5`. El commit ocurre solo despues de tests, documentacion, review
-y AI audit aplicables. La Definition of Done exige tests enfocados verdes,
-lint/typecheck cuando aplique, docs canonicas si cambia contrato, cero
-`must_fix` del reviewer, score AI `>= 90` cuando aplique, sin cambios fuera de
-alcance y reporte final claro si termina `partial`, `blocked` o `failed`.
+`TEST CONTRACT` ocurre antes de planificar implementacion y lo diseña
+`test-strategist`. La validacion final corresponde a `validator` despues de
+DOCUMENTAR. En Long Task Plan Mode el ciclo por fase es
+`LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK`;
+UPDATE PLAN registra el resultado de AI AUDIT antes de avanzar, bloquear o
+cerrar.
+
+`max_cycles = 5`. El commit ocurre solo despues de TEST CONTRACT suficiente,
+documentacion, validacion final, review y AI audit aplicables. La Definition of
+Done exige tests enfocados verdes, lint/typecheck cuando aplique, docs canonicas
+si cambia contrato, cero `must_fix` del reviewer, score AI `>= 90` cuando
+aplique, sin cambios fuera de alcance y reporte final claro si termina
+`partial`, `blocked` o `failed`.
 
 `context-recon` vive en `.opencode/agents/context-recon.md` y es read-only:
 `read`, `glob` y `grep` permitidos; `bash`, `edit`, `write`, `webfetch`,
 `websearch`, `task` y `todowrite` denegados.
+
+La matriz operativa de validacion por subsistema vive en
+`docs/queen_engine_workflow.md`.
 
 ## Que evitar
 

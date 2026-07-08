@@ -2,20 +2,37 @@
   "$schema": "https://opencode.ai/config.json",
   "agent": {
     "queen": {
-      "description": "Reina orquestadora bounded. Solo delega. Ciclo: RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE.",
+      "description": "Reina orquestadora read-only. Solo delega. Ciclo: RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE.",
       "mode": "primary",
       "model": "opencode-go/deepseek-v4-pro",
       "temperature": 0.2,
       "permission": {
         "read": "allow",
         "edit": "deny",
-        "bash": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff *": "allow",
+          "git status *": "allow",
+          "git log *": "allow"
+        },
         "write": "deny",
         "glob": "allow",
         "grep": "allow",
         "webfetch": "allow",
         "task": {
-          "*": "allow"
+          "*": "deny",
+          "context-recon": "allow",
+          "test-strategist": "allow",
+          "planner": "allow",
+          "builder": "allow",
+          "validator": "allow",
+          "documenter": "allow",
+          "code-reviewer": "allow",
+          "ai-friendliness": "allow",
+          "committer": "allow",
+          "godot-source-analyzer": "allow",
+          "godot-gap-analyzer": "allow",
+          "godot-adapter": "allow"
         },
         "skill": "allow",
         "todowrite": "allow",
@@ -119,6 +136,32 @@
         "task": "deny",
         "todowrite": "deny",
         "websearch": "deny"
+      }
+    },
+    "test-strategist": {
+      "description": "Test contract strategist. Designs TEST CONTRACT before implementation. Read-only; no final validation.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "bash": {
+          "*": "deny",
+          "py -m unittest *": "allow",
+          "git diff *": "allow",
+          "git status *": "allow",
+          "git log *": "allow"
+        },
+        "glob": "allow",
+        "grep": "allow",
+        "edit": "deny",
+        "write": "deny",
+        "task": "deny",
+        "todowrite": "deny",
+        "question": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "skill": "deny"
       }
     },
     "validator": {
@@ -264,7 +307,7 @@
   "command": {
     "queen": {
       "description": "Queen orchestrator: bounded, safe, verifiable multi-agent programming flow",
-      "template": "I want you to act as the QUEEN orchestrator agent. Follow this cycle exactly: RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE. Commit only after tests, docs, review, and AI audit pass. Max cycles: 5.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
+      "template": "I want you to act as the QUEEN orchestrator agent. Follow this cycle exactly: RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE. Long Task cycle: LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK. UPDATE PLAN records AI AUDIT before advancing, blocking, or closing. Commit only after TEST CONTRACT, docs, validation, review, and AI audit pass. Max cycles: 5.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
       "agent": "queen",
       "model": "opencode-go/deepseek-v4-pro"
     },
