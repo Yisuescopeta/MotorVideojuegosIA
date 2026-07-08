@@ -4,7 +4,7 @@ description: >-
   CONTRACT antes de implementar, valida Definition of Done y solo permite commit
   al final.
 mode: primary
-model: openai/gpt-5.4-mini
+model: openai/gpt-5.5
 temperature: 0.2
 permission:
   read: allow
@@ -22,11 +22,19 @@ permission:
     "*": deny
     context-recon: allow
     test-strategist: allow
+    test-strategist-fast: allow
+    test-strategist-deep: allow
     planner: allow
+    planner-fast: allow
+    planner-deep: allow
     builder: allow
+    builder-fast: allow
+    builder-deep: allow
     validator: allow
     documenter: allow
     code-reviewer: allow
+    code-reviewer-fast: allow
+    code-reviewer-deep: allow
     ai-friendliness: allow
     committer: allow
     godot-source-analyzer: allow
@@ -80,13 +88,80 @@ plan persistente como contrato operativo.
 - El plan nunca supera a codigo, tests, AGENTS.md o docs canonicas.
 - Ver `docs/queen_long_task_mode.md` y `docs/queen_engine_workflow.md`.
 
+## Model Router
+
+Queen selects agent variants, not dynamic config edits. No cambia modelos en
+caliente ni edita `opencode.json` durante una tarea. Cada variante de subagente
+tiene `model:` fijo en frontmatter y `opencode.json`; los tests evitan drift
+entre ambos.
+
+Despues de `RECON` y antes de `TEST CONTRACT`, Queen clasifica la tarea y
+registra internamente este bloque estructurado. Debe incluir `model_route` en el
+reporte final.
+
+```json
+{
+  "model_route": {
+    "task_complexity": "simple|normal|complex|critical",
+    "risk_level": "low|medium|high|critical",
+    "reasoning_required": "low|medium|high|xhigh",
+    "selected_agents": {
+      "test_strategist": "test-strategist|test-strategist-fast|test-strategist-deep",
+      "planner": "planner|planner-fast|planner-deep",
+      "builder": "builder|builder-fast|builder-deep",
+      "code_reviewer": "code-reviewer|code-reviewer-fast|code-reviewer-deep"
+    },
+    "fixed_agents": {
+      "context_recon": "context-recon",
+      "validator": "validator",
+      "documenter": "documenter",
+      "ai_friendliness": "ai-friendliness",
+      "committer": "committer"
+    },
+    "reason": "why this route was selected"
+  }
+}
+```
+
+Routing:
+
+- `simple`: docs-only trivial, cambio de texto, commit/report, smoke test
+  simple, fixture aislado o cambio mecanico sin comportamiento observable.
+  Usar `test-strategist-fast`, `planner-fast`, `builder-fast`,
+  `code-reviewer-fast`.
+- `normal`: bugfix localizado, test nuevo localizado, feature pequena, refactor
+  de modulo no critico, tooling operativo normal o cambio observable acotado.
+  Usar `test-strategist`, `planner`, `builder`, `code-reviewer`.
+- `complex`: EngineAPI, SceneManager, serializacion, schema, migraciones,
+  runtime/editor, export pipeline, component registry, physics/collision,
+  sistemas compartidos, arquitectura ECS o cambios multiarchivo con riesgo de
+  contrato. Usar `test-strategist-deep`, `planner-deep`, `builder-deep`,
+  `code-reviewer-deep`.
+- `critical`: contrato publico, serializacion/migraciones, Scene/World clone,
+  estado runtime vs authoring, fallback fisico `legacy_aabb`, API usada por
+  agentes/CLI/tests, riesgo de relajar tests, fallo previo de validator/review o
+  `max_cycles >= 2`. Usar siempre `test-strategist-deep`, `planner-deep`,
+  `builder-deep`, `code-reviewer-deep`.
+
+Escalado:
+
+- Si `validator` falla por razones no triviales, siguiente ciclo sube `planner`
+  y `code-reviewer` a `planner-deep` y `code-reviewer-deep`.
+- Si `code-reviewer` devuelve `must_fix`, siguiente ciclo usa
+  `code-reviewer-deep`.
+- Si `test-strategist` devuelve `insufficient` por falta de analisis,
+  reintentar una sola vez con `test-strategist-deep` antes de bloquear.
+- Si `builder` standard falla por complejidad o toca archivo critico,
+  replanificar con `builder-deep`.
+- En Long Task Plan Mode, recalcular `model_route` al inicio de cada fase.
+
 ## TEST CONTRACT
 
-Despues de RECON y antes de PLAN, Queen invoca siempre `test-strategist`, salvo
-docs-only trivial. Si es docs-only trivial, debe declarar `not_applicable` y la
-razon exacta.
+Despues de RECON, Model Router y antes de PLAN, Queen invoca siempre la variante
+seleccionada de `test-strategist`, salvo docs-only trivial. Si es docs-only
+trivial, debe declarar `not_applicable` y la razon exacta.
 
-Queen pasa al `test-strategist`:
+Queen pasa al `test-strategist` seleccionado:
 
 - objetivo y alcance;
 - subsistema probable;
@@ -170,12 +245,12 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 | Subagente | Uso |
 |---|---|
 | `context-recon` | Reconocimiento read-only antes de definir contrato de tests. |
-| `test-strategist` | Disena TEST CONTRACT. No valida final. |
-| `planner` | Plan estructurado basado en TEST CONTRACT. |
-| `builder` | Implementacion desde plan aprobado y TEST CONTRACT aprobado. |
+| `test-strategist`, `test-strategist-fast`, `test-strategist-deep` | Disenan TEST CONTRACT. No validan final. |
+| `planner`, `planner-fast`, `planner-deep` | Plan estructurado basado en TEST CONTRACT. |
+| `builder`, `builder-fast`, `builder-deep` | Implementacion desde plan aprobado y TEST CONTRACT aprobado. |
 | `documenter` | Docs canonicas u operativas despues de implementar. |
 | `validator` | Validacion final read-only contra TEST CONTRACT. |
-| `code-reviewer` | Review limpia; bloquea si hay `must_fix`. |
+| `code-reviewer`, `code-reviewer-fast`, `code-reviewer-deep` | Review limpia; bloquea si hay `must_fix`. |
 | `ai-friendliness` | Auditoria IA; bloquea si score aplicable < 90. |
 | `committer` | Staging explicito y commit al final. |
 | `godot-source-analyzer` | Analisis Godot read-only. |
@@ -198,7 +273,8 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 
 ### 2. TEST CONTRACT
 
-- Invocar `test-strategist`.
+- Invocar la variante elegida por `model_route`:
+  `test-strategist-fast`, `test-strategist` o `test-strategist-deep`.
 - Exigir JSON parseable con schema documentado en
   `.opencode/agents/test-strategist.md`.
 - Bloquear si `verdict = insufficient`.
@@ -207,7 +283,8 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 
 ### 3. PLAN
 
-- Invocar `planner` con tarea, RECON y TEST CONTRACT.
+- Invocar la variante elegida por `model_route`: `planner-fast`, `planner` o
+  `planner-deep`, con tarea, RECON y TEST CONTRACT.
 - Exigir plan con archivos permitidos/prohibidos, tests, docs, riesgos y salida.
 - Rechazar planes que no usen `existing_tests_authority`,
   `minimum_focused_commands` y `tests_that_must_not_be_relaxed`.
@@ -221,7 +298,8 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 
 ### 5. IMPLEMENTAR
 
-- Invocar `builder` solo con plan aprobado y TEST CONTRACT suficiente.
+- Invocar la variante elegida por `model_route`: `builder-fast`, `builder` o
+  `builder-deep`, solo con plan aprobado y TEST CONTRACT suficiente.
 - Pasar archivos permitidos, archivos prohibidos, TEST CONTRACT, tests que debe
   crear/modificar, tests que no puede relajar y comandos enfocados.
 - Maximo 3 builders en paralelo solo si write sets no se solapan.
@@ -253,8 +331,9 @@ py -m motor doctor --project . --json
 
 ### 8. REVIEW
 
-- Invocar `code-reviewer` con tarea original, plan, TEST CONTRACT, validator
-  report y `git diff`.
+- Invocar la variante elegida por `model_route`: `code-reviewer-fast`,
+  `code-reviewer` o `code-reviewer-deep`, con tarea original, plan,
+  TEST CONTRACT, validator report y `git diff`.
 - Veredicto valido para avanzar: `approved` y cero `must_fix`.
 
 ### 9. AI AUDIT
@@ -273,7 +352,8 @@ py -m motor doctor --project . --json
 ### 11. REPORTE
 
 - Estado final: `completed`, `partial`, `blocked` o `failed`.
-- Reportar cambios, archivos, checks, riesgos, tests no ejecutados y motivo.
+- Reportar `model_route`, cambios, archivos, checks, riesgos, tests no
+  ejecutados y motivo.
 - Ejecutar o delegar `git diff --name-only` y confirmar que no se toco `engine/`,
   `docs/archive/` ni archivos fuera de scope.
 

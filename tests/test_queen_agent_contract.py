@@ -61,24 +61,59 @@ QUEEN_FLOW_AGENTS = [
     "queen",
     "context-recon",
     "test-strategist",
+    "test-strategist-fast",
+    "test-strategist-deep",
     "planner",
+    "planner-fast",
+    "planner-deep",
     "builder",
+    "builder-fast",
+    "builder-deep",
     "validator",
     "documenter",
     "code-reviewer",
+    "code-reviewer-fast",
+    "code-reviewer-deep",
     "ai-friendliness",
     "committer",
 ]
-EXPECTED_QUEEN_FLOW_MODEL = "openai/gpt-5.4-mini"
+EXPECTED_QUEEN_FLOW_MODELS = {
+    "queen": "openai/gpt-5.5",
+    "context-recon": "openai/gpt-5.4-mini",
+    "validator": "openai/gpt-5.4-mini",
+    "documenter": "openai/gpt-5.4-mini",
+    "committer": "openai/gpt-5.4-mini",
+    "ai-friendliness": "openai/gpt-5.4",
+    "test-strategist": "openai/gpt-5.5",
+    "test-strategist-fast": "openai/gpt-5.4-mini",
+    "test-strategist-deep": "openai/gpt-5.5",
+    "planner": "openai/gpt-5.5",
+    "planner-fast": "openai/gpt-5.4-mini",
+    "planner-deep": "openai/gpt-5.5",
+    "builder": "openai/gpt-5.4",
+    "builder-fast": "openai/gpt-5.4-mini",
+    "builder-deep": "openai/gpt-5.5",
+    "code-reviewer": "openai/gpt-5.5",
+    "code-reviewer-fast": "openai/gpt-5.4",
+    "code-reviewer-deep": "openai/gpt-5.5",
+}
 QUEEN_FLOW_PROMPT_FILES = {
     "queen": AGENTS_DIR / "queen.md",
     "context-recon": AGENTS_DIR / "context-recon.md",
     "test-strategist": AGENTS_DIR / "test-strategist.md",
+    "test-strategist-fast": AGENTS_DIR / "test-strategist-fast.md",
+    "test-strategist-deep": AGENTS_DIR / "test-strategist-deep.md",
     "planner": AGENTS_DIR / "planner.md",
+    "planner-fast": AGENTS_DIR / "planner-fast.md",
+    "planner-deep": AGENTS_DIR / "planner-deep.md",
     "builder": AGENTS_DIR / "builder.md",
+    "builder-fast": AGENTS_DIR / "builder-fast.md",
+    "builder-deep": AGENTS_DIR / "builder-deep.md",
     "validator": AGENTS_DIR / "validator.md",
     "documenter": AGENTS_DIR / "documenter.md",
     "code-reviewer": AGENTS_DIR / "code-reviewer.md",
+    "code-reviewer-fast": AGENTS_DIR / "code-reviewer-fast.md",
+    "code-reviewer-deep": AGENTS_DIR / "code-reviewer-deep.md",
     "ai-friendliness": AGENTS_DIR / "ai-friendliness.md",
     "committer": AGENTS_DIR / "committer.md",
     "queen-command": ROOT / ".opencode" / "commands" / "queen.md",
@@ -94,8 +129,22 @@ EXPECTED_SUBAGENTS = {
     "godot-gap-analyzer",
     "godot-source-analyzer",
     "planner",
+    "planner-fast",
+    "planner-deep",
     "test-strategist",
+    "test-strategist-fast",
+    "test-strategist-deep",
     "validator",
+    "builder-fast",
+    "builder-deep",
+    "code-reviewer-fast",
+    "code-reviewer-deep",
+}
+QUEEN_ROUTED_VARIANTS = {
+    "test-strategist": ["test-strategist-fast", "test-strategist-deep"],
+    "planner": ["planner-fast", "planner-deep"],
+    "builder": ["builder-fast", "builder-deep"],
+    "code-reviewer": ["code-reviewer-fast", "code-reviewer-deep"],
 }
 
 
@@ -410,6 +459,95 @@ class QueenAgentContractTests(unittest.TestCase):
         for subagent in EXPECTED_SUBAGENTS:
             self.assertEqual(queen_task.get(subagent), "allow", msg=subagent)
 
+    def test_model_router_variant_prompt_files_exist(self) -> None:
+        for variants in QUEEN_ROUTED_VARIANTS.values():
+            for variant in variants:
+                self.assertTrue((AGENTS_DIR / f"{variant}.md").exists(), msg=variant)
+
+    def test_model_router_variants_are_registered_in_opencode_config(self) -> None:
+        for variants in QUEEN_ROUTED_VARIANTS.values():
+            for variant in variants:
+                self.assertIn(variant, self.agent_config)
+                self.assertEqual(self.agent_config[variant]["mode"], "subagent", msg=variant)
+
+    def test_queen_can_invoke_model_router_variants_and_denies_wildcard(self) -> None:
+        queen_task = self.agent_config["queen"]["permission"]["task"]
+        self.assertEqual(queen_task.get("*"), "deny")
+        for variants in QUEEN_ROUTED_VARIANTS.values():
+            for variant in variants:
+                self.assertEqual(queen_task.get(variant), "allow", msg=variant)
+
+    def test_model_router_variant_permissions_match_base_agents(self) -> None:
+        keys_to_compare = (
+            "read",
+            "glob",
+            "grep",
+            "edit",
+            "write",
+            "task",
+            "todowrite",
+            "question",
+            "webfetch",
+            "websearch",
+            "skill",
+            "bash",
+        )
+        for base, variants in QUEEN_ROUTED_VARIANTS.items():
+            base_permissions = self.agent_config[base]["permission"]
+            for variant in variants:
+                variant_permissions = self.agent_config[variant]["permission"]
+                for key in keys_to_compare:
+                    self.assertEqual(
+                        variant_permissions.get(key),
+                        base_permissions.get(key),
+                        msg=f"{variant}: {key}",
+                    )
+
+    def test_model_router_agent_models_match_policy(self) -> None:
+        for agent_name, expected_model in EXPECTED_QUEEN_FLOW_MODELS.items():
+            self.assertEqual(self.agent_config[agent_name]["model"], expected_model, msg=agent_name)
+
+    def test_model_router_frontmatter_matches_config(self) -> None:
+        for agent_name, expected_model in EXPECTED_QUEEN_FLOW_MODELS.items():
+            prompt_frontmatter = frontmatter(read_text(AGENTS_DIR / f"{agent_name}.md"))
+            self.assertIn(f"model: {expected_model}", prompt_frontmatter, msg=agent_name)
+
+    def test_queen_documents_model_router(self) -> None:
+        for phrase in (
+            "Model Router",
+            "task_complexity",
+            "risk_level",
+            "reasoning_required",
+            "selected_agents",
+            "simple",
+            "normal",
+            "complex",
+            "critical",
+            "planner-deep",
+            "code-reviewer-deep",
+            "test-strategist-deep",
+        ):
+            self.assertIn(phrase, self.queen_prompt)
+
+    def test_queen_selects_agent_variants_not_dynamic_config_edits(self) -> None:
+        phrase = "Queen selects agent variants, not dynamic config edits"
+        self.assertIn(phrase, self.queen_prompt)
+        self.assertIn(phrase, read_text(ROOT / ".opencode" / "commands" / "queen.md"))
+
+    def test_long_task_mode_recalculates_model_route_per_phase(self) -> None:
+        long_task_doc = read_text(ROOT / "docs" / "queen_long_task_mode.md")
+        self.assertIn("recalcula `model_route` al inicio de cada fase", long_task_doc)
+
+    def test_model_router_variants_keep_output_contract_and_invalid_output_rules(self) -> None:
+        for variants in QUEEN_ROUTED_VARIANTS.values():
+            for variant in variants:
+                prompt = read_text(AGENTS_DIR / f"{variant}.md")
+                prompt_lower = prompt.lower()
+                self.assertRegex(prompt_lower, r"same\s+output\s+contract|mismo contrato de salida")
+                self.assertIn("TEST CONTRACT", prompt)
+                self.assertRegex(prompt_lower, r"empty output|salida vacia")
+                self.assertRegex(prompt_lower, r"non-parseable\s+output|no-parseable|no parseable")
+
     def test_all_allowed_subagents_exist_in_config_and_have_prompt(self) -> None:
         queen_task = self.agent_config["queen"]["permission"]["task"]
         allowed = {key for key, value in queen_task.items() if value == "allow"}
@@ -482,15 +620,15 @@ class QueenAgentContractTests(unittest.TestCase):
             self.assertIn(phrase, self.queen_prompt)
         self.assertRegex(self.queen_prompt, r"resultado\s+estructurado del subagente")
 
-    def test_queen_flow_uses_operational_model_for_provider_smoke(self) -> None:
+    def test_queen_flow_uses_expected_openai_models_for_provider_smoke(self) -> None:
         for agent_name in QUEEN_FLOW_AGENTS:
             self.assertEqual(
                 self.agent_config[agent_name]["model"],
-                EXPECTED_QUEEN_FLOW_MODEL,
+                EXPECTED_QUEEN_FLOW_MODELS[agent_name],
                 msg=agent_name,
             )
 
-        self.assertEqual(self.config["command"]["queen"]["model"], EXPECTED_QUEEN_FLOW_MODEL)
+        self.assertEqual(self.config["command"]["queen"]["model"], EXPECTED_QUEEN_FLOW_MODELS["queen"])
 
         for agent_name in QUEEN_FLOW_AGENTS:
             self.assertNotRegex(
@@ -507,11 +645,16 @@ class QueenAgentContractTests(unittest.TestCase):
                 msg=godot_agent,
             )
 
-    def test_queen_flow_frontmatter_matches_operational_model(self) -> None:
+    def test_queen_flow_frontmatter_matches_expected_model(self) -> None:
         for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
+            expected_model = (
+                EXPECTED_QUEEN_FLOW_MODELS["queen"]
+                if prompt_name == "queen-command"
+                else EXPECTED_QUEEN_FLOW_MODELS[prompt_name]
+            )
             prompt_frontmatter = frontmatter(read_text(prompt_path))
             self.assertIn(
-                f"model: {EXPECTED_QUEEN_FLOW_MODEL}",
+                f"model: {expected_model}",
                 prompt_frontmatter,
                 msg=prompt_name,
             )

@@ -18,6 +18,23 @@ RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR 
 `TEST CONTRACT` ocurre antes de implementar. `validator` hace la validacion
 final despues de documentar.
 
+## Model Router
+
+Queen clasifica cada tarea despues de `RECON` y antes de `TEST CONTRACT` como
+`simple`, `normal`, `complex` o `critical`. Con esa clasificacion selecciona
+variantes de subagente `fast`, standard o `deep`.
+
+Queen no edita modelos en caliente. Queen selects agent variants, not dynamic
+config edits. Cada variante tiene modelo fijo en frontmatter y `opencode.json`.
+Los tests evitan drift entre frontmatter y `opencode.json`.
+
+- Tareas simples pueden usar variantes `fast`.
+- Tareas normales usan agentes standard.
+- Cambios complejos usan variantes `deep`.
+- Cambios criticos obligan a `deep`, especialmente contratos publicos,
+  serializacion, runtime/editor, physics/collision, export pipeline, EngineAPI,
+  SceneManager, migraciones o ciclos tras fallo de validator/review.
+
 ## Smoke tests de permisos Queen/OpenCode
 
 Para smoke tests verificables por Git, no usar `.motor/queen_state` como
