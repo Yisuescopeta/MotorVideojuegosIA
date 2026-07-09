@@ -85,6 +85,21 @@ class CapabilityRegistryBuilder:
             tags=["vision", "gamespec", "scene", "experimental"],
         ))
 
+        self._add(Capability(
+            id="vision:build-platformer",
+            summary="Build a platformer scene from a simple image through GameSpec2D",
+            mode="edit",
+            api_methods=["CapabilityRegistry.cmd_vision_build_platformer"],
+            cli_command="motor vision build-platformer <image_path> --out <scene_path> [--gamespec-out <path>] [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Build a platformer scene from a deterministic PPM image",
+                api_calls=[{"method": "CapabilityRegistry.cmd_vision_build_platformer", "args": {}}],
+                expected_outcome="Writes a GameSpec2D sidecar and scene file using deterministic tilemap reconstruction; JSON data includes warnings, confidence and unsupported_features fields",
+            ),
+            notes="CLI/internal helper only via motor vision build-platformer and CapabilityRegistry.cmd_vision_build_platformer; not an EngineAPI method. Supports the internal simple-image pipeline only; no object detection ML and no PNG support is claimed. Refuses to overwrite scene or GameSpec outputs by default.",
+            tags=["vision", "gamespec", "platformer", "experimental"],
+        ))
+
     def _register_export_capabilities(self) -> None:
         self._add(Capability(
             id="export:presets:list",

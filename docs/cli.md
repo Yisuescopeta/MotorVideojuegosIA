@@ -537,8 +537,9 @@ Cada comando devuelve el envelope JSON oficial con `success`, `message` y
 
 ## Vision experimental
 
-Flujo experimental de GameSpec2D en modo JSON-first. No hay analisis de imagen
-cruda, ni flujo CV/ML, ni comando para inferir escenas desde assets visuales.
+Flujo experimental de GameSpec2D en modo JSON-first. No hay flujo CV/ML ni
+soporte para screenshots comerciales o analisis visual generalista; la entrada
+de imagen solo admite fixturas PPM controladas.
 
 ### `motor vision spec validate <path>`
 
@@ -577,7 +578,57 @@ Errores:
 
 - spec inexistente, JSON invalido o spec invalido -> falla estructurada;
 - salida existente -> rechazo de overwrite por defecto;
-- no hay analisis directo de imagen cruda en esta fase.
+- no hay analisis directo de imagen cruda en este comando.
+
+### `motor vision build-platformer <image_path> --out <scene_path>`
+
+Convierte una imagen PPM controlada en un `GameSpec2D` y luego construye la
+escena resultante. Es el flujo MVP de imagen -> sidecar -> escena.
+
+La superficie publica de esta fase es la CLI; no existe aun un wrapper publico
+de `EngineAPI` para este flujo. La helper Python interna sigue siendo
+experimental.
+
+```bash
+py -m motor vision build-platformer <image_path> --out <scene_path> --project . --json
+py -m motor vision build-platformer <image_path> --out <scene_path> --gamespec-out <path> --project . --json
+```
+
+Entrada:
+
+- solo PPM `P3` y `P6`;
+- no PNG, JPG, WebP ni screenshots comerciales;
+- no object detection, no OCR, no ML/CV generalista.
+
+Salida JSON: envelope oficial con `success`, `message` y `data`.
+En exito, `data` incluye como minimo los campos top-level:
+
+- `image_path`
+- `gamespec_path`
+- `scene_path`
+- `warnings`
+- `confidence`
+- `unsupported_features`
+- `schema_version`
+- `game_type`
+- `entity_count`
+- `representation`
+- `report` (con `scene_path`, `scene_name`, `representation`, `entity_names` y `semantic_mapping`)
+
+En fallo, `data` conserva esos mismos campos cuando sea posible; si la fase no
+llega a inferirlos, usa valores vacios o por defecto y sigue devolviendo un
+fallo estructurado con `message`.
+
+Contrato de escritura:
+
+- si `--gamespec-out` no se pasa, el sidecar por defecto es
+  `<scene_path>.gamespec.json`;
+- si la escena o el sidecar ya existen, el comando rechaza el overwrite y falla
+  de forma estructurada;
+- si la reconstruccion o la validacion fallan, no deja salidas parciales.
+
+Este comando no edita el Scene JSON a mano: escribe el `GameSpec2D` sidecar,
+llama al builder publico de escena y usa la ruta publica de authoring.
 
 Contrato de salida:
 

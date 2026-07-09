@@ -167,6 +167,7 @@ from motor.cli_core import (
     cmd_ui_preset_list,
     cmd_ui_create_text,
     cmd_vision_build_scene,
+    cmd_vision_build_platformer,
     cmd_vision_spec_validate,
 )
 
@@ -401,6 +402,19 @@ Documentation:
         help="Path to project directory (default: current directory)"
     )
     vision_build_scene_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    vision_build_platformer_parser = vision_subparsers.add_parser(
+        "build-platformer",
+        help="Build a platformer scene from a simple image without ML",
+    )
+    vision_build_platformer_parser.add_argument("image_path", help="Path to supported input image (PPM P3/P6)")
+    vision_build_platformer_parser.add_argument("--out", dest="out_path", required=True, help="Output scene path")
+    vision_build_platformer_parser.add_argument("--gamespec-out", dest="gamespec_out", default=None, help="Optional output GameSpec2D JSON sidecar path")
+    vision_build_platformer_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    vision_build_platformer_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === editor ===
     editor_parser = subparsers.add_parser(
@@ -2279,6 +2293,14 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 out_path=Path(parsed.out_path),
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
+            )
+        if parsed.vision_subcommand == "build-platformer":
+            return cmd_vision_build_platformer(
+                image_path=Path(parsed.image_path),
+                out_path=Path(parsed.out_path),
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+                gamespec_out=Path(parsed.gamespec_out) if parsed.gamespec_out else None,
             )
 
     # === editor ===

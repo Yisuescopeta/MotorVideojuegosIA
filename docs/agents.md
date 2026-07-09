@@ -191,6 +191,32 @@ Reglas para agentes:
 - no presentes este flujo como analisis de imagen, clon comercial ni soporte de
   comparacion de assets visuales.
 
+### `motor vision build-platformer <image_path> --out <scene_path>`
+
+Usa este flujo solo con fixturas PPM controladas y siempre en JSON. El comando
+es experimental y genera primero un `GameSpec2D` sidecar antes de construir la
+escena.
+
+La superficie publica de Phase 5 es la CLI; aun no hay wrapper publico de
+`EngineAPI` para este flujo. La helper Python interna sigue siendo experimental.
+
+Reglas para agentes:
+
+- usa solo PPM `P3`/`P6` de prueba; no asumas soporte para PNG, JPG, WebP ni
+  screenshots comerciales;
+- inspecciona siempre el JSON de salida y revisa `message`/`data` si hay fallo;
+- conserva el sidecar `GameSpec2D` generado o solicitado con
+  `--gamespec-out`; no lo sustituyas por edicion manual del Scene JSON;
+- no edites el Scene JSON generado a mano; regenera con la CLI si necesitas
+  cambios;
+- no presentes este flujo como ML/CV, object detection u OCR.
+- en `success=false`, espera igualmente `scene_path`, `gamespec_path`,
+  `warnings`, `confidence` y `unsupported_features` cuando el build haya podido
+  inferirlos; si no, usa defaults y revisa `message`.
+
+El comando escribe el sidecar `GameSpec2D`, construye la escena y falla sin
+dejar salidas parciales si algo rompe el pipeline.
+
 Para tooling/editor sobre un runtime ya vinculado, `EngineAPI` tambien expone
 `list_export_entry_scenes()` y `build_export_for_scene(name, entry_scene)`.
 Ese override de `entry_scene` vive solo en memoria para el build actual y no

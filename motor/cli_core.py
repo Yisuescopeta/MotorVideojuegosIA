@@ -44,6 +44,7 @@ from motor.platformer_scaffold import (
 
 from engine.vision.gamespec2d import GameSpec2D, GameSpecValidationError
 from engine.vision.gamespec_to_scene import build_scene_from_gamespec2d
+from engine.vision.image_to_platformer import build_platformer_from_image, default_gamespec_path
 
 
 class EngineCLIError(Exception):
@@ -158,6 +159,33 @@ def cmd_vision_build_scene(gamespec_path: Path, out_path: Path, project_path: Pa
         return _output(False, f"Scene build failed: {exc}", data, json_output)
     except Exception as exc:
         return _output(False, f"Scene build failed: {exc}", data, json_output)
+
+
+def cmd_vision_build_platformer(image_path: Path, out_path: Path, project_path: Path, json_output: bool, gamespec_out: Optional[Path] = None) -> int:
+    """Build a platformer scene from a simple image through GameSpec2D."""
+    sidecar = gamespec_out if gamespec_out is not None else default_gamespec_path(out_path)
+    data: Dict[str, Any] = {
+        "image_path": image_path.as_posix(),
+        "scene_path": out_path.as_posix(),
+        "gamespec_path": sidecar.as_posix(),
+        "warnings": [],
+        "confidence": None,
+        "unsupported_features": [],
+    }
+    try:
+        _ensure_project(project_path)
+        result = build_platformer_from_image(
+            image_path,
+            out_path,
+            project_root=project_path,
+            gamespec_path=gamespec_out,
+        )
+        data.update(result.to_dict())
+        return _output(True, "Platformer scene built from image", data, json_output)
+    except (FileExistsError, FileNotFoundError, ValueError, GameSpecValidationError, ProjectNotFoundError) as exc:
+        return _output(False, f"Platformer image build failed: {exc}", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Platformer image build failed: {exc}", data, json_output)
 
 
 def _ensure_project(project_path: Path) -> None:
