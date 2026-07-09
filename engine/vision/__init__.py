@@ -1,7 +1,8 @@
-"""Internal experimental vision contracts.
+"""Internal experimental vision contracts and scene-builder tooling.
 
-This package intentionally exposes data contracts only. It does not import
-runtime scene, serialization, rendering, or optional computer-vision packages.
+This package exposes vision data contracts plus experimental GameSpec2D to scene
+builder helpers. It avoids importing optional computer-vision dependencies and
+protected core internals.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from .gamespec2d import (
     TileMapSpec,
     WarningSpec,
 )
+from .gamespec_to_scene import GameSpecSceneBuildError, SceneBuildReport, build_scene_from_gamespec2d
 
 __all__ = [
     "STATUS",
@@ -34,4 +36,7 @@ __all__ = [
     "EntitySpec",
     "WarningSpec",
     "GameSpec2D",
+    "SceneBuildReport",
+    "GameSpecSceneBuildError",
+    "build_scene_from_gamespec2d",
 ]

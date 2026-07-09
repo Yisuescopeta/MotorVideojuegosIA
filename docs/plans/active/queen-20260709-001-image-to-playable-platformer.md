@@ -22,30 +22,33 @@ Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGa
 
 ## Current phase
 
-- Name: Phase 1 — Introduce GameSpec2D as internal experimental contract
+- Name: Phase 2 — Convert GameSpec2D to Scene through existing public authoring paths
 - phase_status: completed
 - task_status: partial
 - Decision: continue_next_phase
-- Allowed files: `engine/vision/**`, focused tests, `docs/vision/gamespec2d.md`, `docs/module_taxonomy.md`
+- Allowed files: `engine/vision/**`, focused tests, `docs/vision/image_to_platformer_pipeline.md`
 - Forbidden files: protected modules, canonical CLI/API docs, serialization/runtime/editor/physics changes, direct Scene JSON mutation
-- Test contract: test-contract-queen-20260709-001-phase-1-gamespec2d
+- Test contract: test-contract-queen-20260709-001-phase-2-gamespec-to-scene
 - Verdict: sufficient
 - Validator checks passed:
-  - `py -m unittest tests.test_vision_gamespec2d -v`
-  - `py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v`
-  - `py -m unittest tests.test_official_contract_regression tests.test_motor_interface_coherence -v`
+  - `py -m unittest tests.test_vision_gamespec2d tests.test_vision_gamespec_to_scene -v`
+  - `py -m unittest tests.test_component_serialization_contracts tests.test_official_contract_regression -v`
+  - `py -m unittest tests.test_scene_manager_contracts tests.test_scene_workspace tests.test_scene_save_integrity -v`
+  - `py -m unittest tests.test_motor_interface_coherence -v`
+  - `py -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence -v`
   - `py -m motor doctor --project . --json`
-- Review verdict: code-reviewer-deep approved; must_fix: 0; should_fix: 1 (metadata JSON-compat policy clarification recommended later)
-- AI audit: approved/pass; score: 95; must_fix: 0; recommendations: clarify unknown extra keys/metadata serializability/future EngineAPI route in later docs/phase
+- Review verdict: code-reviewer-deep approved; must_fix: 0; should_fix: 0 after fixes
+- AI audit: pass; score: 90; must_fix: 0; earlier blocker fixed: EngineAPI import changed to public `from engine.api import EngineAPI`
 - Files changed in Phase 1:
+  - `engine/vision/gamespec_to_scene.py`
+  - `engine/vision/semantic_prefabs.py`
   - `engine/vision/__init__.py`
-  - `engine/vision/gamespec2d.py`
-  - `tests/test_vision_gamespec2d.py`
-  - `docs/vision/gamespec2d.md`
-  - `docs/module_taxonomy.md`
-- Acceptance checks: scaffold exists, tests cover shape/schema basics, no contract drift
-- Docs affected: `docs/vision/gamespec2d.md`, `docs/module_taxonomy.md`
-- Risks: metadata flexibility, future Scene projection must use public API/CLI, optional dependency creep
+  - `tests/test_vision_gamespec_to_scene.py`
+  - `docs/vision/image_to_platformer_pipeline.md`
+  - `docs/plans/active/queen-20260709-001-image-to-playable-platformer.md`
+- Acceptance checks: scene projection uses supported public authoring paths, no direct Scene JSON mutation, deterministic and testable conversion
+- Docs affected: `docs/vision/image_to_platformer_pipeline.md`, active plan
+- Risks: internal helper only, no dedicated EngineAPI wrapper/CLI yet, future discoverability docs/CLI needed, richer tilemap projection deferred
 
 ## Blocked conditions
 
@@ -109,7 +112,7 @@ task_complexity complex; risk_level high; reasoning_required high; selected_agen
 ## Plan summary
 
 Phase 1 writes only internal GameSpec2D surfaces and the approved experiment docs; no protected module writes.
-Phase 2 next scope: convert GameSpec2D to Scene through existing public authoring paths, with tests/docs, no protected module writes.
+Phase 2 — Convert GameSpec2D to Scene through existing public authoring paths; tests/docs only; no protected module writes.
 
 ## Allowed / forbidden files
 
@@ -135,15 +138,15 @@ Acceptance checks: scaffold exists, tests cover shape/schema basics, no contract
 Docs affected: experimental docs only
 Risks: scope bleed into protected APIs
 
-### Phase 2 — Reference image ingestion
+### Phase 2 — Convert GameSpec2D to Scene through existing public authoring paths
 
-Status: pending
-Goal: load reference image and metadata for analysis.
+Status: completed
+Goal: convert GameSpec2D to Scene through existing public authoring paths.
 Allowed files: `engine/vision/**`, focused tests, experiment docs
 Forbidden files: protected modules, canonical docs
-Acceptance checks: deterministic image input path, validated metadata, no runtime mutation
+Acceptance checks: Scene projection uses supported public authoring paths, no direct Scene JSON mutation, and the conversion remains deterministic and testable
 Docs affected: experimental docs only
-Risks: dependency creep
+Risks: internal helper only, no dedicated EngineAPI wrapper/CLI yet, future discoverability docs/CLI needed, richer tilemap projection deferred
 
 ### Phase 3 — Vision analysis adapter
 
@@ -256,7 +259,7 @@ Risks: premature closure
 
 - Phase 0 rollback summary: delete/revert this active plan file.
 - Phase 1 rollback summary: remove `engine/vision` GameSpec files, tests, and experiment docs.
-- Phase 2 rollback summary: remove image ingestion helpers, metadata loaders, and Phase 2 tests/docs; keep the scaffold.
+- Phase 2 rollback summary: remove GameSpec2D-to-Scene builder helpers/tests/docs, `semantic_prefabs/gamespec_to_scene`, `tests/test_vision_gamespec_to_scene.py`, the Phase 2 additions in `docs/vision/image_to_platformer_pipeline.md`, and any `engine/vision/__init__.py` builder export additions; keep the scaffold.
 - Phase 3 rollback summary: remove the vision analysis adapter and its tests/docs; keep ingestion and scaffold.
 - Phase 4 rollback summary: remove GameSpec2D synthesis logic and its tests/docs; keep prior analysis inputs.
 - Phase 5 rollback summary: remove scene projection code that bypasses supported surfaces; keep the internal spec and validation inputs.
@@ -274,3 +277,4 @@ Risks: premature closure
 - 2026-07-09: Phase 0 AI audit must_fix items resolved in plan text; added blockers, transition rules, and rollback coverage for future phases.
 - 2026-07-09: Phase 0 gate closed after validator, code-reviewer-deep, and ai-friendliness approval; decision set to continue_next_phase.
 - 2026-07-09: Phase 1 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase.
+- 2026-07-09: Phase 2 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase.
