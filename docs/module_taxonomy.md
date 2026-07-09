@@ -54,6 +54,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | exporters por plataforma | `modulos oficiales opcionales` | WindowsExporter, LinuxExporter, MacOSExporter, AndroidExporter, IOSExporter. Cada uno condicionado a toolchain del entorno. |
 | backend `box2d` | `modulos oficiales opcionales` | Mejora oficial opcional; `legacy_aabb` mantiene el core. |
 | `engine/navigation` | `experimental/tooling` | Infraestructura de pathfinding independiente, sin integracion core obligatoria. |
+| `engine/vision` | `experimental/tooling` | Contrato interno GameSpec2D para vision->spec; no API publica de runtime, no depende obligatoriamente de CV y en Fase 1 no genera escenas. |
 | `engine/rl` | `experimental/tooling` | Integra workflows IA/RL, no el contrato minimo del runtime. |
 | `engine/recipes` | `experimental/tooling` | Recetas IA declarativas para workflows comunes, ejecutadas solo mediante comandos oficiales allowlist. |
 | agente nativo clean-room (`engine/agent`) | `experimental/tooling` | Orquesta sesiones IA v3a, runtime de tools, permisos, provider OpenAI opt-in, providers offline de prueba, streaming, memoria local, usage y runner allowlist de comandos sin cambiar el contrato persistente del motor. |
