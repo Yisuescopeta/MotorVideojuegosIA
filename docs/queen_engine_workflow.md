@@ -18,6 +18,31 @@ RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR 
 `TEST CONTRACT` ocurre antes de implementar. `validator` hace la validacion
 final despues de documentar.
 
+Regla fuerte de continuidad:
+
+```text
+phase completed != task completed
+```
+
+Queen separa:
+
+- `phase_status`: `completed | blocked | failed | skipped | not_applicable`
+- `task_status`: `completed | partial | blocked | failed`
+
+Si una fase termina con `phase_status=completed`, Queen debe avanzar
+automaticamente a la siguiente fase. No debe responder al usuario por:
+
+- RECON completado;
+- TEST CONTRACT suficiente o `not_applicable` valido;
+- PLAN aprobado;
+- CRITICA DEL PLAN aprobada;
+- IMPLEMENTAR/DOCUMENTAR/VALIDAR/REVIEW/AI AUDIT de fase aprobados.
+
+Definition of Done aplica solo al final de tarea completa. Reportes intermedios
+son evidencia interna, no respuestas finales. Si la tarea original incluia
+implementacion, Queen no puede cerrar con "Siguiente paso: implementar..." sin
+bloqueo real.
+
 ## Model Router
 
 Queen clasifica cada tarea despues de `RECON` y antes de `TEST CONTRACT` como
@@ -110,3 +135,14 @@ Queen debe exigir a `test-strategist`:
 
 Si el contrato es `insufficient`, no se implementa. Si es `not_applicable`, debe
 ser docs-only trivial y declarar razon.
+
+## Paradas validas
+
+Queen solo puede devolver respuesta final al usuario si ocurre una de estas:
+
+- `completed`: tarea completa cumple Definition of Done.
+- `blocked`: bloqueo real.
+- `failed`: error no recuperable.
+- `partial`: `max_cycles`, contexto o alcance impiden cierre completo.
+- `planning_only`: solo si el usuario pidio explicitamente plan sin
+  implementacion.

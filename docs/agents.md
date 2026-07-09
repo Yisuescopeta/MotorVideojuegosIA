@@ -794,12 +794,23 @@ DOCUMENTAR. En Long Task Plan Mode el ciclo por fase es
 UPDATE PLAN registra el resultado de AI AUDIT antes de avanzar, bloquear o
 cerrar.
 
+Regla fuerte: `phase completed != task completed`.
+
+Queen separa `phase_status` (`completed | blocked | failed | skipped |
+not_applicable`) de `task_status` (`completed | partial | blocked | failed`).
+Si una fase termina `completed`, Queen debe seguir automaticamente. No debe dar
+respuesta final por PLAN aprobado, TEST CONTRACT suficiente, REVIEW aprobado ni
+reportes intermedios. Si la tarea incluia implementar, no puede cerrar con
+"Siguiente paso: implementar..." sin bloqueo real.
+
 `max_cycles = 5`. El commit ocurre solo despues de TEST CONTRACT suficiente,
 documentacion, validacion final, review y AI audit aplicables. La Definition of
 Done exige tests enfocados verdes, lint/typecheck cuando aplique, docs canonicas
 si cambia contrato, cero `must_fix` del reviewer, score AI `>= 90` cuando
 aplique, sin cambios fuera de alcance y reporte final claro si termina
-`partial`, `blocked` o `failed`.
+`partial`, `blocked` o `failed`. Definition of Done aplica al final de tarea
+completa, no a una fase individual. `planning_only` solo existe si el usuario
+pidio explicitamente solo plan.
 
 Queen usa Model Router: clasifica `simple|normal|complex|critical`, selecciona
 variantes `fast|standard|deep` y no edita modelos en caliente. Cada variante

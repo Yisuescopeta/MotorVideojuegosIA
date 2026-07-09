@@ -638,6 +638,15 @@ ejecuta la validacion final despues de DOCUMENTAR. En tareas largas,
 UPDATE PLAN registra el resultado de AI AUDIT antes de avanzar, bloquear o
 cerrar.
 
+Regla fuerte: `phase completed != task completed`.
+
+Queen separa `phase_status` (`completed | blocked | failed | skipped |
+not_applicable`) de `task_status` (`completed | partial | blocked | failed`).
+Si una fase termina `completed`, Queen debe seguir automaticamente. No debe dar
+respuesta final por PLAN aprobado, TEST CONTRACT suficiente, REVIEW aprobado ni
+reportes intermedios. Si la tarea incluia implementar, no puede cerrar con
+"Siguiente paso: implementar..." sin bloqueo real.
+
 Queen usa Model Router: clasifica `simple|normal|complex|critical` despues de
 RECON, selecciona variantes de subagente `fast|standard|deep` y no edita modelos
 en caliente. Cada variante tiene modelo fijo en frontmatter y `opencode.json`.
@@ -651,6 +660,9 @@ Definition of Done:
 - No se relajaron tests.
 - No hay cambios fuera de alcance.
 - Estado final reportado como `completed`, `partial`, `blocked` o `failed`.
+
+Definition of Done aplica al final de tarea completa, no a una fase individual.
+`planning_only` solo existe si el usuario pidio explicitamente solo plan.
 
 Matriz operativa de validacion por subsistema:
 `docs/queen_engine_workflow.md`.
