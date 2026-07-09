@@ -2,9 +2,10 @@
 
 Estado: `experimental/tooling`.
 
-Este documento describe la Fase 2 del flujo `GameSpec2D -> Scene builder`.
-El alcance es solo la construccion de escena desde un `GameSpec2D` ya valido.
-No hay CLI todavia, no hay analisis de imagen todavia y no se generan escenas
+Este documento describe el flujo `GameSpec2D -> Scene builder` y su
+exposicion experimental por CLI en Fase 3.
+El alcance sigue siendo solo GameSpec2D ya valido: validar spec y construir
+escena. No hay analisis de imagen todavia, no hay ML/CV y no se generan escenas
 directamente desde una imagen cruda.
 
 Implementacion: [`../../engine/vision/`](../../engine/vision/)
@@ -12,18 +13,25 @@ Implementacion: [`../../engine/vision/`](../../engine/vision/)
 ## Alcance actual
 
 - Entrada: `GameSpec2D`
-- Salida: escena persistida via `EngineAPI`
+- Entrada CLI: `py -m motor vision spec validate <path> --project . --json`
+- Entrada CLI: `py -m motor vision build-scene <gamespec_path> --out <scene_path> --project . --json`
+- Salida: validacion estructurada y/o escena persistida via `EngineAPI`
 - Representacion actual: `collider_blocks`
 - Flujo: validar -> construir -> guardar
 - No usa mutacion directa de JSON de escena
 - No toca modulos protegidos del core
+- No hay analisis de imagen cruda ni generacion desde assets visuales
 
 ## Contrato operativo
 
+- La validacion CLI pasa primero por `GameSpec2D.validate()` y devuelve
+  resultado estructurado en JSON.
+- `build-scene` solo debe ejecutarse despues de una validacion satisfactoria.
 - El builder usa solo rutas publicas de authoring de `EngineAPI`.
 - La escena se crea con `create_scene`, se puebla con `create_entity` y se
   persiste con `save_scene`.
 - Si la validacion falla, no se escribe salida parcial.
+- Si la ruta de salida ya existe, la CLI rechaza el overwrite por defecto.
 - Si ocurre un error de authoring, se lanza `GameSpecSceneBuildError`.
 - Los nombres de entidades y el orden de salida son deterministas.
 
@@ -91,17 +99,21 @@ print(report.semantic_mapping)
 ## Limitaciones conocidas
 
 - No lee imagenes crudas.
-- No existe CLI de esta fase.
+- No existe CLI para analisis de imagen o inferencia visual.
+- La CLI solo cubre `vision spec validate` y `vision build-scene`.
 - No hay inferencia CV en este paso.
 - El builder solo trabaja con el contrato `GameSpec2D` existente.
 - Las entidades generadas usan componentes publicos ya registrados; no hay
   componentes nuevos de escena.
+- Si el entorno o dependencias nativas imprimen ruido de arranque en stderr, el
+  contrato relevante sigue siendo el JSON parseable de stdout.
 
 ## Validacion de fase
 
 Comandos relevantes:
 
 ```bash
+py -m unittest tests.test_vision_cli_contract tests.test_motor_cli_contract -v
 py -m unittest tests.test_vision_gamespec2d tests.test_vision_gamespec_to_scene -v
 py -m unittest tests.test_component_serialization_contracts tests.test_official_contract_regression -v
 py -m motor doctor --project . --json

@@ -11,6 +11,7 @@ import json
 import shutil
 import sys
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +41,9 @@ from motor.platformer_scaffold import (
     set_platformer_camera_follow,
     validate_platformer_scene,
 )
+
+from engine.vision.gamespec2d import GameSpec2D, GameSpecValidationError
+from engine.vision.gamespec_to_scene import build_scene_from_gamespec2d
 
 
 class EngineCLIError(Exception):
@@ -85,6 +89,75 @@ def _output(success: bool, message: str, data: Any, as_json: bool) -> int:
         if data:
             print(json.dumps(data, indent=2, ensure_ascii=True))
     return 0 if success else 1
+
+
+def _read_gamespec2d(path: Path) -> GameSpec2D:
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"GameSpec file not found: {path}")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"GameSpec file is not valid JSON: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("GameSpec root must be a JSON object")
+    spec = GameSpec2D.from_dict(raw)
+    spec.validate()
+    return spec
+
+
+def _gamespec_validation_data(spec: GameSpec2D, spec_path: Path) -> Dict[str, Any]:
+    warnings = [asdict(warning) for warning in spec.warnings]
+    return {
+        "spec_path": spec_path.as_posix(),
+        "schema_version": spec.schema_version,
+        "game_type": spec.game_type,
+        "confidence": spec.confidence,
+        "warnings": warnings,
+        "warning_count": len(warnings),
+        "confidence_summary": {
+            "overall": spec.confidence,
+            "camera": spec.camera.confidence,
+            "grid": spec.grid.confidence,
+            "tilemap": spec.tilemap.confidence,
+        },
+    }
+
+
+def cmd_vision_spec_validate(spec_path: Path, project_path: Path, json_output: bool) -> int:
+    """Validate an experimental GameSpec2D file without mutating the project."""
+    try:
+        _ensure_project(project_path)
+        spec = _read_gamespec2d(spec_path)
+        return _output(True, "GameSpec2D is valid", _gamespec_validation_data(spec, spec_path), json_output)
+    except (FileNotFoundError, ValueError, GameSpecValidationError, ProjectNotFoundError) as exc:
+        return _output(False, f"GameSpec2D validation failed: {exc}", {"spec_path": spec_path.as_posix()}, json_output)
+    except Exception as exc:
+        return _output(False, f"GameSpec2D validation failed: {exc}", {"spec_path": spec_path.as_posix()}, json_output)
+
+
+def cmd_vision_build_scene(gamespec_path: Path, out_path: Path, project_path: Path, json_output: bool) -> int:
+    """Build a scene from a valid GameSpec2D file through the public EngineAPI builder."""
+    data: Dict[str, Any] = {
+        "spec_path": gamespec_path.as_posix(),
+        "scene_path": out_path.as_posix(),
+    }
+    try:
+        _ensure_project(project_path)
+        spec = _read_gamespec2d(gamespec_path)
+        if out_path.exists():
+            return _output(False, "Scene build failed: output path already exists", data, json_output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        report = build_scene_from_gamespec2d(spec, out_path, project_root=project_path)
+        report_data = asdict(report)
+        data.update(report_data)
+        data["schema_version"] = spec.schema_version
+        data["game_type"] = spec.game_type
+        data["entity_count"] = len(report.entity_names)
+        return _output(True, "Scene built from GameSpec2D", data, json_output)
+    except (FileNotFoundError, ValueError, GameSpecValidationError, ProjectNotFoundError) as exc:
+        return _output(False, f"Scene build failed: {exc}", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Scene build failed: {exc}", data, json_output)
 
 
 def _ensure_project(project_path: Path) -> None:

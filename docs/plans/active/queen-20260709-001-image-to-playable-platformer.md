@@ -22,33 +22,17 @@ Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGa
 
 ## Current phase
 
-- Name: Phase 2 — Convert GameSpec2D to Scene through existing public authoring paths
-- phase_status: completed
+- Name: Phase 4 — Implement simple tile-grid and tilemap extraction without ML
+- phase_status: pending
 - task_status: partial
 - Decision: continue_next_phase
-- Allowed files: `engine/vision/**`, focused tests, `docs/vision/image_to_platformer_pipeline.md`
+- Allowed files: `engine/vision/**`, focused tests, `docs/vision/image_to_platformer_pipeline.md` if needed, this active plan
 - Forbidden files: protected modules, canonical CLI/API docs, serialization/runtime/editor/physics changes, direct Scene JSON mutation
-- Test contract: test-contract-queen-20260709-001-phase-2-gamespec-to-scene
-- Verdict: sufficient
-- Validator checks passed:
-  - `py -m unittest tests.test_vision_gamespec2d tests.test_vision_gamespec_to_scene -v`
-  - `py -m unittest tests.test_component_serialization_contracts tests.test_official_contract_regression -v`
-  - `py -m unittest tests.test_scene_manager_contracts tests.test_scene_workspace tests.test_scene_save_integrity -v`
-  - `py -m unittest tests.test_motor_interface_coherence -v`
-  - `py -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence -v`
-  - `py -m motor doctor --project . --json`
-- Review verdict: code-reviewer-deep approved; must_fix: 0; should_fix: 0 after fixes
-- AI audit: pass; score: 90; must_fix: 0; earlier blocker fixed: EngineAPI import changed to public `from engine.api import EngineAPI`
-- Files changed in Phase 1:
-  - `engine/vision/gamespec_to_scene.py`
-  - `engine/vision/semantic_prefabs.py`
-  - `engine/vision/__init__.py`
-  - `tests/test_vision_gamespec_to_scene.py`
-  - `docs/vision/image_to_platformer_pipeline.md`
-  - `docs/plans/active/queen-20260709-001-image-to-playable-platformer.md`
-- Acceptance checks: scene projection uses supported public authoring paths, no direct Scene JSON mutation, deterministic and testable conversion
-- Docs affected: `docs/vision/image_to_platformer_pipeline.md`, active plan
-- Risks: internal helper only, no dedicated EngineAPI wrapper/CLI yet, future discoverability docs/CLI needed, richer tilemap projection deferred
+- Test contract: test-contract-queen-20260709-001-phase-4-tile-grid-extraction
+- Verdict: not_started
+- Acceptance checks: tile-grid extraction stays deterministic, bounded, and ML-free; no protected contract drift; outputs remain testable and reproducible
+- Docs affected: experimental docs only, plus active plan when gated
+- Risks: scope bleed into protected APIs, overfitting to a single fixture image, tilemap extraction complexity
 
 ## Blocked conditions
 
@@ -148,25 +132,27 @@ Acceptance checks: Scene projection uses supported public authoring paths, no di
 Docs affected: experimental docs only
 Risks: internal helper only, no dedicated EngineAPI wrapper/CLI yet, future discoverability docs/CLI needed, richer tilemap projection deferred
 
-### Phase 3 — Vision analysis adapter
+### Phase 3 — Add experimental CLI for GameSpec workflows
+
+Status: completed
+Goal: expose GameSpec workflows through the `motor` CLI in a minimal JSON-first way:
+- `py -m motor vision spec validate <path> --project . --json`
+- `py -m motor vision build-scene <gamespec_path> --out <scene_path> --project . --json`
+Allowed files: CLI parser/registry files discovered by recon, `tests/test_vision_cli_contract.py`, `docs/cli.md`, `docs/agents.md`, `docs/vision/image_to_platformer_pipeline.md`, `START_HERE_AI.md`, this active plan
+Forbidden files: EngineAPI public changes, `SceneManager`, serialization core, editor UI, physics backend, `pyproject.toml`, requirements, direct scene JSON mutation, unsafe overwrite behavior, protected modules outside the CLI surface
+Acceptance checks: both commands support `--json`, fail safely, refuse unsafe overwrite paths, and remain isolated from EngineAPI/SceneManager/serialization/editor/physics changes
+Docs affected: `docs/cli.md`, `docs/agents.md`, `docs/vision/image_to_platformer_pipeline.md`, `START_HERE_AI.md`, active plan
+Risks: CLI discoverability drift, JSON output noise, accidental scope bleed into protected contracts; known limitations: CLI-first/no EngineAPI wrapper, Any-typed payloads, RAYLIB stderr startup noise but stdout JSON contract passes
+
+### Phase 4 — Implement simple tile-grid and tilemap extraction without ML
 
 Status: pending
-Goal: map image evidence into intermediate vision findings.
+Goal: implement deterministic tile-grid and tilemap extraction without ML.
 Allowed files: `engine/vision/**`, focused tests, experiment docs
 Forbidden files: protected modules, canonical docs
-Acceptance checks: analysis output is serializable and testable
+Acceptance checks: extraction is explicit, bounded, reproducible, and testable
 Docs affected: experimental docs only
-Risks: model-dependent ambiguity
-
-### Phase 4 — GameSpec2D synthesis
-
-Status: pending
-Goal: convert findings into a constrained GameSpec2D.
-Allowed files: `engine/vision/**`, focused tests, experiment docs
-Forbidden files: protected modules, canonical docs
-Acceptance checks: spec is explicit, bounded, and reproducible
-Docs affected: experimental docs only
-Risks: overfitting to the sample image
+Risks: overfitting to the sample image, grid ambiguity, extraction drift
 
 ### Phase 5 — Scene projection
 
@@ -260,8 +246,8 @@ Risks: premature closure
 - Phase 0 rollback summary: delete/revert this active plan file.
 - Phase 1 rollback summary: remove `engine/vision` GameSpec files, tests, and experiment docs.
 - Phase 2 rollback summary: remove GameSpec2D-to-Scene builder helpers/tests/docs, `semantic_prefabs/gamespec_to_scene`, `tests/test_vision_gamespec_to_scene.py`, the Phase 2 additions in `docs/vision/image_to_platformer_pipeline.md`, and any `engine/vision/__init__.py` builder export additions; keep the scaffold.
-- Phase 3 rollback summary: remove the vision analysis adapter and its tests/docs; keep ingestion and scaffold.
-- Phase 4 rollback summary: remove GameSpec2D synthesis logic and its tests/docs; keep prior analysis inputs.
+- Phase 3 rollback summary: remove the experimental GameSpec CLI commands, their contract tests, and any docs sync for CLI discoverability; keep prior vision ingestion/spec artifacts intact.
+- Phase 4 rollback summary: remove simple tile-grid and tilemap extraction logic and its tests/docs; keep prior analysis inputs.
 - Phase 5 rollback summary: remove scene projection code that bypasses supported surfaces; keep the internal spec and validation inputs.
 - Phase 6 rollback summary: remove validation additions only; keep projection and earlier phase artifacts.
 - Phase 7 rollback summary: remove debug overlay code and its tests/docs; keep validation outputs unchanged.
@@ -278,3 +264,5 @@ Risks: premature closure
 - 2026-07-09: Phase 0 gate closed after validator, code-reviewer-deep, and ai-friendliness approval; decision set to continue_next_phase.
 - 2026-07-09: Phase 1 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase.
 - 2026-07-09: Phase 2 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase.
+- 2026-07-09: PLAN SYNC — corrected Phase 3 label/details from vision analysis adapter to experimental CLI for GameSpec workflows; completed Phase 0/1/2 gate results unchanged.
+- 2026-07-09: Phase 3 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase; phase 4 advanced to deterministic tile-grid/tilemap extraction without ML.

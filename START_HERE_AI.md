@@ -285,6 +285,11 @@ The entries below are available now and are safe to use from the CLI.
 - `game:platformer:set-camera-follow`: Create or update Camera2D follow settings in the selected platformer scene
 - `game:platformer:validate`: Validate selected native platformer scene contract
 
+### Vision
+
+- `vision:build-scene`: Build a scene from a valid experimental GameSpec2D JSON file
+- `vision:spec:validate`: Validate an experimental GameSpec2D JSON file
+
 ### Runtime
 
 - `runtime:audio:pause`: Pause audio from an AudioSource entity

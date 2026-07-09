@@ -30,6 +30,7 @@ class CapabilityRegistryBuilder:
         """Build and return the full capability registry."""
         self._register_scene_capabilities()
         self._register_game_capabilities()
+        self._register_vision_capabilities()
         self._register_entity_capabilities()
         self._register_component_capabilities()
         self._register_asset_capabilities()
@@ -52,6 +53,37 @@ class CapabilityRegistryBuilder:
         self._register_service_capabilities()
         self._register_entity_group_capabilities()
         return self._registry
+
+    def _register_vision_capabilities(self) -> None:
+        self._add(Capability(
+            id="vision:spec:validate",
+            summary="Validate an experimental GameSpec2D JSON file",
+            mode="both",
+            api_methods=["engine.vision.gamespec2d.GameSpec2D.validate"],
+            cli_command="motor vision spec validate <path> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Validate a GameSpec2D file",
+                api_calls=[{"method": "GameSpec2D.validate", "args": {}}],
+                expected_outcome="Returns schema version, game type, warnings and confidence summary",
+            ),
+            notes="Experimental CLI for GameSpec workflows; reads JSON and does not mutate the project.",
+            tags=["vision", "gamespec", "validation", "experimental"],
+        ))
+
+        self._add(Capability(
+            id="vision:build-scene",
+            summary="Build a scene from a valid experimental GameSpec2D JSON file",
+            mode="edit",
+            api_methods=["engine.vision.gamespec_to_scene.build_scene_from_gamespec2d"],
+            cli_command="motor vision build-scene <gamespec_path> --out <scene_path> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Build a scene from a GameSpec2D file",
+                api_calls=[{"method": "build_scene_from_gamespec2d", "args": {}}],
+                expected_outcome="Writes a scene file and returns a SceneBuildReport payload",
+            ),
+            notes="Refuses to overwrite existing output by default and uses public EngineAPI scene authoring through the builder.",
+            tags=["vision", "gamespec", "scene", "experimental"],
+        ))
 
     def _register_export_capabilities(self) -> None:
         self._add(Capability(
@@ -2473,6 +2505,7 @@ class MotorAIBootstrapBuilder:
             "Recipes": ["recipe:"],
             "Agent": ["agent:"],
             "Game": ["game:"],
+            "Vision": ["vision:"],
             "Runtime": ["runtime:"],
             "Physics": ["physics:"],
             "Introspection": ["introspect:"],

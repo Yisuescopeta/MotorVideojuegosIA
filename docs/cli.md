@@ -535,6 +535,58 @@ Cada comando devuelve el envelope JSON oficial con `success`, `message` y
 `warnings`; `validate` agrega `validation`. Los comandos avanzados requieren
 `--name` para authoring idempotente.
 
+## Vision experimental
+
+Flujo experimental de GameSpec2D en modo JSON-first. No hay analisis de imagen
+cruda, ni flujo CV/ML, ni comando para inferir escenas desde assets visuales.
+
+### `motor vision spec validate <path>`
+
+Valida un archivo `GameSpec2D` JSON sin mutar el proyecto.
+
+```bash
+py -m motor vision spec validate examples/vision/simple_platformer.gamespec.json --project . --json
+```
+
+Salida: envelope JSON oficial con `success`, `message` y `data`. Cuando la
+validacion pasa, `data` incluye como minimo `spec_path`, `schema_version`,
+`game_type`, `confidence`, `warnings`, `warning_count` y
+`confidence_summary`.
+
+Errores:
+
+- archivo inexistente -> falla estructurada con `success=false`;
+- JSON invalido o spec invalido -> falla estructurada con `success=false`;
+- el comando no escribe escena ni crea artefactos de salida.
+
+### `motor vision build-scene <gamespec_path> --out <scene_path>`
+
+Construye una escena desde un `GameSpec2D` valido y escribe el resultado en la
+ruta indicada.
+
+```bash
+py -m motor vision build-scene examples/vision/simple_platformer.gamespec.json --out levels/generated.scene --project . --json
+```
+
+Salida: envelope JSON oficial con `success`, `message` y `data`. En exito,
+`data` incluye la informacion del build y metadatos del spec. Si el archivo de
+salida ya existe, el comando rechaza el overwrite por defecto y falla de forma
+estructurada; no sobrescribe la escena.
+
+Errores:
+
+- spec inexistente, JSON invalido o spec invalido -> falla estructurada;
+- salida existente -> rechazo de overwrite por defecto;
+- no hay analisis directo de imagen cruda en esta fase.
+
+Contrato de salida:
+
+- `--json` es la ruta recomendada para consumo por agentes y scripts;
+- la salida en stdout debe seguir siendo parseable como JSON del envelope
+  oficial;
+- cualquier ruido de arranque de dependencias nativas o del entorno debe
+  tratarse como stderr separado y no forma parte del contrato de stdout.
+
 ## Escenas
 
 ### `motor scene list`

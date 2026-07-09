@@ -171,6 +171,26 @@ py -m motor component edit Player Transform x 200 --project . --json
 py -m motor component remove Player Sprite --project . --json
 ```
 
+### GameSpec / Vision experimental
+
+Usa este flujo solo para GameSpec2D valido y siempre en JSON:
+
+```bash
+py -m motor vision spec validate <path> --project . --json
+py -m motor vision build-scene <gamespec_path> --out <scene_path> --project . --json
+```
+
+Reglas para agentes:
+
+- valida el spec antes de intentar construir escena;
+- trata `success=false` como fallo estructurado: revisa `message`, `data` y,
+  si aparece, stderr separado;
+- no edites Scene JSON generado a mano para este flujo; regenera con la CLI;
+- no asumas overwrite: `build-scene` rechaza rutas de salida existentes por
+  defecto;
+- no presentes este flujo como analisis de imagen, clon comercial ni soporte de
+  comparacion de assets visuales.
+
 Para tooling/editor sobre un runtime ya vinculado, `EngineAPI` tambien expone
 `list_export_entry_scenes()` y `build_export_for_scene(name, entry_scene)`.
 Ese override de `entry_scene` vive solo en memoria para el build actual y no
