@@ -23,16 +23,29 @@ Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGa
 ## Current phase
 
 - Name: Phase 4 — Implement simple tile-grid and tilemap extraction without ML
-- phase_status: pending
+- phase_status: completed
 - task_status: partial
 - Decision: continue_next_phase
 - Allowed files: `engine/vision/**`, focused tests, `docs/vision/image_to_platformer_pipeline.md` if needed, this active plan
 - Forbidden files: protected modules, canonical CLI/API docs, serialization/runtime/editor/physics changes, direct Scene JSON mutation
-- Test contract: test-contract-queen-20260709-001-phase-4-tile-grid-extraction
-- Verdict: not_started
+- Test contract: test-contract-queen-20260709-001-phase-4-tile-grid
+- Verdict: sufficient
+- Correction test contract: test-contract-queen-20260709-001-correction-phase3-vision-registry-metadata
+- Correction verdict: sufficient
+- Validator checks passed:
+  - `py -m unittest tests.test_vision_tile_grid_detector tests.test_vision_tilemap_reconstructor tests.test_vision_gamespec2d -v`
+  - `py -m unittest tests.test_vision_cli_contract tests.test_vision_gamespec_to_scene -v`
+  - `py -m unittest tests.test_capability_registry_audit tests.test_capability_registry_semantic_audit -v`
+  - `py -m unittest tests.test_parser_registry_alignment tests.test_motor_registry_consistency tests.test_start_here_ai_coherence -v`
+  - `py -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence -v`
+  - `py -m motor doctor --project . --json`
+- Review: approved, must_fix 0, should_fix 2 (PPM size guard / more malformed PPM tests for future hardening)
+- AI audit: approved/pass, score 95, must_fix 0
+- Known limitations: controlled PPM/PixelImage only; no image CLI yet; no arbitrary screenshots; no ML/CV; no max-size guard yet; helper discoverability lower than CLI/API
 - Acceptance checks: tile-grid extraction stays deterministic, bounded, and ML-free; no protected contract drift; outputs remain testable and reproducible
 - Docs affected: experimental docs only, plus active plan when gated
-- Risks: scope bleed into protected APIs, overfitting to a single fixture image, tilemap extraction complexity
+- Risks: scope bleed into protected APIs, overfitting to a single fixture image, tilemap extraction complexity, broad `py -m unittest discover -s tests` still fails unrelated editor/RPG regressions (validator addendum final_verdict pass for Phase 4; related_to_phase4=false)
+- Next phase: Phase 5 — Add `vision build-platformer` MVP without object detection ML
 
 ## Blocked conditions
 
@@ -146,7 +159,7 @@ Risks: CLI discoverability drift, JSON output noise, accidental scope bleed into
 
 ### Phase 4 — Implement simple tile-grid and tilemap extraction without ML
 
-Status: pending
+Status: completed
 Goal: implement deterministic tile-grid and tilemap extraction without ML.
 Allowed files: `engine/vision/**`, focused tests, experiment docs
 Forbidden files: protected modules, canonical docs
@@ -154,15 +167,15 @@ Acceptance checks: extraction is explicit, bounded, reproducible, and testable
 Docs affected: experimental docs only
 Risks: overfitting to the sample image, grid ambiguity, extraction drift
 
-### Phase 5 — Scene projection
+### Phase 5 — Add `vision build-platformer` MVP without object detection ML
 
 Status: pending
-Goal: project GameSpec2D into an OpenGame Scene through supported surfaces.
-Allowed files: `engine/vision/**`, focused tests, experiment docs
-Forbidden files: direct Scene JSON mutation, protected modules
-Acceptance checks: scene projection uses supported API/CLI when available
+Goal: add a `vision build-platformer` MVP that turns the validated image/tilemap pipeline into a playable platformer without object detection ML.
+Allowed files: `engine/vision/**`, focused tests, `docs/vision/image_to_platformer_pipeline.md`, this active plan
+Forbidden files: protected modules, canonical CLI/API docs, serialization/runtime/editor/physics changes, direct Scene JSON mutation
+Acceptance checks: build flow stays deterministic, ML-free, and routed through supported public surfaces when available
 Docs affected: experimental docs only
-Risks: accidental contract bypass
+Risks: accidental contract bypass, scope creep into protected surfaces, image-to-game overfitting
 
 ### Phase 6 — Validation pass
 
@@ -266,3 +279,4 @@ Risks: premature closure
 - 2026-07-09: Phase 2 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase.
 - 2026-07-09: PLAN SYNC — corrected Phase 3 label/details from vision analysis adapter to experimental CLI for GameSpec workflows; completed Phase 0/1/2 gate results unchanged.
 - 2026-07-09: Phase 3 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase; phase 4 advanced to deterministic tile-grid/tilemap extraction without ML.
+- 2026-07-10: Phase 4 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 5 advanced to `vision build-platformer` MVP without object detection ML.

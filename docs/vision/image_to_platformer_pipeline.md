@@ -1,14 +1,31 @@
 # Image to Platformer Pipeline
 
-Estado: `experimental/tooling`.
+Estado: `experimental/tooling` (internal).
 
-Este documento describe el flujo `GameSpec2D -> Scene builder` y su
-exposicion experimental por CLI en Fase 3.
-El alcance sigue siendo solo GameSpec2D ya valido: validar spec y construir
-escena. No hay analisis de imagen todavia, no hay ML/CV y no se generan escenas
-directamente desde una imagen cruda.
+Este documento cubre dos pasos experimentales e internos:
+
+- Fase 3: `GameSpec2D -> Scene builder`.
+- Fase 4: `imagen simple -> deteccion determinista de grilla -> extraccion de
+  tilemap -> GameSpec2D`.
+
+El alcance sigue siendo conservador: no hay ML, no hay CV pesado, no hay red,
+no hay soporte obligatorio para Pillow/OpenCV/numpy/supervision y no se
+promete soporte arbitrario de formatos de imagen.
 
 Implementacion: [`../../engine/vision/`](../../engine/vision/)
+
+## Fase 4 — simple tile-grid y tilemap extraction without ML
+
+La Fase 4 agrega helpers de vision basados solo en la libreria estandar para
+fixturas controladas:
+
+- `PixelImage` inmovil en memoria.
+- carga de imagen PPM `P3` y `P6` con `load_image()` / `load_ppm()`.
+- reconstruccion determinista de un `GameSpec2D` a partir de una imagen local o
+  un `PixelImage` ya creado.
+
+No hay analisis de imagen cruda generalista, no hay OCR, no hay segmentacion
+ML/CV y no hay descarga de recursos desde red.
 
 ## Alcance actual
 
@@ -21,6 +38,20 @@ Implementacion: [`../../engine/vision/`](../../engine/vision/)
 - No usa mutacion directa de JSON de escena
 - No toca modulos protegidos del core
 - No hay analisis de imagen cruda ni generacion desde assets visuales
+- La Fase 4 no crea escenas ni expone aun comando CLI de imagen
+- La salida de Fase 4 es solo `GameSpec2D`; la escena queda para fases
+  posteriores o para el builder existente de Fase 3
+
+## Soporte de imagen controlado
+
+- Formatos soportados: PPM `P3` y `P6`
+- Fuente soportada: `PixelImage` o ruta local a archivo PPM
+- Formatos no soportados: PNG, JPG, WebP y similares
+- Dependencias no obligatorias: Pillow, OpenCV, numpy y supervision
+- Dependencias nuevas: no se introducen ni se requiere ADR para esta fase
+
+El loader rechaza datos corruptos o truncados con errores estructurados. El
+contrato se mantiene deliberadamente pequeno para fixturas reproducibles.
 
 ## Contrato operativo
 
@@ -34,6 +65,20 @@ Implementacion: [`../../engine/vision/`](../../engine/vision/)
 - Si la ruta de salida ya existe, la CLI rechaza el overwrite por defecto.
 - Si ocurre un error de authoring, se lanza `GameSpecSceneBuildError`.
 - Los nombres de entidades y el orden de salida son deterministas.
+- La Fase 4 no participa en este flujo de escena: solo produce `GameSpec2D`.
+
+## Deteccion de grilla de tiles
+
+La Fase 4 prueba candidatos de tamano de tile `8`, `16`, `24` y `32` por
+defecto.
+
+- El score favorece candidatos que dividen mejor la imagen y que muestran
+  consistencia de color en las celdas.
+- Si hay empate o la imagen no deja una grilla clara, se elige siempre el
+  candidato menor de forma determinista.
+- Se emiten advertencias estructuradas como `uniform_image` y
+  `no_clear_grid` cuando la inferencia es ambigua o poco confiable.
+- El resultado conserva scores por candidato para inspeccion interna.
 
 ## Mapeo semantico
 
@@ -76,6 +121,21 @@ Si el spec es invalido:
 - no se sobreescribe una salida previa;
 - no se publica un resultado parcial.
 
+Para Fase 4, la salida valida sigue siendo un `GameSpec2D` serializable.
+
+## Extraccion de celdas solidas
+
+La extraccion de tilemap en Fase 4 asume fixturas simples y controladas:
+
+- clasificacion por color del centro de la celda
+- color de fondo por defecto tomado del pixel `(0, 0)` cuando no se pasa uno
+- `solid_predicate` opcional para sobreescribir la regla por color
+- celdas solidas emitidas en orden fila-major
+
+Si la imagen no produce celdas solidas, se registra `no_solid_tiles`.
+La advertencia no invalida el spec por si sola; solo informa que el tilemap
+extraido quedo vacio.
+
 ## Dependencias
 
 No hay dependencias CV opcionales obligatorias.
@@ -100,6 +160,7 @@ print(report.semantic_mapping)
 
 - No lee imagenes crudas.
 - No existe CLI para analisis de imagen o inferencia visual.
+- No existe aun comando CLI oficial para image-to-gamespec.
 - La CLI solo cubre `vision spec validate` y `vision build-scene`.
 - No hay inferencia CV en este paso.
 - El builder solo trabaja con el contrato `GameSpec2D` existente.
@@ -107,15 +168,16 @@ print(report.semantic_mapping)
   componentes nuevos de escena.
 - Si el entorno o dependencias nativas imprimen ruido de arranque en stderr, el
   contrato relevante sigue siendo el JSON parseable de stdout.
+- Esta fase no cubre texturas arbitrarias, atlas ni deteccion visual general.
 
 ## Validacion de fase
 
 Comandos relevantes:
 
 ```bash
-py -m unittest tests.test_vision_cli_contract tests.test_motor_cli_contract -v
+py -m unittest tests.test_vision_tile_grid_detector tests.test_vision_tilemap_reconstructor -v
 py -m unittest tests.test_vision_gamespec2d tests.test_vision_gamespec_to_scene -v
-py -m unittest tests.test_component_serialization_contracts tests.test_official_contract_regression -v
+py -m unittest tests.test_vision_cli_contract -v
 py -m motor doctor --project . --json
 ```
 
@@ -124,13 +186,20 @@ py -m motor doctor --project . --json
 Si esta fase introduce una regresion, revertir en este orden:
 
 1. retirar `docs/vision/image_to_platformer_pipeline.md`
-2. revertir `engine/vision/gamespec_to_scene.py`
-3. revertir `engine/vision/semantic_prefabs.py`
-4. revertir `engine/vision/__init__.py`
+2. revertir `engine/vision/tilemap_reconstructor.py`
+3. revertir `engine/vision/tile_extractor.py`
+4. revertir `engine/vision/tile_grid_detector.py`
+5. revertir `engine/vision/image_loader.py`
+6. revertir el builder de Fase 3 si la regresion toca el flujo GameSpec2D -> Scene
 
-Mantener `GameSpec2D` como contrato experimental independiente hasta la Fase 3.
+Mantener `GameSpec2D` y la pipeline de imagen como contrato experimental
+independiente del core.
+
+La regresion documental se considera resuelta si el doc vuelve a reflejar solo
+el alcance realmente implementado.
 
 ## Siguiente fase
 
-La siguiente fase conecta este builder con la CLI oficial. Hasta entonces, el
-pipeline permanece como tooling interno de Python.
+La siguiente fase puede exponer o ampliar el flujo de image-to-gamespec, pero
+solo cuando exista una decision explicita sobre CLI y formato de entrada.
+Hasta entonces, el pipeline permanece como tooling interno de Python.
