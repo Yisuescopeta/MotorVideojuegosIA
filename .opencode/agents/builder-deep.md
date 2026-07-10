@@ -4,7 +4,7 @@ description: >-
   and approved TEST CONTRACT, runs allowed focused checks, and reports
   files/results.
 mode: subagent
-model: openai/gpt-5.6-sol
+model: openai/gpt-5.5
 temperature: 0.3
 permission:
   read: allow
@@ -33,7 +33,7 @@ permission:
 
 ## Variant Profile
 
-Deep implementation variant of `builder`. Model: `openai/gpt-5.6-sol`. Expected
+Deep implementation variant of `builder`. Model: `openai/gpt-5.5`. Expected
 reasoning: high. Use for implementation in critical zones, delicate refactors
 and high-risk changes. It replicates the base agent and keeps the same output
 contract. It cannot bypass the TEST CONTRACT. Empty output or non-parseable

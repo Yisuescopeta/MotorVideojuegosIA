@@ -3,9 +3,9 @@ description: >-
   Godot source analyzer. Navega el código fuente de Godot (C++, GDScript, módulos)
   y extrae contratos de features: propósito, datos, lifecycle, API pública, edge cases.
   Cataloga por subsistema (2D, physics, animation, rendering, input, audio, resources).
-  Read-only. Usa GPT-5.6 Sol para entender código C++ complejo.
+  Read-only. Usa Pro Max para entender código C++ complejo.
 mode: subagent
-model: openai/gpt-5.6-sol
+model: opencode-go/deepseek-v4-pro
 temperature: 0.2
 permission:
   read: allow

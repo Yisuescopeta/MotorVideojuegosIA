@@ -3,7 +3,7 @@ description: >-
   Read-only reconnaissance agent. Maps architecture, conventions, risks,
   validation commands, and concrete entry points before planning or implementation.
 mode: subagent
-model: openai/gpt-5.6-terra
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow

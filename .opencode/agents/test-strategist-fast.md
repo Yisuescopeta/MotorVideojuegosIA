@@ -3,7 +3,7 @@ description: >-
   Fast test contract strategist. Designs the TEST CONTRACT before implementation
   for simple tasks. Read-only. Does not validate final completion.
 mode: subagent
-model: openai/gpt-5.6-luna
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow
@@ -29,7 +29,7 @@ permission:
 
 ## Variant Profile
 
-Fast reasoning variant of `test-strategist`. Model: `openai/gpt-5.6-luna`.
+Fast reasoning variant of `test-strategist`. Model: `openai/gpt-5.4-mini`.
 Expected reasoning: medium. Use for docs-only trivial tasks, simple smoke tests
 and minor tooling changes. It replicates the base agent and keeps the same
 output contract. It cannot bypass the TEST CONTRACT. Empty output or

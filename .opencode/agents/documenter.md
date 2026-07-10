@@ -4,7 +4,7 @@ description: >-
   per documentation_governance.md rules, and writes/updates them. Follows docs layer
   separation strictly. Never edits code — only docs.
 mode: subagent
-model: openai/gpt-5.6-luna
+model: openai/gpt-5.4-mini
 temperature: 0.1
 permission:
   read: allow

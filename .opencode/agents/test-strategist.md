@@ -3,7 +3,7 @@ description: >-
   Test contract strategist. Designs the TEST CONTRACT before implementation.
   Read-only. Does not validate final completion.
 mode: subagent
-model: openai/gpt-5.6-terra
+model: openai/gpt-5.5
 temperature: 0.1
 permission:
   read: allow
@@ -29,7 +29,7 @@ permission:
 
 ## Variant Profile
 
-Standard reasoning variant. Model: `openai/gpt-5.6-terra`. Expected reasoning:
+Standard reasoning variant. Model: `openai/gpt-5.5`. Expected reasoning:
 high. Use for normal bugfixes, small features and localized observable changes.
 Keep the same output contract as all `test-strategist-*` variants. Empty output
 or non-parseable output is invalid.

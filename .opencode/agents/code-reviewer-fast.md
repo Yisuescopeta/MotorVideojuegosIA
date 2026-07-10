@@ -3,7 +3,7 @@ description: >-
   Fast code reviewer. Reviews simple docs or mechanical changes for correctness,
   project conventions and Test Quality / Test Truth. Read-only.
 mode: subagent
-model: openai/gpt-5.6-terra
+model: openai/gpt-5.4
 temperature: 0.1
 permission:
   read: allow
@@ -31,7 +31,7 @@ permission:
 
 ## Variant Profile
 
-Fast review variant of `code-reviewer`. Model: `openai/gpt-5.6-terra`. Expected
+Fast review variant of `code-reviewer`. Model: `openai/gpt-5.4`. Expected
 reasoning: medium. Use for simple docs and mechanical changes. It replicates
 the base agent and keeps the same output contract. It cannot bypass the TEST
 CONTRACT. Empty output or non-parseable output is invalid.

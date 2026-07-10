@@ -4,7 +4,7 @@ description: >-
   and approved TEST CONTRACT, runs allowed focused checks, and reports
   files/results.
 mode: subagent
-model: openai/gpt-5.6-luna
+model: openai/gpt-5.4-mini
 temperature: 0.3
 permission:
   read: allow
@@ -33,7 +33,7 @@ permission:
 
 ## Variant Profile
 
-Fast implementation variant of `builder`. Model: `openai/gpt-5.6-luna`.
+Fast implementation variant of `builder`. Model: `openai/gpt-5.4-mini`.
 Expected reasoning: medium. Use for docs, fixtures, mechanical changes and
 simple smoke tests. It replicates the base agent and keeps the same output
 contract. It cannot bypass the TEST CONTRACT. Empty output or non-parseable
