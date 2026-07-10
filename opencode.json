@@ -4,7 +4,7 @@
     "queen": {
       "description": "Reina orquestadora read-only. Solo delega. Ciclo: RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE.",
       "mode": "primary",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.2,
       "permission": {
         "read": "allow",
@@ -51,7 +51,7 @@
     "planner": {
       "description": "Implementation plan designer. Read-only. Produces structured JSON plans.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -65,7 +65,7 @@
     "planner-fast": {
       "description": "Fast implementation plan designer. Read-only. Produces structured JSON plans for simple tasks.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-luna",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -79,7 +79,7 @@
     "planner-deep": {
       "description": "Deep implementation plan designer. Read-only. Produces structured JSON plans for complex or critical tasks.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -93,7 +93,7 @@
     "builder": {
       "description": "Code implementer. Writes changes, runs allowed validation commands, reports results.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.3,
       "permission": {
         "read": "allow",
@@ -117,7 +117,7 @@
     "builder-fast": {
       "description": "Fast code implementer. Writes scoped simple/mechanical changes from approved plan and TEST CONTRACT.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-luna",
       "temperature": 0.3,
       "permission": {
         "read": "allow",
@@ -141,7 +141,7 @@
     "builder-deep": {
       "description": "Deep code implementer. Writes scoped high-risk changes from approved plan and TEST CONTRACT.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.3,
       "permission": {
         "read": "allow",
@@ -165,7 +165,7 @@
     "code-reviewer": {
       "description": "Code quality review. Checks SOLID, security, conventions, engine rules. Read-only.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -188,7 +188,7 @@
     "code-reviewer-fast": {
       "description": "Fast code quality review. Read-only review for simple docs or mechanical changes.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -211,7 +211,7 @@
     "code-reviewer-deep": {
       "description": "Deep code quality review. Read-only review for architecture, invariants, contracts, tests and repeated failures.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -234,7 +234,7 @@
     "ai-friendliness": {
       "description": "AI-friendliness auditor. Scores 0-100 across serialization, API, docs, compliance.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -253,7 +253,7 @@
     "context-recon": {
       "description": "Read-only codebase reconnaissance. Maps architecture, conventions, risks, entry points.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -271,7 +271,7 @@
     "test-strategist-fast": {
       "description": "Fast test contract strategist. Designs TEST CONTRACT for simple tasks. Read-only; no final validation.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-luna",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -297,7 +297,7 @@
     "test-strategist-deep": {
       "description": "Deep test contract strategist. Designs TEST CONTRACT for complex or critical tasks. Read-only; no final validation.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -323,7 +323,7 @@
     "test-strategist": {
       "description": "Test contract strategist. Designs TEST CONTRACT before implementation. Read-only; no final validation.",
       "mode": "subagent",
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -349,7 +349,7 @@
     "validator": {
       "description": "Validation agent. Runs contract/lint/typecheck/doctor commands after implementation. Read-only with restricted bash.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-luna",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -378,7 +378,7 @@
     "godot-source-analyzer": {
       "description": "Godot source analyzer. Navigates Godot C++/GDScript source code and extracts feature contracts. Read-only.",
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4-pro",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.2,
       "permission": {
         "read": "allow",
@@ -398,7 +398,7 @@
     "godot-gap-analyzer": {
       "description": "Godot gap analyzer. Compares Godot features with motor, produces prioritized gap matrix. Read-only.",
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4-flash",
+      "model": "openai/gpt-5.6-terra",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -418,7 +418,7 @@
     "godot-adapter": {
       "description": "Godot feature adapter. Implements Godot features adapted to motor architecture. Read+Write.",
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4-pro",
+      "model": "openai/gpt-5.6-sol",
       "temperature": 0.3,
       "permission": {
         "read": "allow",
@@ -443,7 +443,7 @@
     "committer": {
       "description": "Git committer. Crea commits en espanol con staging explicito y validacion de alcance.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-luna",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -465,7 +465,7 @@
     "documenter": {
       "description": "Documentation writer. Reads git diff, maps changes to canonical docs per documentation_governance.md, writes docs. Never edits code.",
       "mode": "subagent",
-      "model": "openai/gpt-5.4-mini",
+      "model": "openai/gpt-5.6-luna",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -491,13 +491,13 @@
       "description": "Queen orchestrator: bounded, safe, model-routed, verifiable multi-agent programming flow",
       "template": "I want you to act as the QUEEN orchestrator agent. Follow this cycle exactly: RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE. Long Task cycle: LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK. UPDATE PLAN records AI AUDIT before advancing, blocking, or closing. Use Model Router after RECON and before TEST CONTRACT: Queen selects agent variants, not dynamic config edits. Not all subagents use the same model; select fast, standard or deep variants by complexity and risk. Commit only after TEST CONTRACT, docs, validation, review, and AI audit pass. Max cycles: 5.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
       "agent": "queen",
-      "model": "openai/gpt-5.5"
+      "model": "openai/gpt-5.6-sol"
     },
     "godot": {
       "description": "Godot analysis & adaptation: analiza codigo Godot, compara con el motor, implementa features adaptadas",
       "template": "I want you to act as the QUEEN orchestrator agent. This task requires Godot source code analysis and feature adaptation to OpenGame. Use the godot-source-analyzer, godot-gap-analyzer, and godot-adapter sub-agents as needed. Load the godot-feature-adapter skill for Godot-to-Motor mappings.\n\nUser task: $ARGUMENTS\n\nReference docs:\n- .opencode/agents/godot-source-analyzer.md\n- .opencode/agents/godot-gap-analyzer.md\n- .opencode/agents/godot-adapter.md\n- .agents/skills/godot-feature-adapter/SKILL.md",
       "agent": "queen",
-      "model": "opencode-go/deepseek-v4-pro"
+      "model": "openai/gpt-5.6-sol"
     }
   }
 }

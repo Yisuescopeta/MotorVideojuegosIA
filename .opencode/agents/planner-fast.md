@@ -3,7 +3,7 @@ description: >-
   Fast implementation planner. Produces structured plans from task, RECON and
   TEST CONTRACT for simple tasks. Read-only.
 mode: subagent
-model: openai/gpt-5.4-mini
+model: openai/gpt-5.6-luna
 temperature: 0.1
 permission:
   read: allow
@@ -26,7 +26,7 @@ permission:
 
 ## Variant Profile
 
-Fast reasoning variant of `planner`. Model: `openai/gpt-5.4-mini`. Expected
+Fast reasoning variant of `planner`. Model: `openai/gpt-5.6-luna`. Expected
 reasoning: medium. Use for simple tasks, docs and mechanical changes. It
 replicates the base agent and keeps the same output contract. It cannot bypass
 the TEST CONTRACT. Empty output or non-parseable output is invalid.

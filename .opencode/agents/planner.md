@@ -3,7 +3,7 @@ description: >-
   Implementation planner. Produces structured plans from task, RECON and TEST
   CONTRACT. Read-only.
 mode: subagent
-model: openai/gpt-5.5
+model: openai/gpt-5.6-terra
 temperature: 0.1
 permission:
   read: allow
@@ -26,7 +26,7 @@ permission:
 
 ## Variant Profile
 
-Standard reasoning variant. Model: `openai/gpt-5.5`. Expected reasoning:
+Standard reasoning variant. Model: `openai/gpt-5.6-terra`. Expected reasoning:
 high. Use for localized bugfixes, small features and normal refactors. Keep the
 same output contract as all `planner-*` variants. Empty output or non-parseable
 output is invalid.

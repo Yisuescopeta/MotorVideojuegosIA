@@ -2,9 +2,9 @@
 description: >-
   Godot gap analyzer. Compara features de Godot con el motor MotorVideojuegosIA,
   identifica qué está implementado y qué falta, prioriza por utilidad y viabilidad.
-  Produce gap matrix en JSON. Read-only. Usa Flash.
+  Produce gap matrix en JSON. Read-only. Usa GPT-5.6 Terra.
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: openai/gpt-5.6-terra
 temperature: 0.1
 permission:
   read: allow

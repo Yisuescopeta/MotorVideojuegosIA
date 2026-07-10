@@ -4,7 +4,7 @@ description: >-
   serialization, EngineAPI, runtime, physics, export pipeline and repeated
   failure cycles. Read-only.
 mode: subagent
-model: openai/gpt-5.5
+model: openai/gpt-5.6-sol
 temperature: 0.1
 permission:
   read: allow
@@ -32,7 +32,7 @@ permission:
 
 ## Variant Profile
 
-Deep review variant of `code-reviewer`. Model: `openai/gpt-5.5`. Expected
+Deep review variant of `code-reviewer`. Model: `openai/gpt-5.6-sol`. Expected
 reasoning: xhigh. Use for architecture, tests, invariants, security,
 serialization, EngineAPI, runtime, physics, export pipeline or any second
 iteration after failure. It replicates the base agent and keeps the same output

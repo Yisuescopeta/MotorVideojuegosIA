@@ -4,7 +4,7 @@ description: >-
   CONTRACT antes de implementar, valida Definition of Done y solo permite commit
   al final.
 mode: primary
-model: openai/gpt-5.5
+model: openai/gpt-5.6-sol
 temperature: 0.2
 permission:
   read: allow

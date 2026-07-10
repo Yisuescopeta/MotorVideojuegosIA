@@ -3,7 +3,7 @@ description: >-
   Code implementer. Writes scoped changes only from approved plan and approved
   TEST CONTRACT, runs allowed focused checks, and reports files/results.
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.6-terra
 temperature: 0.3
 permission:
   read: allow
@@ -32,7 +32,7 @@ permission:
 
 ## Variant Profile
 
-Standard implementation variant. Model: `openai/gpt-5.4`. Expected reasoning:
+Standard implementation variant. Model: `openai/gpt-5.6-terra`. Expected reasoning:
 high. Use for normal implementation work. Keep the same output contract as all
 `builder-*` variants. Never bypass the TEST CONTRACT. Empty output or
 non-parseable output is invalid.

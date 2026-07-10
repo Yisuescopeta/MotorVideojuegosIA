@@ -3,7 +3,7 @@ description: >-
   Validation agent. Runs final validation against TEST CONTRACT after
   implementation and documentation. Read-only with restricted bash.
 mode: subagent
-model: openai/gpt-5.4-mini
+model: openai/gpt-5.6-luna
 temperature: 0.1
 permission:
   read: allow

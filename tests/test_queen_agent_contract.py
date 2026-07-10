@@ -78,25 +78,35 @@ QUEEN_FLOW_AGENTS = [
     "committer",
 ]
 EXPECTED_QUEEN_FLOW_MODELS = {
-    "queen": "openai/gpt-5.5",
-    "context-recon": "openai/gpt-5.4-mini",
-    "validator": "openai/gpt-5.4-mini",
-    "documenter": "openai/gpt-5.4-mini",
-    "committer": "openai/gpt-5.4-mini",
-    "ai-friendliness": "openai/gpt-5.4",
-    "test-strategist": "openai/gpt-5.5",
-    "test-strategist-fast": "openai/gpt-5.4-mini",
-    "test-strategist-deep": "openai/gpt-5.5",
-    "planner": "openai/gpt-5.5",
-    "planner-fast": "openai/gpt-5.4-mini",
-    "planner-deep": "openai/gpt-5.5",
-    "builder": "openai/gpt-5.4",
-    "builder-fast": "openai/gpt-5.4-mini",
-    "builder-deep": "openai/gpt-5.5",
-    "code-reviewer": "openai/gpt-5.5",
-    "code-reviewer-fast": "openai/gpt-5.4",
-    "code-reviewer-deep": "openai/gpt-5.5",
+    "queen": "openai/gpt-5.6-sol",
+    "context-recon": "openai/gpt-5.6-terra",
+    "validator": "openai/gpt-5.6-luna",
+    "documenter": "openai/gpt-5.6-luna",
+    "committer": "openai/gpt-5.6-luna",
+    "ai-friendliness": "openai/gpt-5.6-terra",
+    "test-strategist": "openai/gpt-5.6-terra",
+    "test-strategist-fast": "openai/gpt-5.6-luna",
+    "test-strategist-deep": "openai/gpt-5.6-sol",
+    "planner": "openai/gpt-5.6-terra",
+    "planner-fast": "openai/gpt-5.6-luna",
+    "planner-deep": "openai/gpt-5.6-sol",
+    "builder": "openai/gpt-5.6-terra",
+    "builder-fast": "openai/gpt-5.6-luna",
+    "builder-deep": "openai/gpt-5.6-sol",
+    "code-reviewer": "openai/gpt-5.6-terra",
+    "code-reviewer-fast": "openai/gpt-5.6-terra",
+    "code-reviewer-deep": "openai/gpt-5.6-sol",
 }
+EXPECTED_GODOT_MODELS = {
+    "godot-source-analyzer": "openai/gpt-5.6-sol",
+    "godot-gap-analyzer": "openai/gpt-5.6-terra",
+    "godot-adapter": "openai/gpt-5.6-sol",
+}
+LEGACY_REINA_MODELS = (
+    "openai/gpt-5.5",
+    "openai/gpt-5.4",
+    "openai/gpt-5.4-mini",
+)
 QUEEN_FLOW_PROMPT_FILES = {
     "queen": AGENTS_DIR / "queen.md",
     "context-recon": AGENTS_DIR / "context-recon.md",
@@ -117,6 +127,12 @@ QUEEN_FLOW_PROMPT_FILES = {
     "ai-friendliness": AGENTS_DIR / "ai-friendliness.md",
     "committer": AGENTS_DIR / "committer.md",
     "queen-command": ROOT / ".opencode" / "commands" / "queen.md",
+}
+GODOT_PROMPT_FILES = {
+    "godot-source-analyzer": AGENTS_DIR / "godot-source-analyzer.md",
+    "godot-gap-analyzer": AGENTS_DIR / "godot-gap-analyzer.md",
+    "godot-adapter": AGENTS_DIR / "godot-adapter.md",
+    "godot-command": ROOT / ".opencode" / "commands" / "godot.md",
 }
 EXPECTED_SUBAGENTS = {
     "ai-friendliness",
@@ -581,10 +597,24 @@ class QueenAgentContractTests(unittest.TestCase):
         for agent_name, expected_model in EXPECTED_QUEEN_FLOW_MODELS.items():
             self.assertEqual(self.agent_config[agent_name]["model"], expected_model, msg=agent_name)
 
+    def test_godot_agent_models_match_policy(self) -> None:
+        for agent_name, expected_model in EXPECTED_GODOT_MODELS.items():
+            self.assertEqual(self.agent_config[agent_name]["model"], expected_model, msg=agent_name)
+        self.assertEqual(self.config["command"]["godot"]["model"], "openai/gpt-5.6-sol")
+
     def test_model_router_frontmatter_matches_config(self) -> None:
         for agent_name, expected_model in EXPECTED_QUEEN_FLOW_MODELS.items():
             prompt_frontmatter = frontmatter(read_text(AGENTS_DIR / f"{agent_name}.md"))
             self.assertIn(f"model: {expected_model}", prompt_frontmatter, msg=agent_name)
+
+    def test_godot_frontmatter_matches_config(self) -> None:
+        for prompt_name, prompt_path in GODOT_PROMPT_FILES.items():
+            expected_model = (
+                "openai/gpt-5.6-sol"
+                if prompt_name == "godot-command"
+                else EXPECTED_GODOT_MODELS[prompt_name]
+            )
+            self.assertIn(f"model: {expected_model}", frontmatter(read_text(prompt_path)), msg=prompt_name)
 
     def test_queen_documents_model_router(self) -> None:
         for phrase in (
@@ -712,12 +742,9 @@ class QueenAgentContractTests(unittest.TestCase):
             )
         self.assertNotRegex(self.config["command"]["queen"]["model"], r"^opencode-go/deepseek-")
 
-        for godot_agent in ("godot-source-analyzer", "godot-gap-analyzer", "godot-adapter"):
-            self.assertRegex(
-                self.agent_config[godot_agent]["model"],
-                r"^opencode-go/deepseek-",
-                msg=godot_agent,
-            )
+        for godot_agent, expected_model in EXPECTED_GODOT_MODELS.items():
+            self.assertEqual(self.agent_config[godot_agent]["model"], expected_model, msg=godot_agent)
+        self.assertEqual(self.config["command"]["godot"]["model"], "openai/gpt-5.6-sol")
 
     def test_queen_flow_frontmatter_matches_expected_model(self) -> None:
         for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
@@ -734,14 +761,23 @@ class QueenAgentContractTests(unittest.TestCase):
             )
 
     def test_queen_flow_has_no_deepseek_model_drift(self) -> None:
-        for prompt_name, prompt_path in QUEEN_FLOW_PROMPT_FILES.items():
+        for prompt_name, prompt_path in {**QUEEN_FLOW_PROMPT_FILES, **GODOT_PROMPT_FILES}.items():
             self.assertNotIn("opencode-go/deepseek", read_text(prompt_path), msg=prompt_name)
 
-        queen_flow_config = {
-            "agent": {name: self.agent_config[name] for name in QUEEN_FLOW_AGENTS},
-            "command": {"queen": self.config["command"]["queen"]},
+        active_reina_config = {
+            "agent": {
+                name: self.agent_config[name]
+                for name in (*QUEEN_FLOW_AGENTS, *EXPECTED_GODOT_MODELS)
+            },
+            "command": {
+                "queen": self.config["command"]["queen"],
+                "godot": self.config["command"]["godot"],
+            },
         }
-        self.assertNotIn("opencode-go/deepseek", json.dumps(queen_flow_config), msg="opencode.json")
+        active_reina_config_json = json.dumps(active_reina_config)
+        self.assertNotIn("opencode-go/deepseek", active_reina_config_json, msg="opencode.json")
+        for legacy_model in LEGACY_REINA_MODELS:
+            self.assertNotIn(legacy_model, active_reina_config_json, msg=legacy_model)
 
     def test_queen_can_block_for_clarification(self) -> None:
         question_perm = self.agent_config["queen"]["permission"].get("question")

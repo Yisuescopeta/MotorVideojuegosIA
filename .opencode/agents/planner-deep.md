@@ -3,7 +3,7 @@ description: >-
   Deep implementation planner. Produces structured plans from task, RECON and
   TEST CONTRACT for complex or critical tasks. Read-only.
 mode: subagent
-model: openai/gpt-5.5
+model: openai/gpt-5.6-sol
 temperature: 0.1
 permission:
   read: allow
@@ -26,7 +26,7 @@ permission:
 
 ## Variant Profile
 
-Deep reasoning variant of `planner`. Model: `openai/gpt-5.5`. Expected
+Deep reasoning variant of `planner`. Model: `openai/gpt-5.6-sol`. Expected
 reasoning: xhigh. Use for architecture, public contracts, serialization,
 runtime/editor, physics, export pipeline, migrations, critical tasks or repeated
 failure cycles. It replicates the base agent and keeps the same output contract.

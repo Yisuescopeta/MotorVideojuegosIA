@@ -2,10 +2,9 @@
 description: >-
   Godot feature adapter. Implementa features de Godot adaptadas al motor.
   Traduce Node→Entity, Resource→Dato serializable, Signal→EventBus, _process→System.
-  Sigue patrón unity-feature-adapter pero para Godot. Usa Pro Max para features
-  complejas, Flash para simples.
+  Sigue patrón unity-feature-adapter pero para Godot. Usa GPT-5.6 Sol.
 mode: subagent
-model: opencode-go/deepseek-v4-pro
+model: openai/gpt-5.6-sol
 temperature: 0.3
 permission:
   read: allow

@@ -4,7 +4,7 @@ description: >-
   by AI agents without human intervention. Scores 0-100 across 4 dimensions.
   Also checks compliance with engine contracts. Read-only.
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.6-terra
 temperature: 0.1
 permission:
   read: allow

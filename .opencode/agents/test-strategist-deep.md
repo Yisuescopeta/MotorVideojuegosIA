@@ -3,7 +3,7 @@ description: >-
   Deep test contract strategist. Designs the TEST CONTRACT before implementation
   for complex or critical tasks. Read-only. Does not validate final completion.
 mode: subagent
-model: openai/gpt-5.5
+model: openai/gpt-5.6-sol
 temperature: 0.1
 permission:
   read: allow
@@ -29,7 +29,7 @@ permission:
 
 ## Variant Profile
 
-Deep reasoning variant of `test-strategist`. Model: `openai/gpt-5.5`.
+Deep reasoning variant of `test-strategist`. Model: `openai/gpt-5.6-sol`.
 Expected reasoning: xhigh. Use for public contracts, serialization,
 SceneManager, EngineAPI, runtime/editor, physics, export pipeline or repeated
 failure cycles. It replicates the base agent and keeps the same output contract.
