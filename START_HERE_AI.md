@@ -287,6 +287,7 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Vision
 
+- `vision:annotate`: Generate a deterministic PPM debug overlay for a GameSpec2D image
 - `vision:build-scene`: Build a scene from a valid experimental GameSpec2D JSON file
 - `vision:spec:validate`: Validate an experimental GameSpec2D JSON file
 

@@ -100,6 +100,21 @@ class CapabilityRegistryBuilder:
             tags=["vision", "gamespec", "platformer", "experimental"],
         ))
 
+        self._add(Capability(
+            id="vision:annotate",
+            summary="Generate a deterministic PPM debug overlay for a GameSpec2D image",
+            mode="both",
+            api_methods=["CapabilityRegistry.cmd_vision_annotate"],
+            cli_command="motor vision annotate <image_path> --gamespec <gamespec_path> --out <overlay_path> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Annotate a PPM image with GameSpec2D grid, cells and entity markers",
+                api_calls=[{"method": "CapabilityRegistry.cmd_vision_annotate", "args": {}}],
+                expected_outcome="Writes a same-size PPM overlay and returns dimensions, annotation_counts, warning_count and format",
+            ),
+            notes="Stdlib-only PPM overlay helper; no PIL/Pillow/cv2/numpy/render/editor dependency. Refuses to overwrite output.",
+            tags=["vision", "gamespec", "debug", "overlay", "experimental"],
+        ))
+
     def _register_export_capabilities(self) -> None:
         self._add(Capability(
             id="export:presets:list",

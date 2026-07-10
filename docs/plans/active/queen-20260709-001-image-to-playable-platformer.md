@@ -22,36 +22,22 @@ Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGa
 
 ## Current phase
 
-- Name: Phase 6 — Add optional Supervision adapter
-- phase_status: completed
+- Name: Phase 8 — Render comparison
+- phase_status: blocked
 - task_status: partial
-- Decision: continue_next_phase
+- Decision: block
 - Allowed files: `engine/vision/**`, focused tests, experiment docs, this active plan
-- Forbidden files: protected modules, canonical docs, serialization/runtime/editor/physics changes, direct Scene JSON mutation
-- Test contract: test-contract-queen-20260709-001-phase-6-supervision-adapter
-- Verdict: sufficient
-- Import smoke correction contract: test-contract-queen-20260709-001-phase-6-supervision-adapter-import-smoke-correction
-- Import smoke verdict: sufficient
-- Files changed in Phase 6:
-  - `engine/vision/detection_result.py`
-  - `engine/vision/supervision_adapter.py`
-  - `tests/test_vision_supervision_adapter.py`
-  - `docs/vision/image_to_platformer_pipeline.md`
-  - `docs/plans/active/queen-20260709-001-image-to-playable-platformer.md`
-- Validator checks passed:
-  - `py -m unittest tests.test_vision_supervision_adapter tests.test_vision_gamespec2d -v`
-  - `py -m motor doctor --project . --json`
-  - `py -m unittest tests.test_vision_gamespec_to_scene tests.test_vision_cli_contract tests.test_vision_build_platformer_cli -v`
-  - `py -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence -v`
-  - `git status --short`
-- Review: approved, must_fix 0, should_fix 2 (bbox missing/non-sequence error type; eager unknown_label_policy validation future hardening)
-- AI audit: approved/pass, score 93, must_fix 0
-- Note: exact `python -c` import smoke was blocked by tool policy; correction contract accepted focused unittest import-safety + `motor doctor` as a non-relaxing equivalent
-- Known limitations: supervision-native object conversion not implemented without optional dependency; adapter is internal/Python only; no EngineAPI/CLI surface for adapter; tile_size/option hardening future work
-- Acceptance checks: optional path remains optional, fallback path remains available, no protected contract drift, no dependency promotion
-- Docs affected: `docs/vision/image_to_platformer_pipeline.md`, this active plan
-- Risks: dependency creep, optional-path ambiguity, scope bleed into protected contracts
-- Next phase: Phase 7 — Add debug overlay generation
+- Forbidden files: protected modules, canonical docs, render core/editor/runtime/EngineAPI surfaces, direct Scene JSON mutation
+- Test contract: test-contract-queen-20260709-001-phase-8-render-comparison
+- Verdict: insufficient
+- Blockers:
+  - no public or vision-local API exists to capture rendered pixels;
+  - allowed scope excludes render core/editor/runtime/EngineAPI surfaces needed for real capture;
+  - no dedicated render-comparison fixture or test exists.
+- Recommended unblock options:
+  - rescope to offline vision-only comparison against the deterministic overlay/output;
+  - explicitly allow a headless render-capture contract and fixture without protected edits.
+- Next phase: blocked until clarified
 
 ## Blocked conditions
 
@@ -195,23 +181,27 @@ Risks: dependency creep, optional-path ambiguity, scope bleed into protected con
 
 ### Phase 7 — Debug overlay
 
-Status: pending
-Goal: expose analysis and projection state in an overlay.
-Allowed files: `engine/vision/**`, focused tests, experiment docs
-Forbidden files: protected modules, canonical docs
-Acceptance checks: overlay is optional and non-invasive
-Docs affected: experimental docs only
-Risks: UI bleed into core contracts
+Status: completed
+Goal: expose analysis and projection state in a deterministic PPM debug overlay.
+Allowed files: `engine/vision/**`, focused tests, `docs/cli.md`, `docs/vision/image_to_platformer_pipeline.md`, `docs/agents.md`, `START_HERE_AI.md`, this active plan
+Forbidden files: protected modules, direct Scene JSON mutation, serialization/runtime/editor/physics changes
+Acceptance checks: overlay is optional and non-invasive; PPM-only; stdlib-only; no render/editor/runtime/EngineAPI integration; no text rendering; no partial output on failure
+Docs affected: `docs/cli.md`, `docs/vision/image_to_platformer_pipeline.md`, `docs/agents.md`, `START_HERE_AI.md`, this active plan
+Evidence: implementation landed as stdlib-only PPM debug overlay helper plus CLI `motor vision annotate`, registry `vision:annotate`, tests, and docs; review cycle 1 flagged non-atomic output create and cycle 2 fixed it with exclusive `open("x")`/equivalent and safe cleanup; validator cycle 2 passed focused vision, CLI, regression, governance, registry audits, and `motor doctor`; review cycle 2 approved with no findings; AI audit approved with score 90.
+Risks: UI bleed into core contracts; mistaken assumptions about render/runtime integration; PPM-only, no text rendering, diagnostic-only output.
 
 ### Phase 8 — Render comparison
 
-Status: pending
+Status: blocked
 Goal: compare expected image cues with rendered output.
 Allowed files: `engine/vision/**`, focused tests, experiment docs
 Forbidden files: protected modules, canonical docs
 Acceptance checks: comparison is reproducible and headless-capable
 Docs affected: experimental docs only
-Risks: false confidence from noisy comparisons
+Decision: block
+Blockers: no public or vision-local API to capture rendered pixels; allowed scope excludes render core/editor/runtime/EngineAPI surfaces needed for real capture; no dedicated render-comparison fixture/test exists.
+Recommended unblock options: rescope to offline vision-only comparison; or explicitly allow a headless render-capture contract and fixture without protected edits.
+Risks: false confidence from noisy comparisons; scope drift if render capture is forced through protected surfaces
 
 ### Phase 9 — Playtest smoke
 
@@ -288,3 +278,5 @@ Risks: premature closure
 - 2026-07-10: Phase 4 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 5 advanced to `vision build-platformer` MVP without object detection ML.
 - 2026-07-10: Phase 5 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 6 advanced to optional Supervision adapter.
 - 2026-07-10: Phase 6 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 7 advanced to debug overlay generation.
+- 2026-07-10: Phase 7 gate closed after validator, review cycle 2, and AI audit approval; decision set to continue_next_phase; phase 8 remains render comparison.
+- 2026-07-10: Phase 8 RECON blocked; decision set to block; unblock requires scope clarification or a headless render-capture contract/fixture.

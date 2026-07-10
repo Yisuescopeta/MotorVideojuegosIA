@@ -217,6 +217,22 @@ Reglas para agentes:
 El comando escribe el sidecar `GameSpec2D`, construye la escena y falla sin
 dejar salidas parciales si algo rompe el pipeline.
 
+### `motor vision annotate <image_path> --gamespec <gamespec_path> --out <overlay_path>`
+
+Diagnostico experimental para inspeccionar una imagen PPM controlada junto con
+su `GameSpec2D` validado.
+
+Reglas para agentes:
+
+- usa solo PPM `P3`/`P6` de prueba;
+- trata el overlay como PPM `P3` determinista y solo diagnostico;
+- no asumas integracion con render, editor, runtime ni `EngineAPI`;
+- el overlay solo marca grid, celdas y entidades; no hay texto renderizado;
+- si `--out` ya existe, el comando rechaza overwrite;
+- si falla, no deja salida parcial;
+- espera en JSON `overlay_path`, `source`, `gamespec`, `dimensions`,
+  `annotation_counts`, `warning_count` y `format`.
+
 Para tooling/editor sobre un runtime ya vinculado, `EngineAPI` tambien expone
 `list_export_entry_scenes()` y `build_export_for_scene(name, entry_scene)`.
 Ese override de `entry_scene` vive solo en memoria para el build actual y no

@@ -580,6 +580,38 @@ Errores:
 - salida existente -> rechazo de overwrite por defecto;
 - no hay analisis directo de imagen cruda en este comando.
 
+### `motor vision annotate <image_path> --gamespec <gamespec_path> --out <overlay_path>`
+
+Genera un overlay PPM determinista y de solo diagnostico a partir de una
+imagen PPM controlada y un `GameSpec2D` valido.
+
+```bash
+py -m motor vision annotate tests/fixtures/vision/simple_platformer.ppm --gamespec examples/vision/simple_platformer.gamespec.json --out overlay.ppm --project . --json
+```
+
+Contrato:
+
+- entrada soportada: solo PPM `P3`/`P6` de prueba;
+- salida: PPM `P3` determinista;
+- implementacion: stdlib-only, sin integracion con render, editor, runtime ni `EngineAPI`;
+- overlay: solo marcadores de grid, celdas y entidades; no hay texto renderizado;
+- escritura segura: si `--out` ya existe, el comando rechaza overwrite;
+- fallo seguro: si valida mal la imagen o el `GameSpec2D`, no deja salida parcial.
+
+Salida JSON: envelope oficial con `success`, `message` y `data`.
+En exito, `data` incluye como minimo:
+
+- `overlay_path`
+- `source`
+- `gamespec`
+- `dimensions`
+- `annotation_counts`
+- `warning_count`
+- `format`
+
+`annotation_counts` resume `grid_lines`, `solid_cells`, `decorative_cells` y
+`entities`. `format` actualmente es `PPM_P3`.
+
 ### `motor vision build-platformer <image_path> --out <scene_path>`
 
 Convierte una imagen PPM controlada en un `GameSpec2D` y luego construye la

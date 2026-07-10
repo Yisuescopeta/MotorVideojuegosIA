@@ -43,6 +43,7 @@ from motor.platformer_scaffold import (
 )
 
 from engine.vision.gamespec2d import GameSpec2D, GameSpecValidationError
+from engine.vision.debug_overlay import create_debug_overlay
 from engine.vision.gamespec_to_scene import build_scene_from_gamespec2d
 from engine.vision.image_to_platformer import build_platformer_from_image, default_gamespec_path
 
@@ -186,6 +187,28 @@ def cmd_vision_build_platformer(image_path: Path, out_path: Path, project_path: 
         return _output(False, f"Platformer image build failed: {exc}", data, json_output)
     except Exception as exc:
         return _output(False, f"Platformer image build failed: {exc}", data, json_output)
+
+
+def cmd_vision_annotate(image_path: Path, gamespec_path: Path, out_path: Path, project_path: Path, json_output: bool) -> int:
+    """Generate a deterministic PPM debug overlay for a GameSpec2D image."""
+    data: Dict[str, Any] = {
+        "overlay_path": out_path.as_posix(),
+        "source": image_path.as_posix(),
+        "gamespec": gamespec_path.as_posix(),
+        "dimensions": {},
+        "annotation_counts": {},
+        "warning_count": 0,
+        "format": "PPM_P3",
+    }
+    try:
+        _ensure_project(project_path)
+        report = create_debug_overlay(image_path, gamespec_path, out_path)
+        data.update(report.to_dict())
+        return _output(True, "Vision debug overlay generated", data, json_output)
+    except (FileExistsError, FileNotFoundError, ValueError, GameSpecValidationError, ProjectNotFoundError) as exc:
+        return _output(False, f"Vision debug overlay failed: {exc}", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Vision debug overlay failed: {exc}", data, json_output)
 
 
 def _ensure_project(project_path: Path) -> None:

@@ -166,6 +166,7 @@ from motor.cli_core import (
     cmd_ui_preset_add,
     cmd_ui_preset_list,
     cmd_ui_create_text,
+    cmd_vision_annotate,
     cmd_vision_build_scene,
     cmd_vision_build_platformer,
     cmd_vision_spec_validate,
@@ -415,6 +416,19 @@ Documentation:
         help="Path to project directory (default: current directory)"
     )
     vision_build_platformer_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    vision_annotate_parser = vision_subparsers.add_parser(
+        "annotate",
+        help="Generate a deterministic PPM debug overlay for a GameSpec2D image",
+    )
+    vision_annotate_parser.add_argument("image_path", help="Path to supported input image (PPM P3/P6)")
+    vision_annotate_parser.add_argument("--gamespec", dest="gamespec_path", required=True, help="Path to GameSpec2D JSON file")
+    vision_annotate_parser.add_argument("--out", dest="out_path", required=True, help="Output PPM overlay path")
+    vision_annotate_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    vision_annotate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === editor ===
     editor_parser = subparsers.add_parser(
@@ -2301,6 +2315,14 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
                 gamespec_out=Path(parsed.gamespec_out) if parsed.gamespec_out else None,
+            )
+        if parsed.vision_subcommand == "annotate":
+            return cmd_vision_annotate(
+                image_path=Path(parsed.image_path),
+                gamespec_path=Path(parsed.gamespec_path),
+                out_path=Path(parsed.out_path),
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
             )
 
     # === editor ===

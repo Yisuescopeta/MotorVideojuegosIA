@@ -4,7 +4,8 @@ Estado: `experimental/tooling` (internal).
 
 Este documento cubre la Fase 5: una imagen PPM controlada se convierte en un
 `GameSpec2D` sidecar y luego en una escena de plataformas mediante el builder
-publico.
+publico. La Fase 7 añade un overlay PPM de diagnostico para inspeccionar la
+proyeccion sin tocar render, editor, runtime ni `EngineAPI`.
 
 Implementacion: [`../../engine/vision/`](../../engine/vision/)
 
@@ -60,6 +61,31 @@ Puede usar `--gamespec-out` para fijar el sidecar.
 - No se modifican modulos protegidos del core.
 - El Scene JSON no se edita a mano para este flujo.
 
+## Fase 7 — Debug overlay PPM
+
+La fase de debug overlay genera un PPM determinista y solo diagnostico a partir
+de la imagen fuente y el `GameSpec2D` ya validado.
+
+- Implementacion stdlib-only.
+- Sin integracion con render, editor, runtime ni `EngineAPI`.
+- Sin texto renderizado; solo grid, celdas y marcadores de entidad.
+- Entrada soportada: PPM `P3`/`P6` de prueba.
+- Salida: PPM `P3`.
+- El comando `motor vision annotate <image_path> --gamespec <gamespec_path> --out <overlay_path> --project . --json` rechaza overwrite y falla sin dejar salida parcial.
+
+Salida estructurada minima:
+
+- `overlay_path`
+- `source`
+- `gamespec`
+- `dimensions`
+- `annotation_counts`
+- `warning_count`
+- `format`
+
+`annotation_counts` agrupa `grid_lines`, `solid_cells`, `decorative_cells` y
+`entities`. `warning_count` refleja las warnings del `GameSpec2D` cargado.
+
 ## Salida estructurada
 
 El JSON del comando expone, como minimo, estos campos top-level:
@@ -84,6 +110,9 @@ En exito:
 En fallo, los mismos campos se conservan cuando ya se pudieron inferir; cuando
 no, se devuelven con defaults o vacios y el error sigue siendo estructurado en
 `success=false` con `message` y `data`.
+
+Para la fase de overlay, el JSON expone `overlay_path`, `source`, `gamespec`,
+`dimensions`, `annotation_counts`, `warning_count` y `format`.
 
 ## Limitaciones
 
@@ -111,8 +140,10 @@ romper el flujo `GameSpec2D -> Scene` existente.
 Comandos relevantes:
 
 ```bash
+py -m unittest tests.test_vision_cli_contract -v
 py -m unittest tests.test_vision_build_platformer_cli -v
 py -m unittest tests.test_vision_cli_contract tests.test_vision_tilemap_reconstructor tests.test_vision_gamespec2d tests.test_vision_gamespec_to_scene -v
+py -m motor vision annotate tests/fixtures/vision/simple_platformer.ppm --gamespec examples/vision/simple_platformer.gamespec.json --out <temp> --project . --json
 py -m motor vision build-platformer tests/fixtures/vision/simple_platformer.ppm --out <temp> --project . --json
 py -m motor doctor --project . --json
 ```
