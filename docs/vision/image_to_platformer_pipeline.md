@@ -25,6 +25,21 @@ La automatizacion publica de esta fase es la CLI; no hay wrapper publico de
 `EngineAPI` todavia. La helper Python interna sigue siendo experimental y
 persiste usando rutas publicas de authoring.
 
+## Adapter de supervision (interno y opcional)
+
+Esta fase admite como contrato de entrada dicts normalizados o DTOs
+`DetectionResult` ya construidos por tooling externo. El adapter solo traduce
+esas detecciones a `GameSpec2D`.
+
+- `supervision` no es una dependencia requerida de OpenGame.
+- No hay instalacion obligatoria, API key, descarga de modelos ni red.
+- No hay inferencia ML, entrenamiento ni analisis de imagen en este adapter.
+- Etiquetas desconocidas se degradan por defecto a `decorative_prop` con
+  warnings; una politica de rechazo estricto es opcional para callers que lo
+  necesiten.
+- La salida se valida como `GameSpec2D`; no se emite `Scene` de forma directa
+  desde el adapter.
+
 ## Entrada y salida
 
 - Entrada soportada: PPM `P3`/`P6` local.
@@ -74,6 +89,7 @@ no, se devuelven con defaults o vacios y el error sigue siendo estructurado en
 
 - Solo PPM controlado; no screenshots ni soportes de assets visuales generales.
 - Sin ML/CV ni dependencias de vision obligatorias.
+- Sin red, Roboflow, keys, descargas de modelos ni entrenamiento.
 - El resultado depende del contrato existente de `GameSpec2D`.
 - La salida debe inspeccionarse via JSON; `success=false` es un fallo
   estructurado.

@@ -22,42 +22,36 @@ Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGa
 
 ## Current phase
 
-- Name: Phase 5 — Add `vision build-platformer` MVP without object detection ML
+- Name: Phase 6 — Add optional Supervision adapter
 - phase_status: completed
 - task_status: partial
 - Decision: continue_next_phase
-- Allowed files: `engine/vision/**`, `motor/cli.py`, `motor/cli_core.py`, `engine/ai/registry_builder.py`, focused tests, `docs/cli.md`, `docs/agents.md`, `docs/vision/image_to_platformer_pipeline.md`, this active plan
-- Forbidden files: protected modules, serialization/runtime/editor/physics changes, direct Scene JSON mutation
-- Test contract: test-contract-queen-20260709-001-phase-5-build-platformer
+- Allowed files: `engine/vision/**`, focused tests, experiment docs, this active plan
+- Forbidden files: protected modules, canonical docs, serialization/runtime/editor/physics changes, direct Scene JSON mutation
+- Test contract: test-contract-queen-20260709-001-phase-6-supervision-adapter
 - Verdict: sufficient
-- Files changed in Phase 5:
-  - `engine/vision/image_to_platformer.py`
-  - `motor/cli.py`
-  - `motor/cli_core.py`
-  - `engine/ai/registry_builder.py`
-  - `tests/test_vision_build_platformer_cli.py`
-  - `tests/fixtures/vision/simple_platformer.ppm`
-  - `docs/cli.md`
-  - `docs/agents.md`
+- Import smoke correction contract: test-contract-queen-20260709-001-phase-6-supervision-adapter-import-smoke-correction
+- Import smoke verdict: sufficient
+- Files changed in Phase 6:
+  - `engine/vision/detection_result.py`
+  - `engine/vision/supervision_adapter.py`
+  - `tests/test_vision_supervision_adapter.py`
   - `docs/vision/image_to_platformer_pipeline.md`
   - `docs/plans/active/queen-20260709-001-image-to-playable-platformer.md`
 - Validator checks passed:
-  - `py -m unittest tests.test_vision_build_platformer_cli tests.test_vision_cli_contract -v`
-  - `py -m motor vision build-platformer tests/fixtures/vision/simple_platformer.ppm --out <temp> --project . --json`
-  - `py -m unittest tests.test_vision_tile_grid_detector tests.test_vision_tilemap_reconstructor tests.test_vision_gamespec2d tests.test_vision_gamespec_to_scene -v`
-  - `py -m unittest tests.test_motor_cli_contract tests.test_parser_registry_alignment tests.test_motor_registry_consistency -v`
-  - `py -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence -v`
-  - `py -m unittest tests.test_official_contract_regression -v`
-  - `py -m unittest tests.test_capability_registry_audit tests.test_capability_registry_semantic_audit -v`
+  - `py -m unittest tests.test_vision_supervision_adapter tests.test_vision_gamespec2d -v`
   - `py -m motor doctor --project . --json`
-- Review: approved, must_fix 0, should_fix 0 after overlap fix and AI payload fix
-- AI audit: approved/pass, score 90, must_fix 0
-- Note fixes: rejected overlapping `--out`/`--gamespec-out`; added top-level JSON `data.warnings`/`data.confidence`/`data.unsupported_features`; narrowed contract/docs/registry to CLI-only/no public EngineAPI wrapper
-- Known limitations: PPM-only controlled fixture; no PNG/ML/object detection; CLI-only public automation, no public EngineAPI wrapper; Any-typed payloads remain; `unsupported_features` empty for MVP
-- Acceptance checks: build flow stays deterministic, ML-free, and routed through supported public surfaces when available
-- Docs affected: `docs/cli.md`, `docs/agents.md`, `docs/vision/image_to_platformer_pipeline.md`, this active plan
-- Risks: accidental contract bypass, scope creep into protected surfaces, image-to-game overfitting
-- Next phase: Phase 6 — Add optional Supervision adapter
+  - `py -m unittest tests.test_vision_gamespec_to_scene tests.test_vision_cli_contract tests.test_vision_build_platformer_cli -v`
+  - `py -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence -v`
+  - `git status --short`
+- Review: approved, must_fix 0, should_fix 2 (bbox missing/non-sequence error type; eager unknown_label_policy validation future hardening)
+- AI audit: approved/pass, score 93, must_fix 0
+- Note: exact `python -c` import smoke was blocked by tool policy; correction contract accepted focused unittest import-safety + `motor doctor` as a non-relaxing equivalent
+- Known limitations: supervision-native object conversion not implemented without optional dependency; adapter is internal/Python only; no EngineAPI/CLI surface for adapter; tile_size/option hardening future work
+- Acceptance checks: optional path remains optional, fallback path remains available, no protected contract drift, no dependency promotion
+- Docs affected: `docs/vision/image_to_platformer_pipeline.md`, this active plan
+- Risks: dependency creep, optional-path ambiguity, scope bleed into protected contracts
+- Next phase: Phase 7 — Add debug overlay generation
 
 ## Blocked conditions
 
@@ -191,12 +185,12 @@ Risks: accidental contract bypass, scope creep into protected surfaces, image-to
 
 ### Phase 6 — Add optional Supervision adapter
 
-Status: pending
+Status: completed
 Goal: add an optional Supervision adapter for the experimental pipeline without making it mandatory.
 Allowed files: `engine/vision/**`, focused tests, experiment docs
 Forbidden files: protected modules, canonical docs
 Acceptance checks: the adapter stays optional, the fallback path remains available, and no protected contracts drift
-Docs affected: experimental docs only
+Docs affected: `docs/vision/image_to_platformer_pipeline.md`, this active plan
 Risks: dependency creep, optional-path ambiguity, scope bleed into protected contracts
 
 ### Phase 7 — Debug overlay
@@ -293,3 +287,4 @@ Risks: premature closure
 - 2026-07-09: Phase 3 gate closed after validator, code-reviewer-deep, and AI audit approval; decision set to continue_next_phase; phase 4 advanced to deterministic tile-grid/tilemap extraction without ML.
 - 2026-07-10: Phase 4 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 5 advanced to `vision build-platformer` MVP without object detection ML.
 - 2026-07-10: Phase 5 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 6 advanced to optional Supervision adapter.
+- 2026-07-10: Phase 6 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 7 advanced to debug overlay generation.
