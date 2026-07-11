@@ -2,7 +2,7 @@
 
 Authority: operational-workflow
 
-Documento operativo para Queen/OpenCode. No es documentacion canonica del
+Documento operativo para Queen/OpenCode y Queen/Codex. No es documentacion canonica del
 producto ni cambia el contrato del motor.
 
 Queen existe para programar, refactorizar, endurecer y mantener el motor
@@ -146,3 +146,21 @@ Queen solo puede devolver respuesta final al usuario si ocurre una de estas:
 - `partial`: `max_cycles`, contexto o alcance impiden cierre completo.
 - `planning_only`: solo si el usuario pidio explicitamente plan sin
   implementacion.
+
+## Integracion Codex
+
+La sesion raiz carga `.agents/skills/queen/SKILL.md` y actua como Reina. Los 20
+subagentes se descubren como TOML standalone en `.codex/agents/`; profundidad 1
+impide descendientes y `max_threads=3` limita paralelismo. No existe agente hijo
+`queen` ni registro duplicado `[agents.<name>]` en config.
+
+Cada rol Codex lee su contrato OpenCode completo y devuelve JSON validable por
+`.agents/skills/queen/scripts/validate_result.py`. Contratos y transiciones
+machine-readable viven en `result_schemas.json` y `queen_contract.json`.
+
+Cada TOML solicita acceso read-only o workspace-write. El parent/root runtime
+puede heredar o sobreescribir el effective child sandbox; solo smoke runtime
+confirma el aislamiento real. Alcance por archivo, comandos permitidos, write
+sets disjuntos y orden del committer son
+garantias operativas reforzadas por instrucciones y tests; Codex 0.118.0 no las
+expresa con granularidad equivalente a permisos OpenCode.

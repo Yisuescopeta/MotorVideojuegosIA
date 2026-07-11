@@ -1,42 +1,114 @@
 # AGENTS.md
 
-## Skill
+## 1. Propósito
 
-Usa siempre la skill caverman
+Este archivo define las reglas generales para trabajar en OpenGame.
 
-### Regla para reducir consumo de tokens
+Las instrucciones específicas de una tarea, una skill o un plan activo pueden
+ampliar estas reglas, pero no deben anular las normas de seguridad, alcance,
+compatibilidad y validación del repositorio.
 
-- Se directo.
-- No expliques paso a paso lo que haces salvo que se te pida.
-- No des actualizaciones constantes durante la ejecucion.
-- No repitas contexto ya conocido.
-- No desarrolles razonamientos largos si no aportan a la tarea.
-- Prioriza ejecutar y entregar resultado.
-- Al final, entrega solo un resumen corto y util con:
-    1.que cambiaste,
-    2.que archivos tocaste,
-    3.que validaste,
-    4.riesgos restantes si existen.
-
-## 1. Principio rector
-
-No asumir nada del estado actual del repositorio.
-
-Antes de modificar código, el agente debe inspeccionar, medir y documentar. La única fuente de verdad es el estado real de la rama principal remota en el momento de empezar.
-
-El objetivo no es “meter Rust”, reescribir el motor ni hacer una migración tecnológica. El objetivo es que OpenGame sea más estable, medible, mantenible y rápido donde los datos demuestren que merece la pena.
+El modo predeterminado es el **flujo estándar**. Los flujos especializados, como
+Reina, solo se usan cuando el usuario los activa explícitamente.
 
 ---
 
-## 2. Reglas operativas obligatorias
+## 2. Estilo de trabajo
 
-### 2.1 Rama base
+Usa la skill `caveman` cuando esté disponible.
 
-El agente debe detectar la rama principal real del remoto antes de trabajar.
+Si no está disponible, aplica directamente estas reglas:
 
-No debe asumir que la rama se llama `main`.
+- Sé directo.
+- No expliques paso a paso lo que haces salvo que se solicite.
+- No des actualizaciones constantes durante la ejecución.
+- No repitas contexto ya conocido.
+- No desarrolles razonamientos largos que no aporten a la tarea.
+- Prioriza ejecutar, validar y entregar el resultado.
+- No ocultes errores, regresiones, incertidumbres ni comandos no ejecutados.
 
-Debe inspeccionar:
+Al terminar, entrega un resumen breve y verificable con:
+
+1. qué cambiaste;
+2. qué archivos tocaste;
+3. qué validaste;
+4. riesgos o trabajo pendiente, si existen.
+
+---
+
+## 3. Flujo estándar
+
+Es el modo predeterminado para correcciones, mantenimiento, documentación,
+tests, features y refactors acotados.
+
+```text
+INSPECCIONAR
+-> DEFINIR EL RESULTADO ESPERADO
+-> PLAN BREVE SI HACE FALTA
+-> IMPLEMENTAR EL CAMBIO MÍNIMO
+-> EJECUTAR TESTS ENFOCADOS
+-> REVISAR EL DIFF
+-> DOCUMENTAR SI CAMBIA UN CONTRATO
+-> REPORTAR
+```
+
+Reglas:
+
+- Trabajar como un único agente por defecto.
+- No lanzar subagentes salvo petición explícita del usuario o de una skill
+  activada.
+- No convertir una tarea localizada en una auditoría completa del repositorio.
+- No crear planificación ceremonial para cambios simples.
+- No ejecutar toda la suite si los tests enfocados son suficientes y el riesgo
+  es bajo.
+- No hacer commit ni push salvo solicitud explícita o flujo autorizado.
+
+---
+
+## 4. Estado real del repositorio
+
+No asumir el estado actual del repositorio.
+
+Antes de modificar archivos, inspeccionar como mínimo:
+
+```bash
+git status --short
+git branch --show-current
+git diff --stat
+git diff --name-only
+```
+
+La fuente de verdad es, por este orden:
+
+1. el estado real del working tree;
+2. los tests y contratos existentes;
+3. el código actual;
+4. este `AGENTS.md` y la documentación canónica;
+5. las instrucciones específicas de la tarea;
+6. las suposiciones del agente.
+
+El agente debe respetar los cambios locales existentes y no sobrescribir trabajo
+ajeno.
+
+---
+
+## 5. Rama, remoto y cambios locales
+
+Trabajar sobre la rama actual salvo que el usuario pida crear, cambiar o
+actualizar una rama.
+
+No se debe:
+
+- cambiar de rama automáticamente;
+- borrar cambios locales;
+- restaurar archivos modificados por el usuario;
+- asumir que la rama principal se llama `main`;
+- ejecutar `reset`, `clean`, rebase o force-push sin autorización explícita.
+
+Solo cuando la tarea requiera comparar con la rama principal, crear una rama
+nueva o auditar divergencias, detectar la rama principal real del remoto.
+
+Comandos orientativos:
 
 ```bash
 git remote show origin
@@ -44,25 +116,43 @@ git fetch --all --prune
 git branch -r --sort=-committerdate
 ```
 
-La rama de trabajo debe partir de la rama principal remota detectada.
+No ejecutar `fetch` ni modificar referencias remotas si no aporta valor a la
+tarea.
 
 ---
 
-### 2.2 Tests como fuente de verdad
+## 6. Tests como fuente de verdad
 
-Los tests actuales del repositorio son la fuente de verdad inicial.
+Los tests existentes son la autoridad inicial sobre el comportamiento
+protegido.
 
-Antes de tocar código funcional, el agente debe ejecutar la suite disponible y guardar el resultado como baseline.
+Antes de tocar código funcional:
 
-Comando orientativo:
+- localizar los tests relevantes;
+- entender qué comportamiento protegen;
+- ejecutar un baseline enfocado cuando sea viable;
+- definir criterios de aceptación verificables;
+- añadir o modificar tests si cambia comportamiento observable.
+
+Después del cambio, ejecutar los tests enfocados aplicables.
+
+Reglas:
+
+- No relajar tests para conseguir verde.
+- No borrar tests sin justificación explícita.
+- No sustituir tests de comportamiento por tests internos más débiles.
+- No declarar que un test pasó si no se ejecutó.
+- Registrar los comandos reales y sus resultados.
+- Si un comando documentado no existe, localizar el equivalente real.
+
+Cuando el riesgo sea alto o el cambio afecte a varios subsistemas, ampliar la
+validación según sea necesario. La suite general orientativa es:
 
 ```bash
 py -m unittest discover -s tests
 ```
 
-Si el comando falla porque el entorno no está preparado, el agente debe documentar el fallo y localizar el sistema de dependencias real antes de continuar.
-
-Los fallos deben clasificarse como:
+Si un test falla, clasificarlo cuando sea relevante como:
 
 ```text
 - fallo funcional real;
@@ -74,66 +164,57 @@ Los fallos deben clasificarse como:
 - error por plataforma.
 ```
 
-No se debe iniciar una refactorización profunda si la línea base de tests es ambigua.
-
 ---
 
-### 2.3 Dependencias
+## 7. Dependencias y entorno
 
 El sistema de dependencias se detecta, no se inventa.
 
-El agente debe buscar mecanismos reales del repositorio:
-
-```bash
-find . -maxdepth 3 -type f \( \
-  -name "pyproject.toml" -o \
-  -name "requirements*.txt" -o \
-  -name "setup.py" -o \
-  -name "Pipfile" -o \
-  -name "poetry.lock" -o \
-  -name "uv.lock" -o \
-  -name "environment.yml" \
-\)
-```
-
-Si existen varios sistemas, debe priorizar el más actual y documentado en el repositorio.
-
-Si no existe un sistema claro, debe documentarlo como deuda de entorno antes de proponer cambios.
-
----
-
-### 2.4 Benchmarks
-
-No se debe optimizar sin benchmark antes/después.
-
-El agente debe verificar si existen benchmarks reales antes de crear otros nuevos.
-
-Debe buscar:
-
-```bash
-find . -maxdepth 4 -iname "*benchmark*" -o -iname "*bench*"
-```
-
-Benchmarks o escenarios que deben verificarse o crearse si faltan:
+Revisar los mecanismos reales del repositorio, entre otros:
 
 ```text
-- query cache ECS;
-- World.clone;
-- SpatialHash2D;
-- física con colliders;
-- render prep;
-- partículas;
-- many entities;
-- EDIT -> PLAY -> STOP.
+pyproject.toml
+requirements*.txt
+setup.py
+Pipfile
+poetry.lock
+uv.lock
+environment.yml
+Cargo.toml
+package.json
 ```
 
-Si un benchmark mencionado en un plan no existe, el agente debe crear un benchmark mínimo y reproducible antes de optimizar esa zona.
+Si existen varios sistemas, priorizar el utilizado por CI y por la
+documentación vigente.
+
+No instalar paquetes globales ni modificar el entorno del usuario de manera
+irreversible sin necesidad y autorización.
 
 ---
 
-## 3. Módulos protegidos
+## 8. Alcance y cambios mínimos
 
-Los siguientes módulos forman parte del contrato crítico del motor y no deben modificarse salvo necesidad justificada, tests de contrato y plan de rollback:
+Implementar el cambio mínimo suficiente para cumplir la tarea.
+
+No se debe:
+
+- ampliar el alcance sin necesidad;
+- mezclar una corrección con refactors no relacionados;
+- aplicar cambios masivos de formato junto a cambios funcionales;
+- introducir dependencias nuevas sin justificar su necesidad;
+- reescribir componentes completos cuando una modificación localizada sea
+  suficiente;
+- ocultar deuda, regresiones o limitaciones detectadas.
+
+Si aparece un problema fuera del alcance, documentarlo y continuar únicamente
+si bloquea la tarea actual.
+
+---
+
+## 9. Contratos y módulos protegidos
+
+Los siguientes módulos forman parte del contrato crítico del motor y requieren
+especial cuidado:
 
 ```text
 engine/api/engine_api.py
@@ -151,7 +232,7 @@ engine/core/game.py
 engine/core/runtime_contracts.py
 ```
 
-También quedan protegidos:
+También están protegidos:
 
 ```text
 - Scene v2;
@@ -165,510 +246,151 @@ También quedan protegidos:
 - serialización y migraciones existentes.
 ```
 
-Cualquier cambio en estas zonas debe demostrar que no rompe comportamiento existente.
+Un cambio en estas zonas debe incluir, según aplique:
+
+- justificación explícita;
+- tests de contrato;
+- compatibilidad hacia atrás;
+- documentación canónica;
+- estrategia de rollback;
+- validación enfocada y de regresión.
+
+No modificar un contrato público de forma accidental.
 
 ---
 
-## 4. Política Python/Rust
+## 10. Documentación
 
-Python sigue siendo el lenguaje principal del framework.
+No crear documentación ceremonial para cada tarea.
 
-Deben quedarse en Python:
+Actualizar la documentación cuando cambie alguno de estos elementos:
 
-```text
-- editor;
-- EngineAPI;
-- SceneManager;
-- serialización;
+- API pública;
 - CLI;
-- herramientas de IA;
-- tests de integración;
-- lógica no crítica;
-- coordinación de runtime;
-- validaciones de alto nivel.
-```
+- serialización o schema;
+- arquitectura;
+- instalación o dependencias;
+- comportamiento observable;
+- compatibilidad o migraciones;
+- flujos operativos utilizados por usuarios o agentes.
 
-Rust/PyO3 solo puede usarse para hotspots numéricos o algorítmicos medidos.
+Los cambios internos localizados que no alteren contratos pueden indicar
+explícitamente que no requieren documentación.
 
-Candidatos posibles para Rust, siempre después de benchmarks:
-
-```text
-- SpatialHash2D;
-- queries físicas;
-- colisiones AABB;
-- partículas CPU;
-- render prep;
-- culling;
-- batching;
-- pathfinding;
-- bucles calientes claramente identificados.
-```
-
-Rust/PyO3 debe ser opcional hasta demostrar instalación estable.
-
-El motor debe funcionar sin toolchain Rust instalado.
-
-Todo módulo Rust debe tener fallback Python.
+Las decisiones arquitectónicas relevantes deben documentarse en la ubicación
+canónica existente del repositorio.
 
 ---
 
-## 5. Criterios para activar Rust por defecto
+## 11. Validación antes de terminar
 
-Rust no debe activarse por defecto al introducir un módulo nativo.
+Antes de considerar terminada una tarea:
 
-Debe empezar desactivado o en modo experimental.
+1. ejecutar los tests relevantes;
+2. revisar el diff completo;
+3. comprobar que no existen cambios fuera de alcance;
+4. confirmar que la documentación necesaria está actualizada;
+5. reportar pruebas no ejecutadas y riesgos restantes.
 
-Solo puede activarse por defecto si cumple todos estos criterios:
-
-```text
-- benchmark antes/después disponible;
-- mejora >= 2x frente a Python optimizado;
-- tests de equivalencia Python/Rust;
-- fallback Python probado;
-- instalación sin Rust sigue funcionando;
-- CI no se rompe;
-- no cambia el comportamiento funcional;
-- no rompe API pública;
-- no rompe serialización;
-- no rompe EDIT -> PLAY -> STOP;
-- el overhead Python/Rust no consume la mejora.
-```
-
-Si cualquiera de esos puntos falla, Rust queda desactivado o se elimina la integración experimental.
-
----
-
-## 6. Reglas específicas para hotspots
-
-### 6.1 Query cache ECS
-
-La invalidación global del cache de queries debe tratarse primero como problema algorítmico en Python.
-
-Antes de cambiarla:
-
-```text
-- añadir tests de comportamiento actual;
-- añadir métricas hit/miss;
-- crear o verificar benchmark de query cache;
-- comprobar add/remove component;
-- comprobar componentes deshabilitados;
-- comprobar entidades activas/inactivas.
-```
-
-No migrar esta zona a Rust antes de intentar una optimización Python segura.
-
----
-
-### 6.2 World.clone
-
-`World.clone()` solo puede optimizarse si se demuestra aislamiento mutable entre `edit_world` y `runtime_world`.
-
-Tests obligatorios:
-
-```text
-- EDIT -> PLAY -> STOP conserva estado editable;
-- runtime_world no modifica edit_world;
-- listas mutables no se comparten;
-- diccionarios mutables no se comparten;
-- componentes con datos mutables no se comparten;
-- jerarquías padre/hijo se conservan;
-- prefabs se conservan;
-- feature_metadata se conserva;
-- roundtrip de serialización no cambia.
-```
-
-Si hay duda sobre mutabilidad, se conserva el clone actual.
-
-La corrección tiene prioridad sobre el rendimiento.
-
----
-
-### 6.3 SpatialHash2D
-
-`SpatialHash2D` es candidato preferente para Rust, pero no debe ser la primera tarea técnica.
-
-Solo se puede migrar después de tener:
-
-```text
-- tests de equivalencia;
-- benchmark de spatial queries;
-- benchmark de física que use el spatial hash;
-- fallback Python;
-- feature flag;
-- medición frente a Python optimizado;
-- instalación nativa probada.
-```
-
-Debe compararse el resultado como conjunto de IDs cuando el orden no sea parte del contrato.
-
-Los raycasts o candidatos por rayo deben tener tests específicos, incluyendo rayos diagonales.
-
----
-
-### 6.4 Física avanzada
-
-No introducir Rapier2D, Box2D nuevo, migración del solver PGS o migración de `IslandBuilder` sin datos suficientes.
-
-Antes de tocar física avanzada:
-
-```text
-- tests sólidos de física;
-- benchmarks de física legacy;
-- contrato PhysicsBackend revisado;
-- tolerancias numéricas documentadas;
-- pruebas de character controller;
-- pruebas de triggers/areas;
-- pruebas de raycasts;
-- comparación de comportamiento antes/después.
-```
-
-`legacy_aabb` debe seguir existiendo como fallback.
-
----
-
-### 6.5 Render prep
-
-No tocar la API gráfica ni sustituir raylib/pyray al inicio.
-
-Las optimizaciones iniciales deben centrarse en preparación de render:
-
-```text
-- sorting;
-- culling;
-- batching;
-- draw command generation;
-- rebuilds por frame;
-- spatial index de render.
-```
-
-Todo cambio debe tener prueba visual o funcional mínima, además de benchmark.
-
----
-
-## 7. Criterios de rollback obligatorios
-
-Todo cambio relevante debe tener una condición clara de rollback.
-
-El agente debe revertir o dejar desactivado el cambio si ocurre cualquiera de los siguientes casos:
-
-```text
-- falla un test crítico que antes pasaba;
-- cambia la salida de serialización sin ADR explícito;
-- cambia Scene v2 sin migración y tests de compatibilidad;
-- se rompe EngineAPI pública;
-- se rompe EDIT -> PLAY -> STOP;
-- runtime_world contamina edit_world;
-- el editor deja de abrir;
-- una escena existente deja de cargar;
-- una escena existente se guarda con cambios inesperados;
-- física cambia comportamiento sin tolerancia documentada;
-- el render cambia el orden visual sin justificación;
-- Python fallback no funciona;
-- el proyecto deja de instalarse sin Rust;
-- PyO3/maturin rompe instalación limpia;
-- CI falla por la integración nueva;
-- benchmark Python mejora menos de lo esperado y aumenta complejidad;
-- módulo Rust mejora <2x frente a Python optimizado;
-- overhead FFI elimina la mejora nativa;
-- el cambio requiere modificar demasiados contratos públicos;
-- el agente no puede explicar cómo revertirlo.
-```
-
-Si un cambio se revierte, el agente debe documentar:
-
-```text
-- qué se intentó;
-- por qué se revirtió;
-- qué tests o benchmarks fallaron;
-- qué alternativa se recomienda;
-- si conviene reintentarlo más adelante.
-```
-
-El rollback no se considera fracaso. Se considera una decisión correcta si evita romper el motor.
-
----
-
-## 8. Documentación obligatoria por fase
-
-Cada fase debe terminar con documentación mínima en `docs/refactor/`.
-
-El agente no debe cerrar una fase sin dejar un informe escrito.
-
-### 8.1 Documentos iniciales obligatorios
-
-Durante la fase de baseline deben generarse o actualizarse:
-
-```text
-docs/refactor/baseline_environment.md
-docs/refactor/baseline_tests.md
-docs/refactor/baseline_benchmarks.md
-docs/refactor/branch_audit.md
-docs/refactor/protected_modules.md
-```
-
-### 8.2 Informe obligatorio por fase
-
-Cada fase posterior debe generar un documento con este formato:
-
-```text
-docs/refactor/phase_<numero>_<nombre>_result.md
-```
-
-Ejemplos:
-
-```text
-docs/refactor/phase_1_query_cache_result.md
-docs/refactor/phase_2_world_clone_result.md
-docs/refactor/phase_3_frame_allocations_result.md
-docs/refactor/phase_4_pyo3_minimal_result.md
-docs/refactor/phase_5_spatial_hash_result.md
-```
-
-### 8.3 Estructura mínima del informe de fase
-
-Cada informe debe incluir:
-
-```text
-# Resultado de fase
-
-## Objetivo
-Qué se pretendía conseguir.
-
-## Estado inicial
-Commit base, rama, tests relevantes y benchmarks antes del cambio.
-
-## Archivos inspeccionados
-Lista de archivos revisados.
-
-## Cambios realizados
-Descripción concreta de lo modificado.
-
-## Cambios descartados
-Qué se decidió no hacer y por qué.
-
-## Tests ejecutados
-Comandos ejecutados y resultado.
-
-## Benchmarks ejecutados
-Comandos ejecutados, datos antes/después y conclusión.
-
-## Riesgos detectados
-Riesgos nuevos o riesgos que siguen abiertos.
-
-## Rollback
-Cómo revertir el cambio si aparece una regresión.
-
-## Decisión
-Continuar, mantener desactivado, revertir o replanificar.
-
-## Siguiente recomendación
-Qué debería hacer el siguiente agente.
-```
-
-### 8.4 ADRs
-
-Las decisiones importantes deben documentarse como ADRs en:
-
-```text
-docs/refactor/adrs/
-```
-
-Crear un ADR cuando se decida:
-
-```text
-- cambiar comportamiento interno de ECS;
-- cambiar estrategia de serialización;
-- introducir Rust/PyO3;
-- activar un módulo Rust por defecto;
-- cambiar PhysicsBackend;
-- cambiar comportamiento físico;
-- modificar Scene v2;
-- modificar EngineAPI pública;
-- retirar un fallback;
-- introducir una dependencia nueva.
-```
-
-Formato recomendado:
-
-```text
-# ADR-XXXX — Título
-
-## Estado
-Propuesto | Aceptado | Rechazado | Revertido
-
-## Contexto
-Problema y restricciones.
-
-## Decisión
-Qué se decide.
-
-## Consecuencias
-Ventajas, costes y riesgos.
-
-## Alternativas consideradas
-Opciones descartadas y motivo.
-```
-
----
-
-## 9. Validación mínima antes de terminar cualquier tarea
-
-Antes de considerar terminada una tarea, el agente debe ejecutar los tests relevantes.
-
-Comandos orientativos:
+Comandos orientativos de revisión:
 
 ```bash
-py -m unittest discover -s tests
-py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
-py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
-py -m unittest tests.test_physics_backend tests.test_collision_system -v
-py -m unittest tests.test_render_graph tests.test_render_safety -v
+git status --short
+git diff --check
+git diff --stat
+git diff
 ```
 
-No todos los comandos aplican a todas las tareas. El agente debe elegir los relevantes y documentar por qué.
+No declarar la tarea completada si:
 
-Para Rust/PyO3:
-
-```bash
-cargo test
-python -m maturin develop
-python -c "import engine.native"
-py -m unittest tests.test_spatial_hash -v
-```
-
-Si un comando no existe, el agente debe localizar el equivalente real y documentarlo.
+- faltan tests necesarios;
+- existe una regresión nueva no aceptada;
+- hay cambios fuera de alcance;
+- faltan documentos contractuales necesarios;
+- el resultado no cumple los criterios de aceptación.
 
 ---
 
-## 10. Prohibiciones explícitas
+## 12. Operaciones prohibidas
 
-El agente no debe:
+No ejecutar sin autorización explícita:
 
 ```text
-- reescribir el motor completo;
-- migrar globalmente a Rust;
-- crear un lenguaje propio;
-- cambiar Scene v2 sin migración;
-- romper EngineAPI pública;
-- eliminar legacy_aabb;
-- hacer Rust obligatorio;
-- activar Rust por defecto sin benchmark >=2x;
-- tocar física avanzada sin tests suficientes;
-- tocar editor gráfico en fases iniciales;
-- optimizar sin benchmark;
-- mezclar refactor funcional con cambios de formato;
-- inventar sistema de dependencias;
-- asumir nombres de ramas;
+- git reset --hard;
+- git clean -fd;
+- git checkout -- .;
+- git restore .;
+- rebase de ramas compartidas;
+- force-push;
+- borrados recursivos destructivos;
+- instalación global de dependencias;
+- cambios irreversibles en el entorno.
+```
+
+Además, no se debe:
+
+- borrar o revertir cambios del usuario;
 - ignorar tests fallando;
-- ignorar fallback Python;
-- introducir dependencias nuevas sin ADR;
-- ocultar regresiones.
+- ocultar regresiones;
+- asumir nombres de ramas;
+- hacer push sin solicitud explícita;
+- lanzar subagentes en el flujo estándar por conveniencia.
+
+---
+
+## 13. Modo Reina
+
+Reina es un flujo especializado para tareas largas, críticas o divididas en
+varias fases.
+
+No es el modo predeterminado y no debe activarse automáticamente por la
+complejidad estimada de una tarea.
+
+Solo se usa cuando el usuario:
+
+- invoca explícitamente `$queen`;
+- pide «modo Reina»;
+- solicita ejecutar un plan con Reina.
+
+La definición detallada de Reina debe vivir en su skill y en su documentación
+canónica, no en este archivo.
+
+Ruta prevista en Codex:
+
+```text
+.agents/skills/queen/SKILL.md
+```
+
+Este archivo solo establece que:
+
+- el flujo estándar sigue siendo el predeterminado;
+- la sesión raíz de Codex actúa como orquestador cuando Reina está activa;
+- Reina puede usar subagentes especializados;
+- su activación debe ser explícita;
+- si la skill no existe o no puede cargarse, el agente debe indicarlo en lugar
+  de improvisar una implementación equivalente.
+
+La configuración de Reina para OpenCode permanece en sus archivos canónicos:
+
+```text
+.opencode/agents/
+.opencode/commands/queen.md
+opencode.json
 ```
 
 ---
 
-## 11. Criterios de finalización del plan
+## 14. Commit y push
 
-El plan se considera correctamente ejecutado solo si:
+Por defecto:
 
-```text
-- se partió de la rama principal remota real;
-- el commit base quedó registrado;
-- el entorno se detectó desde archivos reales del repo;
-- los tests actuales se ejecutaron y documentaron;
-- los benchmarks se verificaron o crearon;
-- las ramas relevantes se auditaron antes de tocar módulos críticos;
-- las primeras optimizaciones fueron Python salvo justificación medida;
-- SpatialHash2D no se migró a Rust sin tests y benchmarks;
-- World.clone no se optimizó sin pruebas de aislamiento mutable;
-- PyO3 siguió siendo opcional hasta demostrar instalación estable;
-- el siguiente hotspot se eligió con datos;
-- Rust no se activó por defecto sin >=2x y fallback probado;
-- EngineAPI, Scene v2, SceneManager, prefabs y backend legacy siguen intactos salvo justificación explícita;
-- todo cambio importante tiene documentación, benchmark y rollback.
-```
+- no hacer commit salvo solicitud explícita o flujo autorizado;
+- no hacer push salvo solicitud explícita;
+- no considerar un commit como prueba suficiente de que la tarea está completa.
 
----
+Antes de cualquier commit:
 
-## 12. Conducta esperada del agente
-
-El agente debe trabajar de forma conservadora, verificable y transparente.
-
-Debe preferir:
-
-```text
-- inspeccionar antes de cambiar;
-- medir antes de optimizar;
-- documentar antes de continuar;
-- mantener compatibilidad antes de mejorar rendimiento;
-- revertir antes que dejar una regresión;
-- Python seguro antes que Rust innecesario;
-- fallback antes que dependencia obligatoria;
-- datos antes que intuición.
-```
-
-Si una optimización no demuestra valor real, se descarta o se deja desactivada.
-
-Si Python resuelve el cuello de botella con menor riesgo, Python gana.
-
----
-
-## 13. Sistema Queen OpenCode
-
-Queen es tooling multiagente experimental para programar, refactorizar,
-endurecer y mantener el motor OpenGame. No debe crear juegos como objetivo
-principal; las escenas o juegos generados solo sirven como fixtures, demos
-minimas, smoke tests o validacion del motor.
-
-Normal Task Mode:
-
-```text
-RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
-```
-
-Long Task Plan Mode:
-
-```text
-LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK
-```
-
-`max_cycles = 5`. Queen no implementa directamente; delega en subagentes.
-`test-strategist` define TEST CONTRACT antes de implementar. `validator`
-ejecuta la validacion final despues de DOCUMENTAR. En tareas largas,
-UPDATE PLAN registra el resultado de AI AUDIT antes de avanzar, bloquear o
-cerrar.
-
-Regla fuerte: `phase completed != task completed`.
-
-Queen separa `phase_status` (`completed | blocked | failed | skipped |
-not_applicable`) de `task_status` (`completed | partial | blocked | failed`).
-Si una fase termina `completed`, Queen debe seguir automaticamente. No debe dar
-respuesta final por PLAN aprobado, TEST CONTRACT suficiente, REVIEW aprobado ni
-reportes intermedios. Si la tarea incluia implementar, no puede cerrar con
-"Siguiente paso: implementar..." sin bloqueo real.
-
-Queen usa Model Router: clasifica `simple|normal|complex|critical` despues de
-RECON, selecciona variantes de subagente `fast|standard|deep` y no edita modelos
-en caliente. Cada variante tiene modelo fijo en frontmatter y `opencode.json`.
-
-Definition of Done:
-
-- TEST CONTRACT suficiente o no aplicable con razon explicita.
-- Tests enfocados aplicables pasan.
-- Tests de gobernanza/documentacion pasan si cambian prompts, docs o config.
-- `validator`, `code-reviewer` y AI AUDIT no bloquean.
-- No se relajaron tests.
-- No hay cambios fuera de alcance.
-- Estado final reportado como `completed`, `partial`, `blocked` o `failed`.
-
-Definition of Done aplica al final de tarea completa, no a una fase individual.
-`planning_only` solo existe si el usuario pidio explicitamente solo plan.
-
-Matriz operativa de validacion por subsistema:
-`docs/queen_engine_workflow.md`.
-
-Comando base de suite amplia:
-
-```bash
-py -m unittest discover -s tests
-```
+- revisar alcance;
+- ejecutar las validaciones aplicables;
+- revisar el diff;
+- confirmar que no se incluyen archivos ajenos a la tarea.

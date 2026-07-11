@@ -83,3 +83,8 @@ Benchmark tooling checked in the repository:
 - `tools/spatial_hash_benchmark.py`
 
 No Rust/PyO3 benchmark or native module was added.
+
+## Codex Queen migration - 2026-07-10
+
+No benchmark applies: migration changes only agent tooling, tests and docs.
+Existing benchmark inventory remains unchanged.

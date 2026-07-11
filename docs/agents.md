@@ -932,3 +932,58 @@ py -m motor doctor --project . --json
 ```
 
 Declara solo los comandos que hayas ejecutado realmente.
+
+## Queen en Codex
+
+Estado: experimental/tooling. Codex y OpenCode coexisten durante la migracion.
+La sesion raiz de Codex es Reina; no hay `.codex/agents/queen.toml`. Se activa
+cargando `.agents/skills/queen/SKILL.md` para tareas completas o por fases.
+
+Codex descubre automaticamente 20 agentes standalone desde
+`.codex/agents/*.toml`; `.codex/config.toml` solo activa `multi_agent` y limita
+`max_threads=3`, `max_depth=1`. Registrar de nuevo esos nombres mediante
+`[agents.<name>] config_file` los duplicaria y se rechaza.
+
+Autoridad durante transicion:
+
+- `AGENTS.md`, tests y docs operativas son autoridad comun.
+- `.opencode/` y `opencode.json` conservan integracion OpenCode.
+- `queen_contract.json` y `result_schemas.json` son contratos Codex
+  machine-readable.
+- Cada TOML Codex exige leer completamente su prompt OpenCode equivalente; el
+  mapping guion/underscore vive en `agent_mapping.json`.
+- Skill Codex es canon de orquestacion Codex; prompts OpenCode siguen siendo
+  canon OpenCode. Cambios comunes deben mantener ambas integraciones.
+
+Model Router clasifica `simple|normal|complex|critical` tras RECON. Fast usa
+`gpt-5.6-terra`/low; standard `gpt-5.6`/high; deep `gpt-5.6`/xhigh. TEST
+CONTRACT precede implementacion y fija tests autoridad, tests nuevos, tests que
+no se relajan, comandos y aceptacion. Cada resultado JSON se valida con:
+
+```bash
+python .agents/skills/queen/scripts/validate_result.py <agent_type> --input resultado.json
+```
+
+Salida vacia, no JSON o incompatible bloquea. Planes largos viven en
+`docs/plans/active/`; `continue_next_phase` continua automaticamente.
+
+Configuracion tecnica solicitada: sandbox `read-only`/`workspace-write`,
+profundidad 1 y paralelismo 3. El parent/root runtime de Codex o la app puede
+heredar o sobreescribir el effective child sandbox; el TOML no demuestra por si
+solo el aislamiento observado en ejecucion. Confirmarlo mediante smoke runtime.
+Garantias operativas reforzadas por instrucciones/tests: write
+sets por archivo, allowlist de comandos, orden de gates y committer unico. Codex
+0.118.0 no impone en TOML standalone allowlist shell o permiso por archivo
+equivalente a OpenCode; `workspace-write` puede escribir otras rutas del repo.
+
+Comprobar integracion:
+
+```bash
+codex --version
+codex features list
+python -m unittest tests.test_codex_queen_contract tests.test_queen_agent_contract -v
+```
+
+El repo debe estar trusted para cargar `.codex/config.toml`. Abrir Codex desde
+la raiz y seleccionar `context_recon` y un builder confirma discovery runtime;
+si autenticacion/modelo impide smoke, registrar esa parte como manual, no pass.

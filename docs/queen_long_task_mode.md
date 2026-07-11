@@ -210,6 +210,14 @@ Al terminar la tarea (completed, partial, blocked o failed):
 2. Se actualiza el header: `Status: completed|blocked|failed`.
 3. Se añade `Archived at: <ISO timestamp>`.
 
+## Codex y OpenCode
+
+Ambas integraciones comparten planes en `docs/plans/active/`. En Codex, sesion
+raiz carga `.agents/skills/queen/SKILL.md`, recalcula route por fase y valida
+cada resultado JSON antes de UPDATE PLAN. `continue_next_phase` obliga a
+continuar sin devolver control al usuario. Contrato compacto:
+`.agents/skills/queen/references/long_task_mode.md`.
+
 ## Ver tambien
 
 - `AGENTS.md` — contrato operativo de agentes.

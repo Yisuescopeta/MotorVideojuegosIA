@@ -74,3 +74,12 @@ codex/runtime-input-picking
 ```
 
 Pre-existing dirty worktree was preserved. Notable modified or untracked files already included `.gitignore`, `AGENTS.md`, `engine/ecs/world.py`, `tests/test_ecs_indices.py`, `tests/test_spatial_hash.py`, `docs/refactor/`, `projects/Opengame cartas/`, `tests/test_solitario_espanol.py`, and `tools/spatial_hash_benchmark.py`.
+
+## Codex Queen migration audit - 2026-07-10
+
+- Remote: `origin https://github.com/Yisuescopeta/OpenGame.git`.
+- Branch: `fix/ciclosReina`; approved base:
+  `99fa3896f661298208bcacde2821c2fab1a9dae6`.
+- Migration scope excludes `engine/`, `cli/`, `main.py`, `START_HERE_AI.md`,
+  `docs/archive/`, `.opencode/` and `opencode.json`.
+- Initial task artifacts were untracked active plan and `.superpowers/` brief.
