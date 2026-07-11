@@ -34,6 +34,17 @@ class TestRpgLivesSystem(unittest.TestCase):
         assert script is not None
         return player, script
 
+    def _enemy_entities(self, runtime):
+        from engine.components.transform import Transform
+
+        enemies = [
+            entity
+            for entity in runtime.world.get_all_entities()
+            if str(entity.tag or "").strip().lower() == "enemy" and entity.get_component(Transform) is not None
+        ]
+        self.assertTrue(enemies)
+        return enemies
+
     def _set_slime_contact(self, runtime, *, touching: bool) -> None:
         from engine.components.transform import Transform
 
@@ -44,14 +55,11 @@ class TestRpgLivesSystem(unittest.TestCase):
         self.assertIsNotNone(player_transform)
         assert player_transform is not None
 
-        for slime_name in ("Slime_0", "Slime_1", "Slime_2"):
-            slime = runtime.world.get_entity_by_name(slime_name)
-            self.assertIsNotNone(slime)
-            assert slime is not None
+        for index, slime in enumerate(self._enemy_entities(runtime)):
             transform = slime.get_component(Transform)
             self.assertIsNotNone(transform)
             assert transform is not None
-            if slime_name == "Slime_0" and touching:
+            if index == 0 and touching:
                 transform.set_position(player_transform.x, player_transform.y)
             else:
                 transform.set_position(240.0, 240.0)
@@ -133,6 +141,18 @@ class TestRpgLivesSystem(unittest.TestCase):
 
         runtime = self._make_runtime()
         try:
+            initial_player, _initial_script = self._player_script(runtime)
+            initial_player_transform = initial_player.get_component(Transform)
+            self.assertIsNotNone(initial_player_transform)
+            assert initial_player_transform is not None
+            initial_player_position = (initial_player_transform.local_x, initial_player_transform.local_y)
+            initial_enemy_positions = {}
+            for enemy in self._enemy_entities(runtime):
+                transform = enemy.get_component(Transform)
+                self.assertIsNotNone(transform)
+                assert transform is not None
+                initial_enemy_positions[enemy.name] = (transform.local_x, transform.local_y)
+
             for hit_index in range(3):
                 self._set_slime_contact(runtime, touching=True)
                 self._advance(runtime, 1)
@@ -142,28 +162,29 @@ class TestRpgLivesSystem(unittest.TestCase):
                     self._advance(runtime, 50)
 
             player = runtime.world.get_entity_by_name("Player")
-            slime = runtime.world.get_entity_by_name("Slime_0")
             self.assertIsNotNone(player)
-            self.assertIsNotNone(slime)
             assert player is not None
-            assert slime is not None
 
             player_script = player.get_component(ScriptBehaviour)
             player_transform = player.get_component(Transform)
-            slime_transform = slime.get_component(Transform)
             self.assertIsNotNone(player_script)
             self.assertIsNotNone(player_transform)
-            self.assertIsNotNone(slime_transform)
             assert player_script is not None
             assert player_transform is not None
-            assert slime_transform is not None
 
             self.assertEqual(runtime.current_scene_path, "levels/main_scene.json")
             self.assertEqual(player_script.public_data["lives"], 3)
-            self.assertAlmostEqual(player_transform.local_x, 0.0, delta=0.01)
-            self.assertAlmostEqual(player_transform.local_y, 0.0, delta=0.01)
-            self.assertAlmostEqual(slime_transform.local_x, 48.0, delta=0.01)
-            self.assertAlmostEqual(slime_transform.local_y, 0.0, delta=0.01)
+            self.assertAlmostEqual(player_transform.local_x, initial_player_position[0], delta=0.01)
+            self.assertAlmostEqual(player_transform.local_y, initial_player_position[1], delta=0.01)
+            for enemy_name, initial_position in initial_enemy_positions.items():
+                enemy = runtime.world.get_entity_by_name(enemy_name)
+                self.assertIsNotNone(enemy)
+                assert enemy is not None
+                enemy_transform = enemy.get_component(Transform)
+                self.assertIsNotNone(enemy_transform)
+                assert enemy_transform is not None
+                self.assertAlmostEqual(enemy_transform.local_x, initial_position[0], delta=0.01)
+                self.assertAlmostEqual(enemy_transform.local_y, initial_position[1], delta=0.01)
             self.assertEqual(self._heart_states(runtime), [True, True, True])
         finally:
             runtime.shutdown()

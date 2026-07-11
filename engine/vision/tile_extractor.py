@@ -6,9 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .gamespec2d import TileCell
-from .image_loader import PixelImage, RGB
+from .image_loader import RGB, PixelImage
 from .tile_grid_detector import TileGridDetection
-
 
 SolidPredicate = Callable[[RGB, int, int], bool]
 

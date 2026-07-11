@@ -3,8 +3,8 @@ from __future__ import annotations
 import ast
 import json
 import math
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from engine.vision.detection_result import DetectionResult, DetectionResultValidationError
 from engine.vision.supervision_adapter import (

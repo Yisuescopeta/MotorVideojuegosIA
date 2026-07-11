@@ -378,6 +378,23 @@ La configuración de Reina para OpenCode permanece en sus archivos canónicos:
 opencode.json
 ```
 
+### Contrato operativo
+
+Flujo normal:
+
+```text
+RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+```
+
+Para Long Task Plan se carga el plan activo, se sincroniza antes de cada fase y
+se mantiene la autoridad operativa en `docs/queen_engine_workflow.md`.
+
+`phase_status` describe una fase; `task_status` describe la tarea completa.
+`phase completed != task completed`: una fase completada no cierra el trabajo.
+Definition of Done aplica solo al final de una tarea completa, no a una fase
+individual. Estados finales permitidos: `completed`, `partial`, `blocked` y
+`failed`. `max_cycles = 5` limita los ciclos de Reina.
+
 ---
 
 ## 14. Commit y push

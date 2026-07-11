@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from engine.vision.debug_overlay import create_debug_overlay
 from engine.vision.image_loader import load_image
-
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = ROOT / "tests" / "fixtures" / "vision" / "simple_platformer.ppm"

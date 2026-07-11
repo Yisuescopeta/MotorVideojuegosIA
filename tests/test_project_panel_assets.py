@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pyray as rl
 from engine.editor.project_panel import ProjectPanel
@@ -341,29 +342,34 @@ class ProjectPanelAssetTests(unittest.TestCase):
         self.assertEqual(calls, [(rect, item)])
 
     def test_header_controls_width_is_positive_and_breadcrumb_starts_after(self) -> None:
-        controls_width = self.panel._compute_header_controls_width()
-        self.assertGreater(controls_width, 0)
+        def measure(label: str) -> int:
+            measured = rl.measure_text(label, 10)
+            return int(measured) if measured is not None else len(label) * 10
 
-        x, width = 0, 600
-        right_limit = x + width - 124
-        filter_x = x + 10
-        for key in self.panel.FILTER_ORDER:
-            label = f"* {self.panel.FILTER_LABELS[key]}" if self.panel.asset_filter == key else self.panel.FILTER_LABELS[key]
-            bw = max(48, rl.measure_text(label, 10) + 18)
-            if filter_x + bw > right_limit:
-                break
-            filter_x += bw + 6
-        toggle_x = filter_x + 4
-        view_labels = [("grid", "Grid"), ("list", "List"), ("cards", "Cards")]
-        vw_list = [max(38, rl.measure_text(f"* {lbl}" if self.panel._view_mode == k else lbl, 10) + 18) for k, lbl in view_labels]
-        group_w = sum(vw_list) + 12
-        if toggle_x + group_w <= right_limit:
-            controls_end = toggle_x + group_w - 4
-        else:
-            controls_end = toggle_x - 4
-        breadcrumb_x = controls_end + 8
-        self.assertGreaterEqual(breadcrumb_x, controls_end)
-        self.assertGreaterEqual(breadcrumb_x, x + 10)
+        with patch("pyray.measure_text", return_value=None):
+            controls_width = self.panel._compute_header_controls_width()
+            self.assertGreater(controls_width, 0)
+
+            x, width = 0, 600
+            right_limit = x + width - 124
+            filter_x = x + 10
+            for key in self.panel.FILTER_ORDER:
+                label = f"* {self.panel.FILTER_LABELS[key]}" if self.panel.asset_filter == key else self.panel.FILTER_LABELS[key]
+                bw = max(48, measure(label) + 18)
+                if filter_x + bw > right_limit:
+                    break
+                filter_x += bw + 6
+            toggle_x = filter_x + 4
+            view_labels = [("grid", "Grid"), ("list", "List"), ("cards", "Cards")]
+            vw_list = [max(38, measure(f"* {lbl}" if self.panel._view_mode == k else lbl) + 18) for k, lbl in view_labels]
+            group_w = sum(vw_list) + 12
+            if toggle_x + group_w <= right_limit:
+                controls_end = toggle_x + group_w - 4
+            else:
+                controls_end = toggle_x - 4
+            breadcrumb_x = controls_end + 8
+            self.assertGreaterEqual(breadcrumb_x, controls_end)
+            self.assertGreaterEqual(breadcrumb_x, x + 10)
 
 
 class ProjectPanelSourceRegressionTests(unittest.TestCase):

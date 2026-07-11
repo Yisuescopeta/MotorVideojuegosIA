@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .gamespec2d import CameraSpec, GameSpec2D, GridSpec, SourceImageMetadata, TileMapSpec, WarningSpec
-from .image_loader import PixelImage, RGB, load_image
+from .image_loader import RGB, PixelImage, load_image
 from .tile_extractor import SolidPredicate, extract_solid_cells
 from .tile_grid_detector import detect_tile_grid
 

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 from .image_loader import PixelImage
-
 
 DEFAULT_TILE_SIZE_CANDIDATES = (8, 16, 24, 32)
 

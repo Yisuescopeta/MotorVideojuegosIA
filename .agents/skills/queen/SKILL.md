@@ -7,7 +7,7 @@ description: Modo Reina explícito para orquestar tareas largas, críticas o mul
 
 ## Propósito
 
-- Actuar desde la sesión raíz de Codex como Reina; no crear un subagente llamado `queen`.
+- Actuar desde la sesión raíz de Codex como Reina; no crear un subagente llamado `queen`. La sesion raiz de Codex actua como Reina.
 - Coordinar agentes, decisiones, gates y estado persistente hasta alcanzar un estado terminal.
 - Delegar a builders los cambios funcionales del producto.
 - Permitir que la sesión raíz cree y actualice exclusivamente el plan persistente y los metadatos de coordinación de Reina.

@@ -63,16 +63,21 @@ class TerminalPanelTests(unittest.TestCase):
             layout = EditorLayout(1280, 720)
 
         layout.bottom_header_rect = rl.Rectangle(0, 540, 1280, layout.TAB_HEIGHT)
+
+        def click_bottom_tab(tab_id: str) -> None:
+            rect = layout.compute_dock_tab_rects("bottom")[tab_id]
+            layout.handle_bottom_tab_input(rl.Vector2(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5))
+
         with patch("pyray.is_mouse_button_pressed", return_value=True):
-            layout.handle_bottom_tab_input(rl.Vector2(100, 544))
+            click_bottom_tab("FLOW_PANEL")
             self.assertEqual(layout.active_bottom_tab, "FLOW")
-            layout.handle_bottom_tab_input(rl.Vector2(170, 544))
+            click_bottom_tab("CONSOLE")
             self.assertEqual(layout.active_bottom_tab, "CONSOLE")
-            layout.handle_bottom_tab_input(rl.Vector2(240, 544))
+            click_bottom_tab("TERMINAL")
             self.assertEqual(layout.active_bottom_tab, "TERMINAL")
-            layout.handle_bottom_tab_input(rl.Vector2(310, 544))
+            click_bottom_tab("AGENT")
             self.assertEqual(layout.active_bottom_tab, "AGENT")
-            layout.handle_bottom_tab_input(rl.Vector2(20, 544))
+            click_bottom_tab("PROJECT")
             self.assertEqual(layout.active_bottom_tab, "PROJECT")
 
     def test_window_agent_action_opens_agent_bottom_panel(self) -> None:

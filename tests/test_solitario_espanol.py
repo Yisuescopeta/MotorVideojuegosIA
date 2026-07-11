@@ -7,9 +7,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1] / "projects" / "Opengame cartas"
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from solitario_espanol.cards import RANKS, SUITS, Card, Suit, asset_path_for, build_spanish_deck  # noqa: E402
 from solitario_espanol import controller  # noqa: E402
-from solitario_espanol.cards import card_entity_name  # noqa: E402
+from solitario_espanol.cards import (  # noqa: E402
+    RANKS,
+    SUITS,
+    Card,
+    Suit,
+    asset_path_for,
+    build_spanish_deck,
+    card_entity_name,  # noqa: E402
+)
 from solitario_espanol.layout import CARD_HEIGHT, CARD_WIDTH, tableau_card_rect  # noqa: E402
 from solitario_espanol.rules import can_move_to_foundation, can_move_to_tableau  # noqa: E402
 from solitario_espanol.state import SolitaireGameState  # noqa: E402

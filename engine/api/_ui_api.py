@@ -493,12 +493,14 @@ class UIAPI(EngineAPIComponent):
         if kind == "container":
             return self.create_ui_element(name=name, parent=parent, rect_transform=rect_payload)
         if kind == "text":
+            raw_font_size = node.get("font_size", 24)
+            font_size = int(raw_font_size) if isinstance(raw_font_size, (str, int, float)) else 24
             return self.create_ui_text(
                 name=name,
                 text=str(node.get("text", "") or ""),
                 parent=parent,
                 rect_transform=rect_payload,
-                font_size=int(node.get("font_size", 24)),
+                font_size=font_size,
                 alignment=str(node.get("alignment", "center") or "center"),
             )
         if kind == "button":

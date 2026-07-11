@@ -229,19 +229,26 @@ def _normalize_viewport_size(viewport_size: Optional[tuple[float, float]]) -> tu
 def _unpack_rect(rect: Any) -> tuple[float, float, float, float]:
     if isinstance(rect, dict):
         return (
-            float(rect.get("x", rect.get("left", 0.0))),
-            float(rect.get("y", rect.get("top", 0.0))),
-            float(rect.get("width", 0.0)),
-            float(rect.get("height", 0.0)),
+            _safe_float(rect.get("x", rect.get("left", 0.0))),
+            _safe_float(rect.get("y", rect.get("top", 0.0))),
+            _safe_float(rect.get("width", 0.0)),
+            _safe_float(rect.get("height", 0.0)),
         )
     if isinstance(rect, (tuple, list)) and len(rect) >= 4:
         return float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3])
     return (
-        float(getattr(rect, "x", getattr(rect, "left", 0.0))),
-        float(getattr(rect, "y", getattr(rect, "top", 0.0))),
-        float(getattr(rect, "width", 0.0)),
-        float(getattr(rect, "height", 0.0)),
+        _safe_float(getattr(rect, "x", getattr(rect, "left", 0.0))),
+        _safe_float(getattr(rect, "y", getattr(rect, "top", 0.0))),
+        _safe_float(getattr(rect, "width", 0.0)),
+        _safe_float(getattr(rect, "height", 0.0)),
     )
+
+
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _camera_profile_override(camera_component: Camera2D, camera_profile_id: Optional[str]) -> dict[str, Any]:

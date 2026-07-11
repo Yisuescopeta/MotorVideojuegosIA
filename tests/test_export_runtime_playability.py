@@ -658,6 +658,9 @@ class TestRPGAndroidRuntimeParity(unittest.TestCase):
             self.assertGreater(animator.current_frame, 0)
 
             self.assertTrue(runtime.load_scene("levels/main_scene.json"))
+            player = runtime.world.get_entity_by_name("Player")
+            transform = player.get_component_by_name("Transform")
+            initial_x = transform.x
             for frame in range(20):
                 runtime.run_frame(
                     1.0 / 60.0,
@@ -678,7 +681,7 @@ class TestRPGAndroidRuntimeParity(unittest.TestCase):
             self.assertEqual(animator.current_state, "walk_side")
             self.assertGreater(animator.current_frame, 0)
             self.assertTrue(animator.flip_x)
-            self.assertLess(transform.x, -1.0)
+            self.assertLess(transform.x, initial_x - 1.0)
             self.assertLess(input_map.last_state["horizontal"], 0.0)
         finally:
             runtime.shutdown()

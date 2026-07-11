@@ -6,10 +6,9 @@ creating scenes or depending on optional CV/runtime packages.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import math
-from typing import Any, ClassVar, Mapping
-
+from dataclasses import asdict, dataclass, field
+from typing import Any, ClassVar, Mapping, cast
 
 STATUS = "internal-experimental"
 CURRENT_SCHEMA_VERSION = "gamespec2d.v1"
@@ -132,9 +131,9 @@ class GridSpec:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "GridSpec":
         return cls(
-            width=data.get("width"),
-            height=data.get("height"),
-            tile_size=data.get("tile_size"),
+            width=cast(int, data.get("width")),
+            height=cast(int, data.get("height")),
+            tile_size=cast(float, data.get("tile_size")),
             origin_x=data.get("origin_x", 0.0),
             origin_y=data.get("origin_y", 0.0),
             confidence=data.get("confidence"),
@@ -154,8 +153,8 @@ class TileCell:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "TileCell":
         return cls(
-            x=data.get("x"),
-            y=data.get("y"),
+            x=cast(int, data.get("x")),
+            y=cast(int, data.get("y")),
             semantics=data.get("semantics"),
             label=data.get("label"),
             confidence=data.get("confidence"),
@@ -194,9 +193,9 @@ class EntitySpec:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "EntitySpec":
         return cls(
-            type=data.get("type"),
-            x=data.get("x"),
-            y=data.get("y"),
+            type=cast(str, data.get("type")),
+            x=cast(float, data.get("x")),
+            y=cast(float, data.get("y")),
             semantics=data.get("semantics"),
             label=data.get("label"),
             confidence=data.get("confidence"),
@@ -214,8 +213,8 @@ class WarningSpec:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "WarningSpec":
         return cls(
-            code=data.get("code"),
-            message=data.get("message"),
+            code=cast(str, data.get("code")),
+            message=cast(str, data.get("message")),
             confidence=data.get("confidence"),
             metadata=_dict(data.get("metadata")),
         )

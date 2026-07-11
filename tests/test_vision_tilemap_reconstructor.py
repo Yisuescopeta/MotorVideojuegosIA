@@ -4,10 +4,9 @@ import unittest
 
 from engine.vision.gamespec2d import GameSpec2D
 from engine.vision.image_loader import PixelImage, VisionImageError
-from engine.vision.tile_grid_detector import TileGridDetection
 from engine.vision.tile_extractor import extract_solid_cells
+from engine.vision.tile_grid_detector import TileGridDetection
 from engine.vision.tilemap_reconstructor import reconstruct_tilemap_from_image
-
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)

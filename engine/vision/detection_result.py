@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import math
-from typing import Any, Mapping, Sequence
-
+from dataclasses import asdict, dataclass, field
+from typing import Any, Mapping, Sequence, cast
 
 JsonDict = dict[str, Any]
 
@@ -61,8 +60,8 @@ class DetectionResult:
         if isinstance(bbox_value, Mapping):
             bbox_value = (bbox_value.get("x"), bbox_value.get("y"), bbox_value.get("w"), bbox_value.get("h"))
         return cls(
-            label=data.get("label"),
-            bbox=bbox_value,
+            label=cast(str, data.get("label")),
+            bbox=cast(tuple[float, float, float, float], bbox_value),
             confidence=data.get("confidence"),
             metadata=dict(data.get("metadata") or {}),
         )

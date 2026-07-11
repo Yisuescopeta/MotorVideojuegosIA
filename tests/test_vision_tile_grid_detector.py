@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from engine.vision.image_loader import PixelImage, VisionImageError, load_image
 from engine.vision.tile_grid_detector import detect_tile_grid
-
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)

@@ -263,10 +263,15 @@ class EditorLayoutToolStateTests(unittest.TestCase):
         )
 
         layout.bottom_header_rect = rl.Rectangle(0, 540, 1280, layout.TAB_HEIGHT)
+
+        def click_bottom_tab(tab_id: str) -> None:
+            rect = layout.compute_dock_tab_rects("bottom")[tab_id]
+            layout.handle_bottom_tab_input(rl.Vector2(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5))
+
         with patch("pyray.is_mouse_button_pressed", return_value=True):
-            layout.handle_bottom_tab_input(rl.Vector2(100, 544))
+            click_bottom_tab("FLOW_PANEL")
             self.assertEqual(layout.active_bottom_tab, "FLOW")
-            layout.handle_bottom_tab_input(rl.Vector2(20, 544))
+            click_bottom_tab("PROJECT")
             self.assertEqual(layout.active_bottom_tab, "PROJECT")
 
         self.assertEqual(layout.active_tab, original_active_tab)

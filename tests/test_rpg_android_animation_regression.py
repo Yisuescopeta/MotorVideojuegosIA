@@ -38,6 +38,7 @@ class TestRpgAndroidAnimationRegression(unittest.TestCase):
         assert transform is not None
         assert animator is not None
 
+        initial_x = transform.x
         samples = []
         for frame in range(150):
             runtime.run_frame(
@@ -56,8 +57,8 @@ class TestRpgAndroidAnimationRegression(unittest.TestCase):
             if frame in (1, 30, 80, 140):
                 samples.append((transform.x, animator.current_state, animator.current_frame, animator.flip_x))
 
-        self.assertLess(samples[0][0], 0.0)
-        self.assertLess(samples[-1][0], -160.0)
+        self.assertLess(samples[0][0], initial_x)
+        self.assertLess(samples[-1][0], initial_x - 160.0)
         for _x, state, frame, flip_x in samples:
             self.assertEqual(state, "walk_side")
             self.assertIn(frame, range(6))
@@ -97,6 +98,7 @@ class TestRpgAndroidAnimationRegression(unittest.TestCase):
         stick_y = 304.2
         attack_x = 844.0 * 0.84
         attack_y = 390.0 * 0.78
+        initial_x = transform.x
 
         runtime.run_frame(
             1.0 / 60.0,
@@ -112,7 +114,7 @@ class TestRpgAndroidAnimationRegression(unittest.TestCase):
             },
         )
         x_after_move = transform.x
-        self.assertLess(x_after_move, 0.0)
+        self.assertLess(x_after_move, initial_x)
 
         runtime.run_frame(
             1.0 / 60.0,
@@ -179,6 +181,7 @@ class TestRpgAndroidAnimationRegression(unittest.TestCase):
         assert transform is not None
         assert animator is not None
 
+        initial_x = transform.x
         base_payload = {
             "pointers": [
                 {"id": 1, "x": 52.0, "y": 304.2, "down": True, "pressed": False, "released": False},
@@ -202,6 +205,6 @@ class TestRpgAndroidAnimationRegression(unittest.TestCase):
                 },
             )
 
-        self.assertLess(transform.x, -5.0)
+        self.assertLess(transform.x, initial_x - 5.0)
         self.assertEqual(animator.current_state, "walk_side")
         self.assertTrue(animator.flip_x)

@@ -3,8 +3,8 @@ from __future__ import annotations
 import ast
 import json
 import math
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from engine.vision import STATUS
 from engine.vision.gamespec2d import (
