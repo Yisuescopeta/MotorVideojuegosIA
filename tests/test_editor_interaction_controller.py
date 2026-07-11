@@ -41,6 +41,8 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.inspector_system.is_tilemap_tool_active.return_value = False
         self.inspector_system.handle_tilemap_scene_input.return_value = False
         self.inspector_system.get_tilemap_preview_snapshot.return_value = None
+        self.inspector_system.is_collider_preview_active.return_value = False
+        self.inspector_system.is_collider_dragging.return_value = False
         self.inspector_system.get_collider_preview_snapshot.return_value = None
         self.animator_collider_preview = Mock(return_value=None)
         self.history_manager = Mock()

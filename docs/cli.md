@@ -535,6 +535,141 @@ Cada comando devuelve el envelope JSON oficial con `success`, `message` y
 `warnings`; `validate` agrega `validation`. Los comandos avanzados requieren
 `--name` para authoring idempotente.
 
+## Vision experimental
+
+Flujo experimental de GameSpec2D en modo JSON-first. No hay flujo CV/ML ni
+soporte para screenshots comerciales o analisis visual generalista; la entrada
+de imagen solo admite fixturas PPM controladas.
+
+### `motor vision spec validate <path>`
+
+Valida un archivo `GameSpec2D` JSON sin mutar el proyecto.
+
+```bash
+py -m motor vision spec validate examples/vision/simple_platformer.gamespec.json --project . --json
+```
+
+Salida: envelope JSON oficial con `success`, `message` y `data`. Cuando la
+validacion pasa, `data` incluye como minimo `spec_path`, `schema_version`,
+`game_type`, `confidence`, `warnings`, `warning_count` y
+`confidence_summary`.
+
+Errores:
+
+- archivo inexistente -> falla estructurada con `success=false`;
+- JSON invalido o spec invalido -> falla estructurada con `success=false`;
+- el comando no escribe escena ni crea artefactos de salida.
+
+### `motor vision build-scene <gamespec_path> --out <scene_path>`
+
+Construye una escena desde un `GameSpec2D` valido y escribe el resultado en la
+ruta indicada.
+
+```bash
+py -m motor vision build-scene examples/vision/simple_platformer.gamespec.json --out levels/generated.scene --project . --json
+```
+
+Salida: envelope JSON oficial con `success`, `message` y `data`. En exito,
+`data` incluye la informacion del build y metadatos del spec. Si el archivo de
+salida ya existe, el comando rechaza el overwrite por defecto y falla de forma
+estructurada; no sobrescribe la escena.
+
+Errores:
+
+- spec inexistente, JSON invalido o spec invalido -> falla estructurada;
+- salida existente -> rechazo de overwrite por defecto;
+- no hay analisis directo de imagen cruda en este comando.
+
+### `motor vision annotate <image_path> --gamespec <gamespec_path> --out <overlay_path>`
+
+Genera un overlay PPM determinista y de solo diagnostico a partir de una
+imagen PPM controlada y un `GameSpec2D` valido.
+
+```bash
+py -m motor vision annotate tests/fixtures/vision/simple_platformer.ppm --gamespec examples/vision/simple_platformer.gamespec.json --out overlay.ppm --project . --json
+```
+
+Contrato:
+
+- entrada soportada: solo PPM `P3`/`P6` de prueba;
+- salida: PPM `P3` determinista;
+- implementacion: stdlib-only, sin integracion con render, editor, runtime ni `EngineAPI`;
+- overlay: solo marcadores de grid, celdas y entidades; no hay texto renderizado;
+- escritura segura: si `--out` ya existe, el comando rechaza overwrite;
+- fallo seguro: si valida mal la imagen o el `GameSpec2D`, no deja salida parcial.
+
+Salida JSON: envelope oficial con `success`, `message` y `data`.
+En exito, `data` incluye como minimo:
+
+- `overlay_path`
+- `source`
+- `gamespec`
+- `dimensions`
+- `annotation_counts`
+- `warning_count`
+- `format`
+
+`annotation_counts` resume `grid_lines`, `solid_cells`, `decorative_cells` y
+`entities`. `format` actualmente es `PPM_P3`.
+
+### `motor vision build-platformer <image_path> --out <scene_path>`
+
+Convierte una imagen PPM controlada en un `GameSpec2D` y luego construye la
+escena resultante. Es el flujo MVP de imagen -> sidecar -> escena.
+
+La superficie publica de esta fase es la CLI; no existe aun un wrapper publico
+de `EngineAPI` para este flujo. La helper Python interna sigue siendo
+experimental.
+
+```bash
+py -m motor vision build-platformer <image_path> --out <scene_path> --project . --json
+py -m motor vision build-platformer <image_path> --out <scene_path> --gamespec-out <path> --project . --json
+```
+
+Entrada:
+
+- solo PPM `P3` y `P6`;
+- no PNG, JPG, WebP ni screenshots comerciales;
+- no object detection, no OCR, no ML/CV generalista.
+
+Salida JSON: envelope oficial con `success`, `message` y `data`.
+En exito, `data` incluye como minimo los campos top-level:
+
+- `image_path`
+- `gamespec_path`
+- `scene_path`
+- `warnings`
+- `confidence`
+- `unsupported_features`
+- `schema_version`
+- `game_type`
+- `entity_count`
+- `representation`
+- `report` (con `scene_path`, `scene_name`, `representation`, `entity_names` y `semantic_mapping`)
+
+En fallo, `data` conserva esos mismos campos cuando sea posible; si la fase no
+llega a inferirlos, usa valores vacios o por defecto y sigue devolviendo un
+fallo estructurado con `message`.
+
+Contrato de escritura:
+
+- si `--gamespec-out` no se pasa, el sidecar por defecto es
+  `<scene_path>.gamespec.json`;
+- si la escena o el sidecar ya existen, el comando rechaza el overwrite y falla
+  de forma estructurada;
+- si la reconstruccion o la validacion fallan, no deja salidas parciales.
+
+Este comando no edita el Scene JSON a mano: escribe el `GameSpec2D` sidecar,
+llama al builder publico de escena y usa la ruta publica de authoring.
+
+Contrato de salida:
+
+- `--json` es la ruta recomendada para consumo por agentes y scripts;
+- la salida en stdout debe seguir siendo parseable como JSON del envelope
+  oficial;
+- cualquier ruido de arranque de dependencias nativas o del entorno debe
+  tratarse como stderr separado y no forma parte del contrato de stdout.
+
 ## Escenas
 
 ### `motor scene list`

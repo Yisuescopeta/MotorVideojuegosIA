@@ -35,7 +35,13 @@ class TestRpgRenderOrder(unittest.TestCase):
             self.assertTrue(ground_names)
 
             last_ground_index = max(order_index[name] for name in ground_names)
-            for actor_name in ("Player", "Slime_0", "Slime_1", "Slime_2"):
+            enemy_names = [
+                entity.name
+                for entity in runtime.world.get_all_entities()
+                if str(entity.tag or "").strip().lower() == "enemy"
+            ]
+            self.assertTrue(enemy_names)
+            for actor_name in ["Player", *enemy_names]:
                 self.assertIn(actor_name, order_index)
                 self.assertGreater(order_index[actor_name], last_ground_index)
         finally:

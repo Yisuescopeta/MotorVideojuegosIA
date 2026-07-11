@@ -168,6 +168,11 @@ class QueenAgentContractTests(unittest.TestCase):
         self.config = json.loads(read_text(ROOT / "opencode.json"))
         self.agent_config = self.config["agent"]
         self.queen_prompt = read_text(AGENTS_DIR / "queen.md")
+        self.queen_command = read_text(ROOT / ".opencode" / "commands" / "queen.md")
+        self.workflow_doc = read_text(ROOT / "docs" / "queen_engine_workflow.md")
+        self.long_task_doc = read_text(ROOT / "docs" / "queen_long_task_mode.md")
+        self.agents_md = read_text(ROOT / "AGENTS.md")
+        self.docs_agents = read_text(ROOT / "docs" / "agents.md")
 
     def test_agents_referenced_by_queen_exist_in_opencode_config(self) -> None:
         configured = set(self.agent_config)
@@ -290,6 +295,75 @@ class QueenAgentContractTests(unittest.TestCase):
             self.assertLess(source.index("DOCUMENTAR"), source.index("VALIDAR"), msg=name)
             self.assertLess(source.index("AI AUDIT"), source.index("UPDATE PLAN"), msg=name)
             self.assertIn("AI AUDIT", source[source.index("UPDATE PLAN") :], msg=name)
+
+    def test_phase_completed_is_not_task_completed_rule_is_explicit(self) -> None:
+        for name, source in {
+            "queen.md": self.queen_prompt,
+            "queen command": self.queen_command,
+            "workflow doc": self.workflow_doc,
+            "long task doc": self.long_task_doc,
+            "AGENTS.md": self.agents_md,
+            "docs/agents.md": self.docs_agents,
+        }.items():
+            self.assertIn("phase completed != task completed", source, msg=name)
+
+    def test_queen_separates_phase_status_and_task_status(self) -> None:
+        for name, source in {
+            "queen.md": self.queen_prompt,
+            "workflow doc": self.workflow_doc,
+            "AGENTS.md": self.agents_md,
+            "docs/agents.md": self.docs_agents,
+        }.items():
+            self.assertIn("phase_status", source, msg=name)
+            self.assertIn("task_status", source, msg=name)
+        self.assertIn("No reemplaza `task_status`", self.queen_prompt)
+
+    def test_plan_approved_is_not_terminal_and_flows_to_plan_critique(self) -> None:
+        self.assertIn("PLAN aprobado no es estado final", self.queen_prompt)
+        self.assertIn("Queen debe ejecutar inmediatamente CRITICA", self.queen_prompt)
+
+    def test_implementation_task_continues_from_plan_critique_to_builder(self) -> None:
+        self.assertIn("Si la critica aprueba o solo pide ajustes menores ya resueltos", self.queen_prompt)
+        self.assertRegex(self.queen_prompt, r"invocar inmediatamente `builder[^`]*`")
+        self.assertIn('No devolver al usuario "Siguiente paso: critica del plan"', self.queen_prompt)
+        self.assertIn('"Siguiente paso:\n  implementar"', self.queen_prompt)
+
+    def test_test_contract_sufficient_or_valid_not_applicable_advances(self) -> None:
+        self.assertIn("Si `verdict = sufficient`, continuar automaticamente a PLAN.", self.queen_prompt)
+        self.assertIn("Si `verdict = not_applicable`, continuar automaticamente a PLAN", self.queen_prompt)
+
+    def test_review_approved_is_not_terminal(self) -> None:
+        self.assertIn("REVIEW aprobado no es terminal por si solo", self.queen_prompt)
+        self.assertIn("AI AUDIT", self.queen_prompt)
+
+    def test_only_allowed_terminal_conditions_and_explicit_planning_only_exist(self) -> None:
+        self.assertIn("Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.", self.queen_prompt)
+        self.assertIn("Parada excepcional permitida: `planning_only` explicito", self.queen_prompt)
+        self.assertIn("Queen solo puede devolver respuesta final al usuario", self.workflow_doc)
+        for state in ("completed", "blocked", "failed", "partial", "planning_only"):
+            self.assertIn(state, self.workflow_doc)
+
+    def test_command_marks_intermediate_reports_as_non_final(self) -> None:
+        self.assertIn("reportes intermedios nunca son respuesta final al usuario", self.queen_command)
+
+    def test_long_task_continue_next_phase_keeps_control(self) -> None:
+        self.assertIn("continue_next_phase", self.long_task_doc)
+        self.assertRegex(self.long_task_doc, r"sin\s+devolver control al usuario")
+        self.assertIn("Un reporte intermedio de fase no es respuesta final", self.long_task_doc)
+
+    def test_definition_of_done_applies_only_to_full_task(self) -> None:
+        for name, source in {
+            "queen.md": self.queen_prompt,
+            "AGENTS.md": self.agents_md,
+            "docs/agents.md": self.docs_agents,
+        }.items():
+            self.assertIn("Definition of Done aplica", source, msg=name)
+            self.assertRegex(source, r"tarea\s+completa", msg=name)
+            self.assertRegex(source, r"fase\s+individual", msg=name)
+
+    def test_autonomous_continuation_keeps_existing_safety_gates(self) -> None:
+        for phrase in ("Structured Subagent Result Gate", "Model Router", "max_cycles = 5", "missing_subagent_result"):
+            self.assertIn(phrase, self.queen_prompt)
 
     def test_test_strategist_agent_exists_is_read_only_and_documents_schema(self) -> None:
         prompt_path = AGENTS_DIR / "test-strategist.md"

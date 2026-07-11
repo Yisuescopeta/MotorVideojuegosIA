@@ -166,6 +166,16 @@ class ResolveWorldViewportRectTests(unittest.TestCase):
 
         self.assertEqual(viewport, (640.0, 360.0))
 
+    def test_screen_to_viewport_tolerates_null_mapping_offsets(self) -> None:
+        viewport = screen_to_viewport(
+            50.0,
+            25.0,
+            viewport_rect={"x": None, "y": None, "width": 100.0, "height": 50.0},
+            viewport_size=(200.0, 100.0),
+        )
+
+        self.assertEqual(viewport, (100.0, 50.0))
+
 
 if __name__ == "__main__":
     unittest.main()

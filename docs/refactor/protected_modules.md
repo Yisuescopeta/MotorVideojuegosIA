@@ -42,3 +42,10 @@ No protected public API, scene manager, schema, editor, physics backend, or seri
 - `engine/core/runtime_contracts.py`, scene serialization, physics backends, Scene v2, prefabs, and public `EngineAPI` were not modified.
 - `engine/systems/render_system.py` was modified to expose visual bounds and picking from the render source of truth. This keeps hit testing aligned with render order instead of duplicating card bounds in scripts.
 - Rollback path: restore `Game` service wiring, remove runtime input/picking services from script contexts, and restore the previous solitaire controller. If `EDIT -> PLAY -> STOP` regresses, keep null services in `ScriptBehaviourContext` and stop using the API from solitaire until replanned.
+
+## Codex Queen migration handling - 2026-07-10
+
+No protected motor module, public API, Scene v2, serialization, physics backend,
+runtime/editor code or fallback changed. Rollback removes only Codex Queen
+configuration, skill, governance tests and related documentation while keeping
+OpenCode files intact.

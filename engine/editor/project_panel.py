@@ -872,10 +872,14 @@ class ProjectPanel:
         total = 0
         for key in self.FILTER_ORDER:
             label = f"* {self.FILTER_LABELS[key]}" if self.asset_filter == key else self.FILTER_LABELS[key]
-            total += max(48, rl.measure_text(label, 10) + 18) + 6
+            measured = rl.measure_text(label, 10)
+            text_width = int(measured) if measured is not None else len(label) * 10
+            total += max(48, text_width + 18) + 6
         total += 4
         view_labels = [("grid", "Grid"), ("list", "List"), ("cards", "Cards")]
         for k, lbl in view_labels:
             vlabel = f"* {lbl}" if self._view_mode == k else lbl
-            total += max(38, rl.measure_text(vlabel, 10) + 18) + 6
+            measured = rl.measure_text(vlabel, 10)
+            text_width = int(measured) if measured is not None else len(vlabel) * 10
+            total += max(38, text_width + 18) + 6
         return total

@@ -1,0 +1,496 @@
+[
+  {
+    "name": "recon_completed_without_evidence",
+    "agent_type": "context_recon",
+    "result": {
+      "recon_id": "recon-fixture",
+      "status": "completed",
+      "phase_status": "completed",
+      "files_reviewed": [],
+      "subsystems": [
+        "experimental_tooling"
+      ],
+      "expected_agents": [
+        "planner"
+      ],
+      "read_only_agents": [
+        "planner"
+      ],
+      "write_agents": [
+        "builder"
+      ],
+      "permissions_summary": [
+        "planner: read-only",
+        "builder: workspace-write"
+      ],
+      "allowed_files": [
+        "tests/**"
+      ],
+      "forbidden_files": [
+        "engine/**"
+      ],
+      "relevant_tests": [
+        "tests.test_codex_queen_contract"
+      ],
+      "relevant_docs": [
+        "docs/agents.md"
+      ],
+      "risks": [],
+      "blocked_reason": null
+    }
+  },
+  {
+    "name": "test_contract_sufficient_without_commands",
+    "agent_type": "test_strategist",
+    "result": {
+      "test_contract_id": "test-contract-fixture",
+      "phase_status": "completed",
+      "task_type": "experimental_tooling",
+      "subsystems": [
+        "agents"
+      ],
+      "existing_tests_authority": [
+        "tests.test_queen_agent_contract"
+      ],
+      "new_or_modified_tests_required": [
+        "tests.test_codex_queen_contract"
+      ],
+      "tests_that_must_not_be_relaxed": [
+        "tests.test_queen_agent_contract"
+      ],
+      "minimum_focused_commands": [],
+      "recommended_regression_commands": [
+        "python -m unittest tests.test_queen_agent_contract -v"
+      ],
+      "manual_smoke_required": true,
+      "acceptance_criteria": [
+        "focused tests pass"
+      ],
+      "risks": [
+        "runtime smoke pending"
+      ],
+      "auxiliary_inspection_commands_run": [
+        "codex --version"
+      ],
+      "auxiliary_inspection_results": [
+        "codex-cli 0.118.0"
+      ],
+      "verdict": "sufficient",
+      "verdict_reason": "Authority and validation are explicit."
+    }
+  },
+  {
+    "name": "plan_executable_without_steps",
+    "agent_type": "planner",
+    "result": {
+      "plan_id": "plan-fixture",
+      "mode": "standard",
+      "phase_status": "completed",
+      "goal": "Implement validated tooling.",
+      "test_contract_id": "test-contract-fixture",
+      "test_contract_verdict": "sufficient",
+      "original_task": "Migrate Queen.",
+      "addressing_findings": [],
+      "prerequisites": [
+        "Read AGENTS.md"
+      ],
+      "allowed_files": [
+        ".codex/**"
+      ],
+      "forbidden_files": [
+        "engine/**"
+      ],
+      "steps": [],
+      "new_files": [],
+      "modified_files": [
+        ".codex/config.toml"
+      ],
+      "existing_tests_authority": [
+        "tests.test_queen_agent_contract"
+      ],
+      "tests_to_add": [
+        "tests.test_codex_queen_contract"
+      ],
+      "tests_to_modify": [],
+      "tests_that_must_not_be_relaxed": [
+        "tests.test_queen_agent_contract"
+      ],
+      "minimum_focused_commands": [
+        "python -m unittest tests.test_codex_queen_contract -v"
+      ],
+      "recommended_regression_commands": [
+        "python -m unittest tests.test_queen_agent_contract -v"
+      ],
+      "canonical_docs_to_update": [
+        "docs/agents.md"
+      ],
+      "risks": [
+        "runtime availability"
+      ],
+      "estimated_model": "deep"
+    }
+  },
+  {
+    "name": "builder_success_without_commands",
+    "agent_type": "builder",
+    "result": {
+      "builder_id": "builder-fixture",
+      "status": "completed",
+      "phase_status": "completed",
+      "files_changed": [
+        ".codex/config.toml"
+      ],
+      "tests_added_or_modified": [
+        "tests/test_codex_queen_contract.py"
+      ],
+      "tests_deliberately_not_changed": [
+        "tests/test_queen_agent_contract.py"
+      ],
+      "commands_run": [],
+      "write_scope_violations": [],
+      "risks": []
+    }
+  },
+  {
+    "name": "documenter_success_without_docs",
+    "agent_type": "documenter",
+    "result": {
+      "documenter_id": "documenter-fixture",
+      "status": "completed",
+      "phase_status": "completed",
+      "docs_changed": [],
+      "reason": "Documented Codex integration.",
+      "canonical_docs_required": false,
+      "operational_docs_required": true,
+      "risks": []
+    }
+  },
+  {
+    "name": "validator_pass_without_evidence",
+    "agent_type": "validator",
+    "result": {
+      "validation_id": "validation-fixture",
+      "scope": "focused",
+      "phase_status": "completed",
+      "test_contract_id": "test-contract-fixture",
+      "commands_run": [],
+      "results": "pass",
+      "minimum_commands_status": "pass",
+      "missing_expected_tests": [],
+      "relaxed_tests_risk": false,
+      "failures": [],
+      "blocked_reason": null,
+      "risk_assessment": "Runtime smoke remains separate."
+    }
+  },
+  {
+    "name": "review_approved_with_must_fix",
+    "agent_type": "code_reviewer",
+    "result": {
+      "review_id": "review-fixture",
+      "mode": "final_review",
+      "phase_status": "completed",
+      "task_goal": "Migrate Queen.",
+      "test_contract_id": "test-contract-fixture",
+      "files_reviewed": [
+        ".codex/config.toml"
+      ],
+      "verdict": "approved",
+      "findings": [
+        {
+          "severity": "nitpick",
+          "file": "docs/agents.md",
+          "line": 10,
+          "category": "conventions",
+          "description": "Minor wording.",
+          "suggestion": "Consider shortening.",
+          "must_fix": true
+        }
+      ],
+      "summary": "No blocking findings.",
+      "tests_run": [
+        "python -m unittest tests.test_codex_queen_contract -v"
+      ],
+      "test_results": "pass"
+    }
+  },
+  {
+    "name": "ai_not_applicable_with_scores",
+    "agent_type": "ai_friendliness",
+    "result": {
+      "audit_id": "audit-fixture",
+      "phase_status": "not_applicable",
+      "target": "Queen Codex tooling",
+      "applicable": false,
+      "not_applicable_reason": "No AI impact.",
+      "scores": {
+        "serialization": {
+          "score": 25,
+          "max": 25,
+          "deductions": []
+        },
+        "public_api": {
+          "score": 20,
+          "max": 25,
+          "deductions": [
+            "Runtime smoke pending."
+          ]
+        },
+        "documentation": {
+          "score": 25,
+          "max": 25,
+          "deductions": []
+        },
+        "compliance": {
+          "score": 20,
+          "max": 25,
+          "deductions": [
+            "Permissions partly operational."
+          ]
+        }
+      },
+      "total_score": 90,
+      "tier": "not_applicable",
+      "recommendations": [
+        {
+          "priority": "medium",
+          "dimension": "compliance",
+          "action": "Run runtime selection smoke.",
+          "effort": "minutes"
+        }
+      ],
+      "summary": "Structured and documented; runtime smoke remains."
+    }
+  },
+  {
+    "name": "ai_total_mismatch",
+    "agent_type": "ai_friendliness",
+    "result": {
+      "audit_id": "audit-fixture",
+      "phase_status": "completed",
+      "target": "Queen Codex tooling",
+      "applicable": true,
+      "not_applicable_reason": null,
+      "scores": {
+        "serialization": {
+          "score": 25,
+          "max": 25,
+          "deductions": []
+        },
+        "public_api": {
+          "score": 20,
+          "max": 25,
+          "deductions": [
+            "Runtime smoke pending."
+          ]
+        },
+        "documentation": {
+          "score": 25,
+          "max": 25,
+          "deductions": []
+        },
+        "compliance": {
+          "score": 20,
+          "max": 25,
+          "deductions": [
+            "Permissions partly operational."
+          ]
+        }
+      },
+      "total_score": 91,
+      "tier": "excellent",
+      "recommendations": [
+        {
+          "priority": "medium",
+          "dimension": "compliance",
+          "action": "Run runtime selection smoke.",
+          "effort": "minutes"
+        }
+      ],
+      "summary": "Structured and documented; runtime smoke remains."
+    }
+  },
+  {
+    "name": "committer_ok_without_hash",
+    "agent_type": "committer",
+    "result": {
+      "status": "ok",
+      "phase_status": "completed",
+      "commit_hash": null,
+      "message": "feat(agents): migrar Reina a Codex",
+      "files_committed": [
+        ".codex/config.toml"
+      ],
+      "files_skipped": [],
+      "blocked_reason": null
+    }
+  },
+  {
+    "name": "godot_feature_count_mismatch",
+    "agent_type": "godot_source_analyzer",
+    "result": {
+      "analyzer_id": "godot-analyze-fixture",
+      "phase_status": "completed",
+      "godot_version": "4.4",
+      "godot_source_path": "vendor/godot",
+      "subsystems_analyzed": [
+        "2d"
+      ],
+      "features": [
+        {
+          "feature": "Node2D",
+          "subsystem": "2d",
+          "contract": {
+            "purpose": "Represent a 2D transform node.",
+            "data_stored": {
+              "properties": [
+                "position"
+              ],
+              "serialization_format": "Variant properties"
+            },
+            "lifecycle": {
+              "creation": "Instantiate node.",
+              "update": "SceneTree notification.",
+              "destruction": "queue_free."
+            },
+            "public_api": {
+              "methods": [
+                "set_position"
+              ],
+              "signals": [
+                "tree_entered"
+              ],
+              "properties_exported": [
+                "position"
+              ]
+            },
+            "dependencies": [
+              "CanvasItem"
+            ],
+            "edge_cases": [
+              "Reparenting preserves configured transform mode."
+            ]
+          },
+          "priority": "critical",
+          "estimated_complexity": "high"
+        }
+      ],
+      "total_features": 2,
+      "priorities": {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "already_in_motor": [
+        "Transform"
+      ],
+      "notes": "Source verified."
+    }
+  },
+  {
+    "name": "godot_gap_priority_mismatch",
+    "agent_type": "godot_gap_analyzer",
+    "result": {
+      "gap_analysis_id": "gap-fixture",
+      "phase_status": "completed",
+      "catalog_source": "godot-analyze-fixture",
+      "motor_capabilities": [
+        "Transform"
+      ],
+      "already_implemented": [
+        {
+          "godot": "Node2D",
+          "motor": "engine/components/transform.py",
+          "status": "partial"
+        }
+      ],
+      "gaps": [
+        {
+          "godot_feature": "Node2D",
+          "subsystem": "2d",
+          "status": "partial",
+          "priority": "critical",
+          "implements": "Hierarchy transform behavior.",
+          "mapping": {
+            "motor_components": [
+              "Transform"
+            ],
+            "motor_systems": [
+              "TransformSystem"
+            ],
+            "motor_resources": [],
+            "motor_events": [
+              "ENTITY_ADDED"
+            ]
+          },
+          "effort": {
+            "complexity": "medium",
+            "files": [
+              "engine/components/transform.py"
+            ],
+            "tests": [
+              "tests/test_transform.py"
+            ],
+            "dependencies": [
+              "SceneManager"
+            ],
+            "risks": [
+              "Public hierarchy contract"
+            ]
+          },
+          "reasoning": "Existing transform lacks verified parity."
+        }
+      ],
+      "priority_summary": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "recommended_order": [
+        "Node2D"
+      ],
+      "notes": "Adapt behavior, not architecture."
+    }
+  },
+  {
+    "name": "godot_adapter_success_with_scope_violation",
+    "agent_type": "godot_adapter",
+    "result": {
+      "adapter_id": "adapter-fixture",
+      "status": "completed",
+      "phase_status": "completed",
+      "feature": "Node2D",
+      "mapping": {
+        "godot": "Node2D",
+        "opengame": "Transform"
+      },
+      "files_changed": [
+        "engine/components/transform.py"
+      ],
+      "tests_added_or_modified": [
+        "tests/test_transform.py"
+      ],
+      "commands_run": [
+        "python -m unittest tests.test_transform -v"
+      ],
+      "write_scope_violations": [
+        "engine/forbidden.py"
+      ],
+      "risks": [
+        "Public hierarchy contract"
+      ]
+    }
+  },
+  {
+    "name": "queen_completed_zero_cycles",
+    "agent_type": "queen_task_result",
+    "result": {
+      "task_id": "queen-fixture",
+      "task_status": "completed",
+      "summary": "All gates passed and commit created.",
+      "cycles_used": 0
+    }
+  }
+]

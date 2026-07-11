@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "max_cycles": 5,
+  "phase_statuses": ["completed", "blocked", "failed", "skipped", "not_applicable"],
+  "task_statuses": ["completed", "partial", "blocked", "failed"],
+  "exceptional_stop": "planning_only",
+  "normal_cycle": ["RECON", "TEST_CONTRACT", "PLAN", "PLAN_CRITIQUE", "IMPLEMENT", "DOCUMENT", "VALIDATE", "REVIEW", "AI_AUDIT", "COMMIT", "REPORT"],
+  "long_cycle": ["LOAD_PLAN", "PLAN_SYNC", "TEST_CONTRACT", "IMPLEMENT_PHASE", "DOCUMENT", "VALIDATE", "REVIEW", "AI_AUDIT", "UPDATE_PLAN", "NEXT_PHASE_OR_COMMIT_OR_BLOCK"],
+  "automatic_transitions": {
+    "RECON.completed": "TEST_CONTRACT",
+    "TEST_CONTRACT.sufficient": "PLAN",
+    "PLAN.approved": "PLAN_CRITIQUE",
+    "PLAN_CRITIQUE.approved": "IMPLEMENT",
+    "IMPLEMENT.completed": "DOCUMENT",
+    "DOCUMENT.completed": "VALIDATE",
+    "VALIDATE.pass": "REVIEW",
+    "REVIEW.approved": "AI_AUDIT",
+    "AI_AUDIT.approved": "COMMIT",
+    "UPDATE_PLAN.continue_next_phase": "NEXT_PHASE",
+    "COMMIT.completed": "REPORT"
+  },
+  "forbidden_final_after": ["RECON", "TEST_CONTRACT", "PLAN", "PLAN_CRITIQUE", "IMPLEMENT", "DOCUMENT", "VALIDATE", "REVIEW", "AI_AUDIT", "UPDATE_PLAN"],
+  "commit_prerequisites": ["validator_pass", "review_approved", "ai_audit_approved_or_not_applicable"],
+  "router": {
+    "simple": ["test_strategist_fast", "planner_fast", "builder_fast", "code_reviewer_fast"],
+    "normal": ["test_strategist", "planner", "builder", "code_reviewer"],
+    "complex": ["test_strategist_deep", "planner_deep", "builder_deep", "code_reviewer_deep"],
+    "critical": ["test_strategist_deep", "planner_deep", "builder_deep", "code_reviewer_deep"]
+  },
+  "max_parallel_implementers": 3,
+  "max_agent_depth": 1
+}

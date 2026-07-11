@@ -85,8 +85,49 @@ plan persistente como contrato operativo.
   archivos permitidos, archivos prohibidos, checks y decisiones recientes.
 - Despues de AI AUDIT, ejecutar UPDATE PLAN antes de avanzar, bloquear o cerrar.
 - UPDATE PLAN registra resultado de AI AUDIT, checks, riesgos y decision.
+- UPDATE PLAN decide solo: `continue_next_phase`, `block`, `complete` o
+  `partial`.
+- Si UPDATE PLAN decide `continue_next_phase`, Queen debe continuar
+  automaticamente a la siguiente fase sin devolver control al usuario.
 - El plan nunca supera a codigo, tests, AGENTS.md o docs canonicas.
 - Ver `docs/queen_long_task_mode.md` y `docs/queen_engine_workflow.md`.
+
+## Continuidad autonoma
+
+Regla fuerte:
+
+`phase completed != task completed`
+
+Queen separa siempre:
+
+- `phase_status`: `completed | blocked | failed | skipped | not_applicable`
+- `task_status`: `completed | partial | blocked | failed`
+
+Reglas de continuidad:
+
+- `phase_status = completed` obliga a avanzar a siguiente fase. Nunca cierra la
+  tarea por si solo.
+- `task_status = completed` solo puede emitirse cuando la tarea completa cumple
+  Definition of Done.
+- `planning_only` solo es salida valida si el usuario pidio explicitamente solo
+  plan y no implementacion. No reemplaza `task_status`.
+- Reportes intermedios, planes aprobados, reviews aprobadas y checks verdes de
+  fase son evidencia interna para seguir, no respuestas finales al usuario.
+- Queen no puede responder con "Siguiente paso: implementar..." o equivalente
+  si la tarea original incluia implementar y no hay bloqueo real.
+
+Fases que nunca son terminales por si mismas:
+
+- RECON completado.
+- TEST CONTRACT suficiente.
+- TEST CONTRACT `not_applicable` con razon valida.
+- PLAN aprobado.
+- CRITICA DEL PLAN aprobada.
+- IMPLEMENTAR fase completada.
+- DOCUMENTAR completado o `not_applicable`.
+- VALIDAR pass para fase.
+- REVIEW `approved`.
+- AI AUDIT aprobado.
 
 ## Model Router
 
@@ -220,6 +261,9 @@ Reglas:
 
 ## Definition of Done
 
+Definition of Done aplica solo al cierre de tarea completa, nunca a una fase
+individual.
+
 Una tarea solo puede terminar como `completed` si cumple todo lo aplicable:
 
 - TEST CONTRACT suficiente o `not_applicable` justificado por docs-only trivial.
@@ -239,6 +283,8 @@ Una tarea solo puede terminar como `completed` si cumple todo lo aplicable:
 - Reporte final enumera archivos cambiados, checks ejecutados y riesgos.
 
 Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
+Parada excepcional permitida: `planning_only` explicito cuando el usuario pidio
+solo plan.
 
 ## Subagentes
 
@@ -278,6 +324,9 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 - Exigir JSON parseable con schema documentado en
   `.opencode/agents/test-strategist.md`.
 - Bloquear si `verdict = insufficient`.
+- Si `verdict = sufficient`, continuar automaticamente a PLAN.
+- Si `verdict = not_applicable`, continuar automaticamente a PLAN solo cuando la
+  razon valida docs-only trivial o caso equivalente permitido.
 - Registrar cualquier unittest ejecutado por `test-strategist` como inspeccion
   auxiliar, not final validation.
 
@@ -288,6 +337,8 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 - Exigir plan con archivos permitidos/prohibidos, tests, docs, riesgos y salida.
 - Rechazar planes que no usen `existing_tests_authority`,
   `minimum_focused_commands` y `tests_that_must_not_be_relaxed`.
+- PLAN aprobado no es estado final. Queen debe ejecutar inmediatamente CRITICA
+  DEL PLAN.
 
 ### 4. CRITICA DEL PLAN
 
@@ -295,6 +346,11 @@ Estados finales permitidos: `completed`, `partial`, `blocked`, `failed`.
 - Si toca contrato publico, schema, CLI, `EngineAPI` o arquitectura, exigir docs
   canonicas correspondientes.
 - Si amplia alcance, pedir plan corregido antes de implementar.
+- Si la critica aprueba o solo pide ajustes menores ya resueltos, Queen debe
+  invocar inmediatamente `builder`, `builder-fast` o `builder-deep` segun
+  `model_route`.
+- No devolver al usuario "Siguiente paso: critica del plan" o "Siguiente paso:
+  implementar" si la tarea original era implementar y no hay bloqueo real.
 
 ### 5. IMPLEMENTAR
 
@@ -335,12 +391,17 @@ py -m motor doctor --project . --json
   `code-reviewer` o `code-reviewer-deep`, con tarea original, plan,
   TEST CONTRACT, validator report y `git diff`.
 - Veredicto valido para avanzar: `approved` y cero `must_fix`.
+- REVIEW aprobado no es terminal por si solo. En Normal Task Mode debe seguir a
+  AI AUDIT o COMMIT si AI AUDIT no aplica; en Long Task Mode debe seguir a AI
+  AUDIT y luego UPDATE PLAN.
 
 ### 9. AI AUDIT
 
 - Invocar `ai-friendliness` cuando cambien flujos usados por agentes, contratos
   publicos, serializacion, docs IA o cumplimiento del motor.
 - En Long Task, registrar resultado en UPDATE PLAN antes de avanzar o cerrar.
+- AI AUDIT aprobado no es respuesta final al usuario; habilita siguiente fase,
+  UPDATE PLAN o COMMIT segun modo y alcance.
 
 ### 10. COMMIT
 
@@ -352,10 +413,14 @@ py -m motor doctor --project . --json
 ### 11. REPORTE
 
 - Estado final: `completed`, `partial`, `blocked` o `failed`.
+- `planning_only` solo si el usuario pidio explicitamente plan sin
+  implementacion.
 - Reportar `model_route`, cambios, archivos, checks, riesgos, tests no
   ejecutados y motivo.
 - Ejecutar o delegar `git diff --name-only` y confirmar que no se toco `engine/`,
   `docs/archive/` ni archivos fuera de scope.
+- No emitir respuesta final entre fases si no hay bloqueo real, cierre completo
+  o `planning_only` explicito.
 
 ## Politica de Clarificacion
 

@@ -77,3 +77,11 @@ Focused ECS, clone, scene workspace, core regression, and benchmark tests passed
   - Result: failed with known baseline failures only.
   - Summary: 16 failed, 3475 passed, 8 skipped, 34 warnings, 1198 subtests passed.
   - Duration: 415.09 s.
+
+## Codex Queen migration baseline - 2026-07-10
+
+- Pre-change suite from active plan: 3582 pass, 12 known functional failures,
+  8 skipped.
+- Authority: `tests/test_queen_agent_contract.py` plus repository governance.
+- New focused command and final result live in
+  `docs/refactor/phase_codex_queen_migration_result.md`.

@@ -1,0 +1,1594 @@
+# Review package: working tree
+
+## Status
+ M AGENTS.md
+ M docs/agents.md
+ M docs/queen_engine_workflow.md
+ M docs/queen_long_task_mode.md
+ M docs/refactor/baseline_benchmarks.md
+ M docs/refactor/baseline_environment.md
+ M docs/refactor/baseline_tests.md
+ M docs/refactor/branch_audit.md
+ M docs/refactor/protected_modules.md
+?? .agents/skills/queen/SKILL.md
+?? .agents/skills/queen/agents/openai.yaml
+?? .agents/skills/queen/references/agent_mapping.json
+?? .agents/skills/queen/references/long_task_mode.md
+?? .agents/skills/queen/references/model_router.md
+?? .agents/skills/queen/references/queen_contract.json
+?? .agents/skills/queen/references/result_schemas.json
+?? .agents/skills/queen/references/result_schemas.md
+?? .agents/skills/queen/references/test_contract.md
+?? .agents/skills/queen/references/workflow.md
+?? .agents/skills/queen/scripts/validate_result.py
+?? .codex/agents/ai_friendliness.toml
+?? .codex/agents/builder.toml
+?? .codex/agents/builder_deep.toml
+?? .codex/agents/builder_fast.toml
+?? .codex/agents/code_reviewer.toml
+?? .codex/agents/code_reviewer_deep.toml
+?? .codex/agents/code_reviewer_fast.toml
+?? .codex/agents/committer.toml
+?? .codex/agents/context_recon.toml
+?? .codex/agents/documenter.toml
+?? .codex/agents/godot_adapter.toml
+?? .codex/agents/godot_gap_analyzer.toml
+?? .codex/agents/godot_source_analyzer.toml
+?? .codex/agents/planner.toml
+?? .codex/agents/planner_deep.toml
+?? .codex/agents/planner_fast.toml
+?? .codex/agents/test_strategist.toml
+?? .codex/agents/test_strategist_deep.toml
+?? .codex/agents/test_strategist_fast.toml
+?? .codex/agents/validator.toml
+?? .codex/config.toml
+?? .superpowers/sdd/make-review-package.ps1
+?? .superpowers/sdd/task-1-brief.md
+?? .superpowers/sdd/task-1-report.md
+?? docs/plans/active/queen-20260710-001-codex-queen-migration.md
+?? docs/refactor/phase_codex_queen_migration_result.md
+?? tests/test_codex_queen_contract.py
+
+## Tracked diff
+diff --git a/AGENTS.md b/AGENTS.md
+index 293e54c..17f8f21 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -665,10 +665,22 @@ Definition of Done aplica al final de tarea completa, no a una fase individual.
+ `planning_only` solo existe si el usuario pidio explicitamente solo plan.
+ 
+ Matriz operativa de validacion por subsistema:
+ `docs/queen_engine_workflow.md`.
+ 
+ Comando base de suite amplia:
+ 
+ ```bash
+ py -m unittest discover -s tests
+ ```
++
++### Queen en Codex
++
++Cuando una tarea pida implementar, corregir, refactorizar, auditar o ejecutar
++un plan por fases, Codex debe cargar `.agents/skills/queen/SKILL.md`. La sesion
++raiz actua como Reina y delega las fases; no existe subagente `queen`. No debe
++implementar directamente cuando el flujo exige delegacion ni terminar entre
++fases: `phase completed != task completed`.
++
++PLAN aprobado, REVIEW aprobado o fase completada no son finales. Codex solo
++responde al usuario con tarea `completed`, `partial`, `blocked` o `failed`.
++`planning_only` solo vale cuando el usuario pidio exclusivamente un plan.
+diff --git a/docs/agents.md b/docs/agents.md
+index 5390adb..ed68f87 100644
+--- a/docs/agents.md
++++ b/docs/agents.md
+@@ -925,10 +925,62 @@ La matriz operativa de validacion por subsistema vive en
+ ```bash
+ py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
+ py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+ py -m motor --help
+ py -m motor ai start --project . --json
+ py -m motor ai compliance --project . --json
+ py -m motor doctor --project . --json
+ ```
+ 
+ Declara solo los comandos que hayas ejecutado realmente.
++
++## Queen en Codex
++
++Estado: experimental/tooling. Codex y OpenCode coexisten durante la migracion.
++La sesion raiz de Codex es Reina; no hay `.codex/agents/queen.toml`. Se activa
++cargando `.agents/skills/queen/SKILL.md` para tareas completas o por fases.
++
++Codex descubre automaticamente 20 agentes standalone desde
++`.codex/agents/*.toml`; `.codex/config.toml` solo activa `multi_agent` y limita
++`max_threads=3`, `max_depth=1`. Registrar de nuevo esos nombres mediante
++`[agents.<name>] config_file` los duplicaria y se rechaza.
++
++Autoridad durante transicion:
++
++- `AGENTS.md`, tests y docs operativas son autoridad comun.
++- `.opencode/` y `opencode.json` conservan integracion OpenCode.
++- `queen_contract.json` y `result_schemas.json` son contratos Codex
++  machine-readable.
++- Cada TOML Codex exige leer completamente su prompt OpenCode equivalente; el
++  mapping guion/underscore vive en `agent_mapping.json`.
++- Skill Codex es canon de orquestacion Codex; prompts OpenCode siguen siendo
++  canon OpenCode. Cambios comunes deben mantener ambas integraciones.
++
++Model Router clasifica `simple|normal|complex|critical` tras RECON. Fast usa
++`gpt-5.6-terra`/low; standard `gpt-5.6`/high; deep `gpt-5.6`/xhigh. TEST
++CONTRACT precede implementacion y fija tests autoridad, tests nuevos, tests que
++no se relajan, comandos y aceptacion. Cada resultado JSON se valida con:
++
++```bash
++python .agents/skills/queen/scripts/validate_result.py <agent_type> --input resultado.json
++```
++
++Salida vacia, no JSON o incompatible bloquea. Planes largos viven en
++`docs/plans/active/`; `continue_next_phase` continua automaticamente.
++
++Garantias tecnicas: sandbox `read-only`/`workspace-write`, profundidad 1 y
++paralelismo 3. Garantias operativas reforzadas por instrucciones/tests: write
++sets por archivo, allowlist de comandos, orden de gates y committer unico. Codex
++0.118.0 no impone en TOML standalone allowlist shell o permiso por archivo
++equivalente a OpenCode; `workspace-write` puede escribir otras rutas del repo.
++
++Comprobar integracion:
++
++```bash
++codex --version
++codex features list
++python -m unittest tests.test_codex_queen_contract tests.test_queen_agent_contract -v
++```
++
++El repo debe estar trusted para cargar `.codex/config.toml`. Abrir Codex desde
++la raiz y seleccionar `context_recon` y un builder confirma discovery runtime;
++si autenticacion/modelo impide smoke, registrar esa parte como manual, no pass.
+diff --git a/docs/queen_engine_workflow.md b/docs/queen_engine_workflow.md
+index dbe87e5..6634192 100644
+--- a/docs/queen_engine_workflow.md
++++ b/docs/queen_engine_workflow.md
+@@ -1,15 +1,15 @@
+ # Queen Engine Workflow
+ 
+ Authority: operational-workflow
+ 
+-Documento operativo para Queen/OpenCode. No es documentacion canonica del
++Documento operativo para Queen/OpenCode y Queen/Codex. No es documentacion canonica del
+ producto ni cambia el contrato del motor.
+ 
+ Queen existe para programar, refactorizar, endurecer y mantener el motor
+ OpenGame. No crea juegos como objetivo final. Las escenas o juegos generados
+ solo valen como fixture, demo minima, smoke test o validacion del motor.
+ 
+ ## Ciclo
+ 
+ ```text
+ RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+@@ -139,10 +139,26 @@ ser docs-only trivial y declarar razon.
+ ## Paradas validas
+ 
+ Queen solo puede devolver respuesta final al usuario si ocurre una de estas:
+ 
+ - `completed`: tarea completa cumple Definition of Done.
+ - `blocked`: bloqueo real.
+ - `failed`: error no recuperable.
+ - `partial`: `max_cycles`, contexto o alcance impiden cierre completo.
+ - `planning_only`: solo si el usuario pidio explicitamente plan sin
+   implementacion.
++
++## Integracion Codex
++
++La sesion raiz carga `.agents/skills/queen/SKILL.md` y actua como Reina. Los 20
++subagentes se descubren como TOML standalone en `.codex/agents/`; profundidad 1
++impide descendientes y `max_threads=3` limita paralelismo. No existe agente hijo
++`queen` ni registro duplicado `[agents.<name>]` en config.
++
++Cada rol Codex lee su contrato OpenCode completo y devuelve JSON validable por
++`.agents/skills/queen/scripts/validate_result.py`. Contratos y transiciones
++machine-readable viven en `result_schemas.json` y `queen_contract.json`.
++
++Sandbox aplica tecnicamente acceso read-only o workspace-write. Alcance por
++archivo, comandos permitidos, write sets disjuntos y orden del committer son
++garantias operativas reforzadas por instrucciones y tests; Codex 0.118.0 no las
++expresa con granularidad equivalente a permisos OpenCode.
+diff --git a/docs/queen_long_task_mode.md b/docs/queen_long_task_mode.md
+index 1716c1d..4cf7b33 100644
+--- a/docs/queen_long_task_mode.md
++++ b/docs/queen_long_task_mode.md
+@@ -203,16 +203,24 @@ orden de autoridad. Si hay conflicto:
+ Queen nunca debe tratar un plan como fuente de verdad superior a estas.
+ 
+ ## Archivo de planes
+ 
+ Al terminar la tarea (completed, partial, blocked o failed):
+ 
+ 1. El plan versionado se mueve de `docs/plans/active/` a `docs/plans/archive/`.
+ 2. Se actualiza el header: `Status: completed|blocked|failed`.
+ 3. Se añade `Archived at: <ISO timestamp>`.
+ 
++## Codex y OpenCode
++
++Ambas integraciones comparten planes en `docs/plans/active/`. En Codex, sesion
++raiz carga `.agents/skills/queen/SKILL.md`, recalcula route por fase y valida
++cada resultado JSON antes de UPDATE PLAN. `continue_next_phase` obliga a
++continuar sin devolver control al usuario. Contrato compacto:
++`.agents/skills/queen/references/long_task_mode.md`.
++
+ ## Ver tambien
+ 
+ - `AGENTS.md` — contrato operativo de agentes.
+ - `.opencode/agents/queen.md` — prompt del agente Queen.
+ - `docs/queen_engine_workflow.md` — matriz operativa de validacion por subsistema.
+ - `docs/plans/README.md` — ciclo de vida de planes operativos.
+diff --git a/docs/refactor/baseline_benchmarks.md b/docs/refactor/baseline_benchmarks.md
+index 2ce90eb..dfaa9e0 100644
+--- a/docs/refactor/baseline_benchmarks.md
++++ b/docs/refactor/baseline_benchmarks.md
+@@ -76,10 +76,15 @@ Benchmark tooling checked in the repository:
+ - `tools/benchmark_run.py`
+ - `tools/benchmark_suite.py`
+ - `engine/debug/benchmark_runner.py`
+ - `engine/debug/benchmark_scenarios.py`
+ - `tools/physics_benchmark_cli.py`
+ - `tools/render_benchmark_cli.py`
+ - `tools/tilemap_collision_benchmark_cli.py`
+ - `tools/spatial_hash_benchmark.py`
+ 
+ No Rust/PyO3 benchmark or native module was added.
++
++## Codex Queen migration - 2026-07-10
++
++No benchmark applies: migration changes only agent tooling, tests and docs.
++Existing benchmark inventory remains unchanged.
+diff --git a/docs/refactor/baseline_environment.md b/docs/refactor/baseline_environment.md
+index 4384d4c..c2ef157 100644
+--- a/docs/refactor/baseline_environment.md
++++ b/docs/refactor/baseline_environment.md
+@@ -31,10 +31,19 @@ Date: 2026-07-01
+ 
+ ## Runtime input/picking phase update - 2026-07-02
+ 
+ - Work branch: `codex/runtime-input-picking`.
+ - Base commit: `b18fb1894552ef50ea3966a88276051054286585`.
+ - Remote main detected again with `git remote show origin`, `git fetch --all --prune`, and `git branch -r --sort=-committerdate`: `origin/main`.
+ - Dependency files remain `pyproject.toml` and `requirements.txt`; no new dependency system was introduced.
+ - Effective Python command remains `py -3 -m ...`.
+ - No Rust/PyO3 change was introduced.
+ - No new runtime dependency was introduced.
++
++## Codex Queen migration update - 2026-07-10
++
++- Codex CLI detected: `codex-cli 0.118.0`; `multi_agent` is stable.
++- Native project config: `.codex/config.toml`; standalone agents:
++  `.codex/agents/*.toml`; project skill: `.agents/skills/queen/`.
++- Local `py` launcher did not resolve installed Python in this shell. Focused
++  checks used `C:\Users\usuario\AppData\Local\Programs\Python\Python311\python.exe`.
++- No dependency, Rust/PyO3 or motor runtime change introduced.
+diff --git a/docs/refactor/baseline_tests.md b/docs/refactor/baseline_tests.md
+index dc2ff3a..c7b1bed 100644
+--- a/docs/refactor/baseline_tests.md
++++ b/docs/refactor/baseline_tests.md
+@@ -70,10 +70,18 @@ Focused ECS, clone, scene workspace, core regression, and benchmark tests passed
+ - Directed validation after implementation: `py -3 -m pytest tests/test_script_behaviour_system.py tests/test_viewport.py tests/test_render_graph.py tests/test_solitario_espanol.py -q`
+   - Result: passed.
+   - Summary: 100 passed, 5 subtests passed.
+ - Directed validation plus export smoke after updating the runtime pointer payload test: `py -3 -m pytest tests/test_script_behaviour_system.py tests/test_viewport.py tests/test_render_graph.py tests/test_solitario_espanol.py tests/test_export_windows_smoke.py::TestExportedGameWindowed::test_windowed_pyray_updates_and_renders_once_per_frame -q`
+   - Result: passed.
+   - Summary: 101 passed, 5 subtests passed.
+ - Full-suite validation after implementation: `py -3 -m pytest -q`
+   - Result: failed with known baseline failures only.
+   - Summary: 16 failed, 3475 passed, 8 skipped, 34 warnings, 1198 subtests passed.
+   - Duration: 415.09 s.
++
++## Codex Queen migration baseline - 2026-07-10
++
++- Pre-change suite from active plan: 3582 pass, 12 known functional failures,
++  8 skipped.
++- Authority: `tests/test_queen_agent_contract.py` plus repository governance.
++- New focused command and final result live in
++  `docs/refactor/phase_codex_queen_migration_result.md`.
+diff --git a/docs/refactor/branch_audit.md b/docs/refactor/branch_audit.md
+index 6f3dfdc..3bbfcaa 100644
+--- a/docs/refactor/branch_audit.md
++++ b/docs/refactor/branch_audit.md
+@@ -67,10 +67,19 @@ Base commit:
+ b18fb1894552ef50ea3966a88276051054286585
+ ```
+ 
+ Work branch:
+ 
+ ```text
+ codex/runtime-input-picking
+ ```
+ 
+ Pre-existing dirty worktree was preserved. Notable modified or untracked files already included `.gitignore`, `AGENTS.md`, `engine/ecs/world.py`, `tests/test_ecs_indices.py`, `tests/test_spatial_hash.py`, `docs/refactor/`, `projects/Opengame cartas/`, `tests/test_solitario_espanol.py`, and `tools/spatial_hash_benchmark.py`.
++
++## Codex Queen migration audit - 2026-07-10
++
++- Remote: `origin https://github.com/Yisuescopeta/OpenGame.git`.
++- Branch: `fix/ciclosReina`; approved base:
++  `99fa3896f661298208bcacde2821c2fab1a9dae6`.
++- Migration scope excludes `engine/`, `cli/`, `main.py`, `START_HERE_AI.md`,
++  `docs/archive/`, `.opencode/` and `opencode.json`.
++- Initial task artifacts were untracked active plan and `.superpowers/` brief.
+diff --git a/docs/refactor/protected_modules.md b/docs/refactor/protected_modules.md
+index e16815e..3f57548 100644
+--- a/docs/refactor/protected_modules.md
++++ b/docs/refactor/protected_modules.md
+@@ -35,10 +35,17 @@ Date: 2026-07-01
+ `engine/ecs/world.py` is protected, but phase 1 touched it only for internal query cache invalidation and added focused tests. Phase 2 did not modify it.
+ 
+ No protected public API, scene manager, schema, editor, physics backend, or serialization file was modified in phase 2.
+ 
+ ## Runtime input/picking phase handling - 2026-07-02
+ 
+ - `engine/core/game.py` is protected and was modified because runtime input must be updated by the engine before `ScriptBehaviourSystem.update()`. The change is limited to service creation, service injection, and input snapshots for PLAY/runtime.
+ - `engine/core/runtime_contracts.py`, scene serialization, physics backends, Scene v2, prefabs, and public `EngineAPI` were not modified.
+ - `engine/systems/render_system.py` was modified to expose visual bounds and picking from the render source of truth. This keeps hit testing aligned with render order instead of duplicating card bounds in scripts.
+ - Rollback path: restore `Game` service wiring, remove runtime input/picking services from script contexts, and restore the previous solitaire controller. If `EDIT -> PLAY -> STOP` regresses, keep null services in `ScriptBehaviourContext` and stop using the API from solitaire until replanned.
++
++## Codex Queen migration handling - 2026-07-10
++
++No protected motor module, public API, Scene v2, serialization, physics backend,
++runtime/editor code or fallback changed. Rollback removes only Codex Queen
++configuration, skill, governance tests and related documentation while keeping
++OpenCode files intact.
+
+## Untracked: .agents/skills/queen/SKILL.md
+---
+name: queen
+description: Orquesta tareas completas de desarrollo y mantenimiento de OpenGame en Codex mediante subagentes, TEST CONTRACT, plan criticado, validacion, review, auditoria IA y commit final. Usar cuando el usuario pida implementar, corregir, refactorizar, auditar o ejecutar una tarea por fases; usar modo largo cuando exista un plan persistente o varias fases. La sesion raiz de Codex actua como Reina.
+---
+
+# Reina para Codex
+
+Actuar desde la sesion raiz. No crear un subagente `queen`. Delegar cada fase al
+rol configurado en `.codex/config.toml`; los subagentes no crean descendientes.
+
+1. Leer `AGENTS.md`, la tarea y las fuentes reales del repositorio.
+2. Leer [workflow.md](references/workflow.md) antes de iniciar el ciclo.
+3. Tras RECON, clasificar la tarea con [model_router.md](references/model_router.md).
+4. Exigir el contrato descrito en [test_contract.md](references/test_contract.md).
+5. Validar cada salida con `scripts/validate_result.py` y
+   [result_schemas.json](references/result_schemas.json). Una salida vacia,
+   truncada, no JSON o incompatible bloquea con `missing_subagent_result`.
+6. Para planes persistentes, leer [long_task_mode.md](references/long_task_mode.md).
+7. Continuar automaticamente hasta estado final. `phase completed != task completed`.
+
+No implementar directamente cuando el flujo exige builder. No invocar committer
+antes de validator, code reviewer y AI audit aprobados. Nunca hacer push salvo
+peticion explicita. Limite: `max_cycles = 5`; cada ciclo debe reducir hallazgos.
+
+
+## Untracked: .agents/skills/queen/agents/openai.yaml
+interface:
+  display_name: "Queen / Reina"
+  short_description: "Orquesta tareas multiagente verificables"
+  default_prompt: "Usa $queen para ejecutar esta tarea completa con TEST CONTRACT y validación."
+
+## Untracked: .agents/skills/queen/references/agent_mapping.json
+{
+  "schema_version": 1,
+  "codex_root_role": "queen",
+  "agents": {
+    "context_recon": {
+      "opencode": "context-recon",
+      "sandbox_mode": "read-only"
+    },
+    "test_strategist_fast": {
+      "opencode": "test-strategist-fast",
+      "sandbox_mode": "read-only"
+    },
+    "test_strategist": {
+      "opencode": "test-strategist",
+      "sandbox_mode": "read-only"
+    },
+    "test_strategist_deep": {
+      "opencode": "test-strategist-deep",
+      "sandbox_mode": "read-only"
+    },
+    "planner_fast": {
+      "opencode": "planner-fast",
+      "sandbox_mode": "read-only"
+    },
+    "planner": {
+      "opencode": "planner",
+      "sandbox_mode": "read-only"
+    },
+    "planner_deep": {
+      "opencode": "planner-deep",
+      "sandbox_mode": "read-only"
+    },
+    "builder_fast": {
+      "opencode": "builder-fast",
+      "sandbox_mode": "workspace-write"
+    },
+    "builder": {
+      "opencode": "builder",
+      "sandbox_mode": "workspace-write"
+    },
+    "builder_deep": {
+      "opencode": "builder-deep",
+      "sandbox_mode": "workspace-write"
+    },
+    "documenter": {
+      "opencode": "documenter",
+      "sandbox_mode": "workspace-write"
+    },
+    "validator": {
+      "opencode": "validator",
+      "sandbox_mode": "read-only"
+    },
+    "code_reviewer_fast": {
+      "opencode": "code-reviewer-fast",
+      "sandbox_mode": "read-only"
+    },
+    "code_reviewer": {
+      "opencode": "code-reviewer",
+      "sandbox_mode": "read-only"
+    },
+    "code_reviewer_deep": {
+      "opencode": "code-reviewer-deep",
+      "sandbox_mode": "read-only"
+    },
+    "ai_friendliness": {
+      "opencode": "ai-friendliness",
+      "sandbox_mode": "read-only"
+    },
+    "committer": {
+      "opencode": "committer",
+      "sandbox_mode": "workspace-write"
+    },
+    "godot_source_analyzer": {
+      "opencode": "godot-source-analyzer",
+      "sandbox_mode": "read-only"
+    },
+    "godot_gap_analyzer": {
+      "opencode": "godot-gap-analyzer",
+      "sandbox_mode": "read-only"
+    },
+    "godot_adapter": {
+      "opencode": "godot-adapter",
+      "sandbox_mode": "workspace-write"
+    }
+  }
+}
+
+## Untracked: .agents/skills/queen/references/long_task_mode.md
+# Long Task Mode
+
+Usar planes versionados en `docs/plans/active/`. El codigo, tests, `AGENTS.md`
+y docs canonicas prevalecen sobre el plan.
+
+```text
+LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> UPDATE PLAN -> NEXT PHASE | COMMIT | BLOCK
+```
+
+El plan registra `task_id`, objetivo, no objetivos, fase, alcance, archivos
+permitidos/prohibidos, TEST CONTRACT, checks, riesgos, decisiones, validator,
+review, AI audit, decision de UPDATE PLAN y proxima fase.
+
+Decisiones: `continue_next_phase | block | complete | partial`. Con
+`continue_next_phase`, continuar sin respuesta final. `phase completed != task completed`.
+
+
+## Untracked: .agents/skills/queen/references/model_router.md
+# Model Router
+
+Clasificar despues de RECON y antes de TEST CONTRACT. Evaluar `risk_level`,
+`reasoning_required`, `subsystem`, `critical_files`, `public_contract_changes`,
+`serialization_changes`, `runtime_authoring_risk` y `previous_failed_cycles`.
+
+- `simple`: `test_strategist_fast`, `planner_fast`, `builder_fast`, `code_reviewer_fast`.
+- `normal`: `test_strategist`, `planner`, `builder`, `code_reviewer`.
+- `complex`: `test_strategist_deep`, `planner_deep`, `builder_deep`, `code_reviewer_deep`.
+- `critical`: `test_strategist_deep`, `planner_deep`, `builder_deep`, `code_reviewer_deep`.
+
+Tratar como critical: contrato publico, serializacion, migracion, Scene,
+World.clone, runtime/authoring, EngineAPI, SceneManager, fisica, legacy_aabb,
+export pipeline, component registry, relajacion potencial de tests, segundo
+ciclo tras fallo importante o cambio arquitectonico multiarchivo.
+
+Un fallo no trivial de validator eleva planner y reviewer a deep. Un `must_fix`
+activa reviewer deep. Builder no deep que detecte complejidad critica bloquea y
+pide replanificacion deep. Recalcular route al inicio de cada fase larga.
+
+Modelos Codex configurados: fast `gpt-5.6-terra`/low; standard
+`gpt-5.6`/high; deep `gpt-5.6`/xhigh. No reutilizar IDs OpenCode.
+
+## Untracked: .agents/skills/queen/references/queen_contract.json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "max_cycles": 5,
+  "phase_statuses": ["completed", "blocked", "failed", "skipped", "not_applicable"],
+  "task_statuses": ["completed", "partial", "blocked", "failed"],
+  "exceptional_stop": "planning_only",
+  "normal_cycle": ["RECON", "TEST_CONTRACT", "PLAN", "PLAN_CRITIQUE", "IMPLEMENT", "DOCUMENT", "VALIDATE", "REVIEW", "AI_AUDIT", "COMMIT", "REPORT"],
+  "long_cycle": ["LOAD_PLAN", "PLAN_SYNC", "TEST_CONTRACT", "IMPLEMENT_PHASE", "DOCUMENT", "VALIDATE", "REVIEW", "AI_AUDIT", "UPDATE_PLAN", "NEXT_PHASE_OR_COMMIT_OR_BLOCK"],
+  "automatic_transitions": {
+    "RECON.completed": "TEST_CONTRACT",
+    "TEST_CONTRACT.sufficient": "PLAN",
+    "PLAN.approved": "PLAN_CRITIQUE",
+    "PLAN_CRITIQUE.approved": "IMPLEMENT",
+    "IMPLEMENT.completed": "DOCUMENT",
+    "DOCUMENT.completed": "VALIDATE",
+    "VALIDATE.pass": "REVIEW",
+    "REVIEW.approved": "AI_AUDIT",
+    "AI_AUDIT.approved": "COMMIT",
+    "UPDATE_PLAN.continue_next_phase": "NEXT_PHASE",
+    "COMMIT.completed": "REPORT"
+  },
+  "forbidden_final_after": ["RECON", "TEST_CONTRACT", "PLAN", "PLAN_CRITIQUE", "IMPLEMENT", "DOCUMENT", "VALIDATE", "REVIEW", "AI_AUDIT", "UPDATE_PLAN"],
+  "commit_prerequisites": ["validator_pass", "review_approved", "ai_audit_approved_or_not_applicable"],
+  "router": {
+    "simple": ["test_strategist_fast", "planner_fast", "builder_fast", "code_reviewer_fast"],
+    "normal": ["test_strategist", "planner", "builder", "code_reviewer"],
+    "complex": ["test_strategist_deep", "planner_deep", "builder_deep", "code_reviewer_deep"],
+    "critical": ["test_strategist_deep", "planner_deep", "builder_deep", "code_reviewer_deep"]
+  },
+  "max_parallel_implementers": 3,
+  "max_agent_depth": 1
+}
+
+## Untracked: .agents/skills/queen/references/result_schemas.json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": 1,
+  "agent_types": {
+    "context_recon": {
+      "type": "object",
+      "required": ["recon_id", "status", "phase_status", "files_reviewed", "subsystems", "expected_agents", "read_only_agents", "write_agents", "permissions_summary", "allowed_files", "forbidden_files", "relevant_tests", "relevant_docs", "risks", "blocked_reason"],
+      "properties": {
+        "recon_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["completed", "partial", "blocked", "failed"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "files_reviewed": {"type": "array"}, "subsystems": {"type": "array"},
+        "expected_agents": {"type": "array"}, "read_only_agents": {"type": "array"},
+        "write_agents": {"type": "array"}, "permissions_summary": {"type": "object"},
+        "allowed_files": {"type": "array"}, "forbidden_files": {"type": "array"},
+        "relevant_tests": {"type": "array"}, "relevant_docs": {"type": "array"},
+        "risks": {"type": "array"}, "blocked_reason": {"type": ["string", "null"]}
+      }
+    },
+    "test_strategist": {
+      "type": "object",
+      "required": ["test_contract_id", "phase_status", "task_type", "subsystems", "existing_tests_authority", "new_or_modified_tests_required", "tests_that_must_not_be_relaxed", "minimum_focused_commands", "recommended_regression_commands", "manual_smoke_required", "acceptance_criteria", "risks", "auxiliary_inspection_commands_run", "auxiliary_inspection_results", "verdict", "verdict_reason"],
+      "properties": {
+        "test_contract_id": {"type": "string", "minLength": 1},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "task_type": {"type": "string", "minLength": 1}, "subsystems": {"type": "array"},
+        "existing_tests_authority": {"type": "array"}, "new_or_modified_tests_required": {"type": "array"},
+        "tests_that_must_not_be_relaxed": {"type": "array"}, "minimum_focused_commands": {"type": "array"},
+        "recommended_regression_commands": {"type": "array"}, "manual_smoke_required": {"type": "boolean"},
+        "acceptance_criteria": {"type": "array"}, "risks": {"type": "array"},
+        "auxiliary_inspection_commands_run": {"type": "array"}, "auxiliary_inspection_results": {"type": "array"},
+        "verdict": {"enum": ["sufficient", "insufficient", "not_applicable"]},
+        "verdict_reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "planner": {
+      "type": "object",
+      "required": ["plan_id", "mode", "phase_status", "goal", "test_contract_id", "test_contract_verdict", "original_task", "addressing_findings", "prerequisites", "allowed_files", "forbidden_files", "steps", "new_files", "modified_files", "existing_tests_authority", "tests_to_add", "tests_to_modify", "tests_that_must_not_be_relaxed", "minimum_focused_commands", "recommended_regression_commands", "canonical_docs_to_update", "risks", "estimated_model"],
+      "properties": {
+        "plan_id": {"type": "string", "minLength": 1}, "mode": {"enum": ["standard", "correction", "blocked"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "goal": {"type": "string", "minLength": 1}, "test_contract_id": {"type": "string", "minLength": 1},
+        "test_contract_verdict": {"enum": ["sufficient", "insufficient", "not_applicable"]},
+        "original_task": {"type": "string"}, "addressing_findings": {"type": "array"},
+        "prerequisites": {"type": "array"}, "allowed_files": {"type": "array"}, "forbidden_files": {"type": "array"},
+        "steps": {"type": "array"}, "new_files": {"type": "array"}, "modified_files": {"type": "array"},
+        "existing_tests_authority": {"type": "array"}, "tests_to_add": {"type": "array"}, "tests_to_modify": {"type": "array"},
+        "tests_that_must_not_be_relaxed": {"type": "array"}, "minimum_focused_commands": {"type": "array"},
+        "recommended_regression_commands": {"type": "array"}, "canonical_docs_to_update": {"type": "array"},
+        "risks": {"type": "array"}, "estimated_model": {"enum": ["fast", "standard", "deep"]}
+      }
+    },
+    "builder": {
+      "type": "object",
+      "required": ["builder_id", "status", "phase_status", "files_changed", "tests_added_or_modified", "tests_deliberately_not_changed", "commands_run", "write_scope_violations", "risks"],
+      "properties": {
+        "builder_id": {"type": "string", "minLength": 1}, "status": {"enum": ["completed", "partial", "blocked", "failed"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "files_changed": {"type": "array"}, "tests_added_or_modified": {"type": "array"},
+        "tests_deliberately_not_changed": {"type": "array"}, "commands_run": {"type": "array"},
+        "write_scope_violations": {"type": "array"}, "risks": {"type": "array"}
+      }
+    },
+    "documenter": {
+      "type": "object",
+      "required": ["documenter_id", "status", "phase_status", "docs_changed", "reason", "canonical_docs_required", "operational_docs_required", "risks"],
+      "properties": {
+        "documenter_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["completed", "not_applicable", "blocked", "failed"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "docs_changed": {"type": "array"}, "reason": {"type": "string"},
+        "canonical_docs_required": {"type": "boolean"}, "operational_docs_required": {"type": "boolean"},
+        "risks": {"type": "array"}
+      }
+    },
+    "validator": {
+      "type": "object",
+      "required": ["validation_id", "scope", "phase_status", "test_contract_id", "commands_run", "results", "minimum_commands_status", "missing_expected_tests", "relaxed_tests_risk", "failures", "blocked_reason", "risk_assessment"],
+      "properties": {
+        "validation_id": {"type": "string", "minLength": 1}, "scope": {"enum": ["focused", "regression", "global"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "test_contract_id": {"type": "string", "minLength": 1}, "commands_run": {"type": "array"},
+        "results": {"enum": ["pass", "fail", "partial", "not_run", "blocked"]},
+        "minimum_commands_status": {"enum": ["pass", "fail", "partial", "not_run", "blocked"]},
+        "missing_expected_tests": {"type": "array"}, "relaxed_tests_risk": {"type": "boolean"},
+        "failures": {"type": "array"}, "blocked_reason": {"type": ["string", "null"]},
+        "risk_assessment": {"type": "string"}
+      }
+    },
+    "code_reviewer": {
+      "type": "object",
+      "required": ["review_id", "mode", "phase_status", "task_goal", "test_contract_id", "files_reviewed", "verdict", "findings", "summary", "tests_run", "test_results"],
+      "properties": {
+        "review_id": {"type": "string", "minLength": 1}, "mode": {"enum": ["standard", "final_review"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "task_goal": {"type": "string"}, "test_contract_id": {"type": "string", "minLength": 1},
+        "files_reviewed": {"type": "array"}, "verdict": {"enum": ["approved", "changes_requested", "rejected"]},
+        "findings": {"type": "array"}, "summary": {"type": "string", "minLength": 1},
+        "tests_run": {"type": "array"}, "test_results": {"enum": ["pass", "fail", "not_run"]}
+      }
+    },
+    "ai_friendliness": {
+      "type": "object",
+      "required": ["audit_id", "phase_status", "target", "applicable", "not_applicable_reason", "scores", "total_score", "tier", "recommendations", "summary"],
+      "properties": {
+        "audit_id": {"type": "string", "minLength": 1},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "target": {"type": "string", "minLength": 1}, "applicable": {"type": "boolean"},
+        "not_applicable_reason": {"type": ["string", "null"]}, "scores": {"type": ["object", "null"]},
+        "total_score": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+        "tier": {"enum": ["excellent", "good", "needs_work", "not_ready", "not_applicable"]},
+        "recommendations": {"type": "array"}, "summary": {"type": "string", "minLength": 1}
+      }
+    },
+    "committer": {
+      "type": "object",
+      "required": ["status", "phase_status", "commit_hash", "message", "files_committed", "files_skipped", "blocked_reason"],
+      "properties": {
+        "status": {"enum": ["ok", "blocked", "failed"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "commit_hash": {"type": ["string", "null"]}, "message": {"type": ["string", "null"]},
+        "files_committed": {"type": "array"}, "files_skipped": {"type": "array"},
+        "blocked_reason": {"type": ["string", "null"]}
+      }
+    },
+    "godot_source_analyzer": {
+      "type": "object",
+      "required": ["analyzer_id", "phase_status", "godot_version", "godot_source_path", "subsystems_analyzed", "features", "total_features", "priorities", "already_in_motor", "notes"],
+      "properties": {
+        "analyzer_id": {"type": "string", "minLength": 1},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "godot_version": {"type": "string"}, "godot_source_path": {"type": ["string", "null"]},
+        "subsystems_analyzed": {"type": "array"}, "features": {"type": "array"},
+        "total_features": {"type": "integer", "minimum": 0}, "priorities": {"type": "object"},
+        "already_in_motor": {"type": "array"}, "notes": {"type": "string"}
+      }
+    },
+    "godot_gap_analyzer": {
+      "type": "object",
+      "required": ["gap_analysis_id", "phase_status", "catalog_source", "motor_capabilities", "already_implemented", "gaps", "priority_summary", "recommended_order", "notes"],
+      "properties": {
+        "gap_analysis_id": {"type": "string", "minLength": 1},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "catalog_source": {"type": "string", "minLength": 1}, "motor_capabilities": {"type": "array"},
+        "already_implemented": {"type": "array"}, "gaps": {"type": "array"},
+        "priority_summary": {"type": "object"}, "recommended_order": {"type": "array"},
+        "notes": {"type": "string"}
+      }
+    },
+    "godot_adapter": {
+      "type": "object",
+      "required": ["adapter_id", "status", "phase_status", "feature", "mapping", "files_changed", "tests_added_or_modified", "commands_run", "write_scope_violations", "risks"],
+      "properties": {
+        "adapter_id": {"type": "string", "minLength": 1}, "status": {"enum": ["completed", "partial", "blocked", "failed"]},
+        "phase_status": {"enum": ["completed", "blocked", "failed", "skipped", "not_applicable"]},
+        "feature": {"type": "string", "minLength": 1}, "mapping": {"type": "object"},
+        "files_changed": {"type": "array"}, "tests_added_or_modified": {"type": "array"},
+        "commands_run": {"type": "array"}, "write_scope_violations": {"type": "array"}, "risks": {"type": "array"}
+      }
+    },
+    "queen_task_result": {
+      "type": "object",
+      "required": ["task_id", "task_status", "summary", "cycles_used"],
+      "properties": {
+        "task_id": {"type": "string", "minLength": 1},
+        "task_status": {"enum": ["completed", "partial", "blocked", "failed"]},
+        "summary": {"type": "string", "minLength": 1},
+        "cycles_used": {"type": "integer", "minimum": 0, "maximum": 5}
+      }
+    }
+  },
+  "aliases": {
+    "test_strategist_fast": "test_strategist", "test_strategist_deep": "test_strategist",
+    "planner_fast": "planner", "planner_deep": "planner",
+    "builder_fast": "builder", "builder_deep": "builder",
+    "code_reviewer_fast": "code_reviewer", "code_reviewer_deep": "code_reviewer"
+  }
+}
+
+## Untracked: .agents/skills/queen/references/result_schemas.md
+# Contratos de resultados
+
+Fuente machine-readable: [result_schemas.json](result_schemas.json). No duplicar
+campos aqui. Tipos obligatorios: `context_recon`, `test_strategist`, `planner`,
+`builder`, `documenter`, `validator`, `code_reviewer`, `ai_friendliness` y
+`committer`; variantes fast/deep usan alias al contrato base.
+
+Validar siempre con:
+
+```text
+python .agents/skills/queen/scripts/validate_result.py <agent_type> --input <resultado.json>
+```
+
+Codigo 0 significa contrato valido. Cualquier otro codigo bloquea transicion.
+
+
+## Untracked: .agents/skills/queen/references/test_contract.md
+# TEST CONTRACT
+
+Definir antes de implementar, salvo cambio documental o mecanico sin conducta
+observable con veredicto `not_applicable` y razon concreta.
+
+Campos obligatorios:
+
+- `test_contract_id`, `task_type`, `subsystems`.
+- `existing_tests_authority`.
+- `new_or_modified_tests_required`.
+- `tests_that_must_not_be_relaxed`.
+- `minimum_focused_commands`, `recommended_regression_commands`.
+- `manual_smoke_required`, `acceptance_criteria`, `risks`.
+- `auxiliary_inspection_commands_run`, `auxiliary_inspection_results`.
+- `verdict`: `sufficient | insufficient | not_applicable`.
+- `verdict_reason`.
+
+No delegar implementacion con `insufficient`. Si analisis resulta insuficiente,
+reintentar una vez con `test_strategist_deep`; luego bloquear. Si comandos no
+pueden ejecutarse, registrar fallo como `functional`, `environment`,
+`dependency`, `import` o `platform`; nunca convertir falta de ejecucion en pass.
+
+
+## Untracked: .agents/skills/queen/references/workflow.md
+# Workflow Reina
+
+Fuente operativa Codex. Leer tambien `AGENTS.md` y
+`docs/queen_engine_workflow.md`.
+
+## Ciclo normal
+
+```text
+RECON -> TEST CONTRACT -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+```
+
+Transiciones obligatorias:
+
+- RECON completado -> clasificar route -> TEST CONTRACT.
+- TEST CONTRACT `sufficient` -> PLAN; `insufficient` bloquea implementacion.
+- PLAN aprobado -> CRITICA DEL PLAN; critica aprobada -> IMPLEMENTAR.
+- IMPLEMENTAR completado -> DOCUMENTAR -> VALIDAR.
+- VALIDAR `pass` -> REVIEW.
+- REVIEW `approved` -> AI AUDIT; `must_fix` fuerza reviewer deep y otro ciclo.
+- AI AUDIT aprobado o `not_applicable` valido -> COMMIT.
+- COMMIT completado -> REPORTE final.
+
+`phase_status`: `completed | blocked | failed | skipped | not_applicable`.
+`task_status`: `completed | partial | blocked | failed`.
+`planning_only` solo vale si usuario pidio exclusivamente planificacion.
+
+Nunca finalizar despues de PLAN, REVIEW o cualquier fase intermedia si tarea
+original exige implementacion. `phase completed != task completed`.
+
+## Gates
+
+- No implementar sin TEST CONTRACT `sufficient`, salvo docs mecanicas con
+  `not_applicable` justificado.
+- No inferir exito por ausencia de error.
+- Validar resultado estructurado antes de avanzar.
+- Maximo cinco ciclos; cada ciclo reduce hallazgos pendientes.
+- Maximo tres builders simultaneos, solo con write sets disjuntos.
+- Committer: unico rol de commit; staging explicito; nunca push implicito.
+
+
+## Untracked: .agents/skills/queen/scripts/validate_result.py
+#!/usr/bin/env python3
+"""Validate a Queen subagent JSON result using only the standard library."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "references" / "result_schemas.json"
+
+
+class ContractError(ValueError):
+    """Raised when a result does not satisfy its Queen contract."""
+
+
+def load_contracts(path: Path = SCHEMA_PATH) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def parse_result_text(text: str) -> Any:
+    if not text or not text.strip():
+        raise ContractError("missing_subagent_result: empty result")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ContractError(f"missing_subagent_result: invalid JSON: {exc.msg}") from exc
+
+
+def _matches_type(value: Any, expected: str) -> bool:
+    checks = {
+        "object": lambda item: isinstance(item, dict),
+        "array": lambda item: isinstance(item, list),
+        "string": lambda item: isinstance(item, str),
+        "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+        "number": lambda item: isinstance(item, (int, float)) and not isinstance(item, bool),
+        "boolean": lambda item: isinstance(item, bool),
+        "null": lambda item: item is None,
+    }
+    return checks[expected](value)
+
+
+def validate_value(value: Any, schema: dict[str, Any], path: str = "$") -> None:
+    expected = schema.get("type")
+    if expected is not None:
+        expected_types = [expected] if isinstance(expected, str) else expected
+        if not any(_matches_type(value, item) for item in expected_types):
+            raise ContractError(f"{path}: expected type {expected_types}")
+
+    if "enum" in schema and value not in schema["enum"]:
+        raise ContractError(f"{path}: value {value!r} not in {schema['enum']!r}")
+
+    if isinstance(value, str) and len(value) < schema.get("minLength", 0):
+        raise ContractError(f"{path}: string shorter than minLength")
+    if isinstance(value, list):
+        if len(value) < schema.get("minItems", 0):
+            raise ContractError(f"{path}: array shorter than minItems")
+        item_schema = schema.get("items")
+        if item_schema:
+            for index, item in enumerate(value):
+                validate_value(item, item_schema, f"{path}[{index}]")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            raise ContractError(f"{path}: below minimum")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise ContractError(f"{path}: above maximum")
+    if isinstance(value, dict):
+        missing = [name for name in schema.get("required", []) if name not in value]
+        if missing:
+            raise ContractError(f"{path}: missing required fields: {', '.join(missing)}")
+        properties = schema.get("properties", {})
+        for name, child_schema in properties.items():
+            if name in value:
+                validate_value(value[name], child_schema, f"{path}.{name}")
+        if schema.get("additionalProperties") is False:
+            extras = sorted(set(value) - set(properties))
+            if extras:
+                raise ContractError(f"{path}: unexpected fields: {', '.join(extras)}")
+
+
+def validate_result(agent_type: str, result: Any, contracts: dict[str, Any] | None = None) -> None:
+    contracts = contracts or load_contracts()
+    normalized = agent_type.strip().replace("-", "_")
+    normalized = contracts.get("aliases", {}).get(normalized, normalized)
+    schema = contracts.get("agent_types", {}).get(normalized)
+    if schema is None:
+        known = ", ".join(sorted(contracts.get("agent_types", {})))
+        raise ContractError(f"unknown agent type {agent_type!r}; expected one of: {known}")
+    validate_value(result, schema)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("agent_type", help="Agent type or fast/deep alias")
+    parser.add_argument("--input", type=Path, help="JSON file; stdin when omitted")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        text = args.input.read_text(encoding="utf-8") if args.input else sys.stdin.read()
+        result = parse_result_text(text)
+        validate_result(args.agent_type, result)
+    except (OSError, ContractError, json.JSONDecodeError) as exc:
+        print(f"invalid: {exc}", file=sys.stderr)
+        return 2
+    print("valid")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+## Untracked: .codex/agents/ai_friendliness.toml
+name = "ai_friendliness"
+description = "Audita compatibilidad con agentes IA."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: ai_friendliness in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/ai-friendliness.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Audit AI usability and engine compliance after review. Evaluate serialization, public API, documentation and compliance. not_applicable requires concrete evidence. Never edit.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type ai_friendliness, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/builder.toml
+name = "builder"
+description = "Implementa cambios normales con write set."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Role: builder in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/builder.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Implement only approved plan. Before writing, require objective, allowed files, forbidden files, plan, TEST CONTRACT, authority tests, tests to add or change, tests never to relax, minimum commands and Definition of Done. Never expand scope; block for replanning. Write only inside explicit write set.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type builder, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/builder_deep.toml
+name = "builder_deep"
+description = "Implementa cambios criticos con write set."
+model = "gpt-5.6"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Role: builder_deep in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/builder-deep.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Implement critical work only from approved deep plan and explicit write set. Require objective, allowed and forbidden files, TEST CONTRACT, authority tests, protected tests, minimum commands and Definition of Done. Never relax tests or widen scope. If assumptions fail, block for deep replanning.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type builder, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/builder_fast.toml
+name = "builder_fast"
+description = "Implementa cambios simples con write set."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Role: builder_fast in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/builder-fast.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Implement only a simple approved plan. Before writing, require objective, allowed files, forbidden files, plan, TEST CONTRACT, authority tests, tests to add or change, tests never to relax, minimum commands and Definition of Done. Never expand scope; block for replanning. Write only inside explicit write set.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type builder, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/code_reviewer.toml
+name = "code_reviewer"
+description = "Revisa cambios normales sin editar."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: code_reviewer in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/code-reviewer.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Review changes against task, plan, TEST CONTRACT and validator evidence. Check correctness, maintainability, security, engine invariants, scope and test truth. Never edit. Any must_fix blocks Queen.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type code_reviewer, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/code_reviewer_deep.toml
+name = "code_reviewer_deep"
+description = "Revisa cambios criticos sin editar."
+model = "gpt-5.6"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: code_reviewer_deep in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/code-reviewer-deep.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Perform deep review for critical work or any must_fix cycle. Rebuild conclusions from diff and tests. Check architecture, public contracts, serialization, runtime/authoring, security, scope and test truth. Never edit.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type code_reviewer, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/code_reviewer_fast.toml
+name = "code_reviewer_fast"
+description = "Revisa cambios simples sin editar."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: code_reviewer_fast in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/code-reviewer-fast.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Review simple or mechanical changes against task, plan, TEST CONTRACT and validator evidence. Check correctness, scope, test truth and engine rules. Any serious evidence gap is must_fix.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type code_reviewer, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/committer.toml
+name = "committer"
+description = "Crea unico commit final."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Role: committer in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/committer.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+You are the only Queen role allowed to create a commit. Require validator pass, reviewer approved and AI audit approved or valid not_applicable. Inspect status and full diff, reject out-of-scope or secret files, stage explicit paths only, commit once with clear Spanish conventional message. Never push. Never edit source.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type committer, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/context_recon.toml
+name = "context_recon"
+description = "Reconstruye contexto y alcance sin escribir."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: context_recon in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/context-recon.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Reconstruct repository context. Read-only. Inspect only authorized files. Report scope, permissions, tests, docs and risks; if inspection is impossible, return blocked. Never run implementation or infer missing evidence.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type context_recon, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/documenter.toml
+name = "documenter"
+description = "Actualiza documentacion autorizada."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Role: documenter in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/documenter.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Update only documentation paths explicitly authorized by Queen. Derive claims from repository truth and diff. Preserve documentation layers, avoid duplicate canon and never edit code. Report not_applicable with concrete reason when no documentation is required.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type documenter, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/godot_adapter.toml
+name = "godot_adapter"
+description = "Adapta conceptos Godot con write set."
+model = "gpt-5.6"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Role: godot_adapter in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/godot-adapter.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Read .agents/skills/godot-feature-adapter/SKILL.md completely. Adapt approved Godot concepts to explicit, serializable, AI-friendly OpenGame structures; never copy Godot architecture blindly. Require approved plan, TEST CONTRACT, exact write set, allowed files and forbidden files. Validate through motor tests; never widen scope.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type godot_adapter, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/godot_gap_analyzer.toml
+name = "godot_gap_analyzer"
+description = "Compara Godot con OpenGame sin editar."
+model = "gpt-5.6"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: godot_gap_analyzer in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/godot-gap-analyzer.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Read .agents/skills/godot-feature-adapter/SKILL.md completely. Compare verified Godot contracts with real OpenGame code and tests. Produce concrete gap matrix, mappings, dependencies and risks. Never write or invent capabilities.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type godot_gap_analyzer, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/godot_source_analyzer.toml
+name = "godot_source_analyzer"
+description = "Extrae contratos de Godot sin editar."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: godot_source_analyzer in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/godot-source-analyzer.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Read .agents/skills/godot-feature-adapter/SKILL.md completely. Analyze Godot source or official primary docs and extract behavioral contracts, lifecycle, public API, serialization and edge cases. Never write or copy architecture blindly.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type godot_source_analyzer, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/planner.toml
+name = "planner"
+description = "Planifica cambios normales sin escribir."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: planner in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/planner.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Produce an executable implementation plan. Require TEST CONTRACT sufficient. Include exact scope, write set, forbidden files, tests, commands, docs, rollback and risks. Resolve decisions before delegating. Do not edit.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type planner, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/planner_deep.toml
+name = "planner_deep"
+description = "Planifica cambios criticos sin escribir."
+model = "gpt-5.6"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: planner_deep in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/planner-deep.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Produce an executable critical-risk plan. Require TEST CONTRACT sufficient. Cover architecture, contracts, rollback, file ownership, exact tests and validation. Do not edit.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type planner, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/planner_fast.toml
+name = "planner_fast"
+description = "Planifica cambios simples sin escribir."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: planner_fast in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/planner-fast.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Produce an executable plan for simple work. Require TEST CONTRACT sufficient. Include exact scope, write set, forbidden files, tests, commands, docs, rollback and risks. Do not edit.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type planner, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/test_strategist.toml
+name = "test_strategist"
+description = "Define TEST CONTRACT normal."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: test_strategist in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/test-strategist.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Define a complete TEST CONTRACT before implementation. Protect current behavior, identify authority tests, tests to add or change, tests never to relax, focused commands, regressions, acceptance criteria and failure classification. Do not implement.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type test_strategist, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/test_strategist_deep.toml
+name = "test_strategist_deep"
+description = "Define TEST CONTRACT critico."
+model = "gpt-5.6"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: test_strategist_deep in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/test-strategist-deep.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Define a deep TEST CONTRACT for complex or critical work. Analyze public contracts, serialization, runtime/authoring and regression risk. Do not implement. If insufficient, explain exactly what evidence is missing.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type test_strategist, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/test_strategist_fast.toml
+name = "test_strategist_fast"
+description = "Define TEST CONTRACT simple."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: test_strategist_fast in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/test-strategist-fast.md completely. The OpenCode prompt remains the full role contract; these instructions add Codex-specific gates.
+Define a TEST CONTRACT for a simple task. Protect current behavior, name authority tests, tests to add or change, tests never to relax, focused commands, regressions, acceptance criteria and failure classification. Do not implement. not_applicable only for truly documentary or mechanical work.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type test_strategist, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/agents/validator.toml
+name = "validator"
+description = "Valida resultado final sin editar."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Role: validator in Queen Codex workflow.
+Before acting, read AGENTS.md, .agents/skills/queen/SKILL.md, .agents/skills/queen/references/workflow.md, .agents/skills/queen/references/result_schemas.json and .opencode/agents/validator.md completely. OpenCode prompt remains full role contract; these instructions add Codex-specific gates.
+Run final validation after implementation and documentation. Execute requested focused commands and applicable regressions without editing source. Classify failures as functional, environment, dependency, import or platform. Missing execution evidence can never be pass.
+Do not delegate, spawn agents or create descendants. Root session owns orchestration. Return exactly one visible JSON object conforming to agent type validator, including phase_status. Empty, truncated, non-JSON or incompatible output is invalid and must be reported as blocked with missing_subagent_result. phase completed != task completed.
+"""
+
+## Untracked: .codex/config.toml
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 3
+max_depth = 1
+
+## Untracked: docs/plans/active/queen-20260710-001-codex-queen-migration.md
+# Queen Execution Plan: migracion nativa a Codex
+
+Status: active
+Authority: operational-plan
+Task ID: queen-20260710-001
+Created at: 2026-07-10T12:00:00+02:00
+Updated at: 2026-07-10T14:30:00+02:00
+Mode: long-task-plan
+
+## Objective
+
+Migrar Reina de OpenCode a Codex nativo con la sesion raiz como orquestadora,
+manteniendo OpenCode operativo, contratos estructurados y continuidad automatica.
+
+## Non-goals
+
+- No modificar `engine/`, contratos publicos ni serializacion.
+- No eliminar `.opencode/` ni `opencode.json`.
+- No cambiar modelos de OpenCode.
+- No hacer `push`.
+
+## Constraints
+
+- Rama `fix/ciclosReina`, base `99fa3896f661298208bcacde2821c2fab1a9dae6`.
+- Route `critical`: usar variantes deep para estrategia, plan, builder y review.
+- `max_cycles = 5`; `phase completed != task completed`.
+- `agents.max_depth = 1`; maximo tres implementadores con write sets disjuntos.
+- TEST CONTRACT `test-contract-queen-codex-migration`: `sufficient`.
+- No relajar tests existentes.
+
+## Current phase
+
+- Name: validacion-review-auditoria-commit
+- Status: pending
+- Allowed files: `AGENTS.md`, `.agents/skills/queen/**`, `.codex/**`, `tests/test_codex_queen_contract.py`, `tests/test_queen_agent_contract.py`, `docs/agents.md`, `docs/queen_engine_workflow.md`, `docs/queen_long_task_mode.md`, `docs/refactor/**`, este plan.
+- Forbidden files: `engine/**`, `cli/**`, `main.py`, `docs/archive/**`, `.opencode/**`, `opencode.json`.
+- Test contract: `test-contract-queen-codex-migration` (`sufficient`).
+- Acceptance checks: TOML/JSON validos; 20 subagentes; validador funcional; OpenCode intacto; tests enfocados verdes.
+- Docs affected: `AGENTS.md`, `docs/agents.md`, `docs/queen_engine_workflow.md`, `docs/queen_long_task_mode.md`, `docs/refactor/`.
+- Risks: permisos finos por archivo son operativos; modelos dependen de cuenta; config de proyecto exige repo trusted.
+
+## Phases
+
+### Phase 1 â€” Configuracion y contratos Codex
+Status: done
+Goal: crear skill, config, 20 agentes, schemas y validador.
+Allowed files: `.agents/skills/queen/**`, `.codex/**`.
+Forbidden files: `engine/**`, `.opencode/**`, `opencode.json`.
+Acceptance checks: skill valida; TOML parseable; profundidad 1; paralelismo 3.
+Docs affected: none.
+Risks: diferencias entre sandbox tecnico y restricciones operativas.
+
+### Phase 2 â€” Tests de gobernanza
+Status: done
+Goal: probar agentes, router, transiciones, schemas, seguridad y coexistencia.
+Allowed files: `tests/test_codex_queen_contract.py`, `tests/test_queen_agent_contract.py`.
+Forbidden files: tests no relacionados.
+Acceptance checks: tests Codex y OpenCode pasan sin relajar aserciones.
+Docs affected: none.
+Risks: pruebas estaticas no sustituyen smoke runtime.
+
+### Phase 3 â€” Documentacion y baseline
+Status: done
+Goal: documentar activacion, arquitectura, limites y evidencia real.
+Allowed files: `AGENTS.md`, `docs/agents.md`, `docs/queen_engine_workflow.md`, `docs/queen_long_task_mode.md`, `docs/refactor/**`, este plan.
+Forbidden files: `START_HERE_AI.md`, `docs/archive/**`.
+Acceptance checks: referencias validas; garantias tecnicas y operativas separadas.
+Docs affected: las rutas permitidas.
+Risks: duplicacion entre fuentes canonicas.
+
+### Phase 4 â€” Validacion, review, auditoria y commit
+Status: pending
+Goal: validar Codex/OpenCode, revisar diff, auditar IA y crear commit final.
+Allowed files: este plan y reporte de fase.
+Forbidden files: cambios funcionales nuevos.
+Acceptance checks: validator pass; review approved; AI audit approved; commit sin push.
+Docs affected: plan y reporte de fase.
+Risks: smoke de subagentes puede depender de autenticacion o modelo disponible.
+
+## Test contract
+
+- Protege OpenCode, ciclos, Model Router, TEST CONTRACT, DoD y commit final.
+- Exige TOML parseable, nombres unicos, sandboxes, schemas y transiciones.
+- Rechaza resultado vacio, no JSON, campos ausentes, tipos o enums invalidos.
+- Clasifica fallos como funcional, entorno, dependencia, importacion o plataforma.
+- Autoridad: `tests/test_queen_agent_contract.py` y tests de gobernanza existentes.
+
+## Decisions
+
+- 2026-07-10: sesion raiz Codex = Reina; no existe agente hijo `queen`.
+- 2026-07-10: agentes standalone en `.codex/agents/`; no registro duplicado.
+- 2026-07-10: `max_depth=1`, `max_threads=3`.
+- 2026-07-10: conservar OpenCode sin cambios durante transicion.
+- 2026-07-10: no modificar `START_HERE_AI.md`; Reina es tooling, no capacidad del motor.
+
+## Progress log
+
+- 2026-07-10: RECON y baseline completados. Suite: 3582 pass, 12 fallos funcionales baseline, 8 skipped.
+- 2026-07-10: TEST CONTRACT `sufficient`; plan criticado y aprobado con alcance reducido.
+- 2026-07-10: Phases 1-3 completadas. Skill valida; 20 agentes Codex,
+  contratos JSON y validador creados. Checks: 76 focused pass, 75 governance
+  pass, `git diff --check` pass. Siguiente decision: `continue_next_phase`.
+
+## Validation gates
+
+- Validator: pending.
+- Review: pending.
+- AI audit: pending.
+- UPDATE PLAN decision: `continue_next_phase`.
+- Next phase: Phase 4, validacion runtime, review, AI audit y commit.
+
+## Rollback
+
+Revertir solo archivos de esta migracion mediante parche inverso. Conservar
+OpenCode. No usar reset, clean ni restore masivo. No crear commit si falla DoD.
+
+## Untracked: docs/refactor/phase_codex_queen_migration_result.md
+# Resultado de fase
+
+## Objetivo
+
+Migrar Phases 1-3 de Reina a configuracion nativa Codex sin romper OpenCode.
+
+## Estado inicial
+
+- Rama: `fix/ciclosReina`.
+- Base aprobada: `99fa3896f661298208bcacde2821c2fab1a9dae6`.
+- Baseline del plan: 3582 pass, 12 fallos funcionales conocidos, 8 skipped.
+- TEST CONTRACT: `test-contract-queen-codex-migration`, `sufficient`.
+
+## Archivos inspeccionados
+
+`AGENTS.md`, plan activo, skill-creator oficial, agentes OpenCode,
+`opencode.json`, tests Queen/gobernanza, docs Queen y baselines refactor.
+
+## Cambios realizados
+
+- Skill Reina inicializada con `init_skill.py` oficial y validada.
+- Config Codex con multi-agent estable, profundidad 1 y tres threads.
+- Veinte agentes standalone con nombre, descripcion, instrucciones, modelo,
+  reasoning y sandbox; sesion raiz sigue siendo Reina.
+- Contratos machine-readable para workflow, router, mapping y resultados.
+- Validador JSON standard-library con aliases fast/deep y errores no-cero.
+- Gobernanza Codex para TOML, permisos, modelos, continuidad, schemas, commit
+  gates, OpenCode y roles Godot.
+- Docs operativas y cinco baselines actualizados.
+
+## Cambios descartados
+
+- No se creo `queen.toml`.
+- No se registro `[agents.<name>] config_file`: auto-discovery standalone lo
+  duplicaria.
+- No se modificaron `.opencode/`, `opencode.json`, `START_HERE_AI.md`, motor,
+  CLI ni archivos historicos.
+- No se invento allowlist shell Codex; limites no soportados quedan operativos.
+
+## Tests ejecutados
+
+- Python 3.11 explicito, focused Queen: 76 tests, pass.
+- Python 3.11 explicito, gobernanza/docs/CLI: 75 tests, pass.
+- `quick_validate.py .agents/skills/queen`: pass.
+- `git diff --check`: pass.
+- Primera focused: dos aserciones nuevas fallaron porque router no enumeraba
+  variantes deep y dos roles no expresaban todo write set. Causa confirmada al
+  comparar instrucciones con contrato; parches minimos; rerun verde.
+
+## Benchmarks ejecutados
+
+No aplican: no cambia codigo funcional ni rendimiento del motor.
+
+## Riesgos detectados
+
+- `workspace-write` no limita archivos/comandos con granularidad OpenCode;
+  write sets y orden commit dependen tambien de instrucciones/tests.
+- Modelos requieren disponibilidad de cuenta.
+- Seleccion runtime real de read-only y builder queda para Phase 4.
+- `py` launcher local no resolvio Python; se uso ejecutable 3.11 instalado.
+
+## Rollback
+
+Eliminar por parche inverso solo `.codex/`, `.agents/skills/queen/`, test Codex
+y secciones documentales de esta migracion. Conservar OpenCode. No usar reset,
+clean ni restore masivo.
+
+## Decision
+
+`continue_next_phase`: Phases 1-3 cumplen checks; tarea completa aun no cumple
+DoD hasta runtime validation, review, AI audit y commit.
+
+## Siguiente recomendacion
+
+Ejecutar Phase 4: smoke runtime Codex, diff review, auditoria IA, actualizar plan
+y solo entonces invocar committer. No hacer push.
+
+## Untracked: tests/test_codex_queen_contract.py
+from __future__ import annotations
+
+import importlib.util
+import json
+import tomllib
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SKILL = ROOT / ".agents" / "skills" / "queen"
+AGENT_DIR = ROOT / ".codex" / "agents"
+EXPECTED_AGENTS = {
+    "context_recon",
+    "test_strategist_fast", "test_strategist", "test_strategist_deep",
+    "planner_fast", "planner", "planner_deep",
+    "builder_fast", "builder", "builder_deep",
+    "documenter", "validator",
+    "code_reviewer_fast", "code_reviewer", "code_reviewer_deep",
+    "ai_friendliness", "committer",
+    "godot_source_analyzer", "godot_gap_analyzer", "godot_adapter",
+}
+READ_ONLY = {
+    "context_recon", "test_strategist_fast", "test_strategist", "test_strategist_deep",
+    "planner_fast", "planner", "planner_deep", "validator",
+    "code_reviewer_fast", "code_reviewer", "code_reviewer_deep",
+    "ai_friendliness", "godot_source_analyzer", "godot_gap_analyzer",
+}
+WRITERS = EXPECTED_AGENTS - READ_ONLY
+MANDATORY_SCHEMAS = {
+    "context_recon", "test_strategist", "planner", "builder", "documenter",
+    "validator", "code_reviewer", "ai_friendliness", "committer",
+    "godot_source_analyzer", "godot_gap_analyzer", "godot_adapter",
+    "queen_task_result",
+}
+
+
+def load_toml(path: Path) -> dict:
+    with path.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def load_validator_module():
+    path = SKILL / "scripts" / "validate_result.py"
+    spec = importlib.util.spec_from_file_location("queen_validate_result", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class CodexQueenContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.config = load_toml(ROOT / ".codex" / "config.toml")
+        cls.agent_configs = {
+            path.stem: load_toml(path) for path in sorted(AGENT_DIR.glob("*.toml"))
+        }
+        cls.mapping = json.loads((SKILL / "references" / "agent_mapping.json").read_text(encoding="utf-8"))
+        cls.contract = json.loads((SKILL / "references" / "queen_contract.json").read_text(encoding="utf-8"))
+        cls.schemas = json.loads((SKILL / "references" / "result_schemas.json").read_text(encoding="utf-8"))
+        cls.validator = load_validator_module()
+
+    def test_skill_exists_and_has_official_metadata(self) -> None:
+        text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("---\nname: queen\n"))
+        self.assertIn("description:", text)
+        self.assertTrue((SKILL / "agents" / "openai.yaml").is_file())
+        self.assertIn("La sesion raiz de Codex actua como Reina", text)
+
+    def test_config_enables_native_auto_discovery_without_duplicate_registry(self) -> None:
+        self.assertEqual(self.config["features"]["multi_agent"], True)
+        self.assertEqual(self.config["agents"], {"max_threads": 3, "max_depth": 1})
+        self.assertNotIn("queen", self.agent_configs)
+        self.assertEqual(set(self.agent_configs), EXPECTED_AGENTS)
+
+    def test_agent_toml_contracts_are_complete_and_unique(self) -> None:
+        declared_names = []
+        for name, config in self.agent_configs.items():
+            self.assertEqual(config.get("name"), name)
+            declared_names.append(config["name"])
+            self.assertTrue(config.get("description", "").strip(), name)
+            self.assertTrue(config.get("developer_instructions", "").strip(), name)
+            self.assertNotIn("undefined", config["developer_instructions"], name)
+            self.assertIn("Do not delegate", config["developer_instructions"], name)
+            self.assertIn("phase completed != task completed", config["developer_instructions"], name)
+            self.assertIn(f".opencode/agents/{name.replace('_', '-')}.md", config["developer_instructions"], name)
+        self.assertEqual(len(declared_names), len(set(declared_names)))
+
+    def test_agent_name_mapping_has_no_drift_and_preserves_opencode(self) -> None:
+        mapping = self.mapping["agents"]
+        self.assertEqual(set(mapping), EXPECTED_AGENTS)
+        self.assertEqual(self.mapping["codex_root_role"], "queen")
+        opencode_agents = json.loads((ROOT / "opencode.json").read_text(encoding="utf-8"))["agent"]
+        for codex_name, entry in mapping.items():
+            self.assertEqual(entry["opencode"], codex_name.replace("_", "-"))
+            self.assertIn(entry["opencode"], opencode_agents)
+            self.assertTrue((ROOT / ".opencode" / "agents" / f"{entry['opencode']}.md").is_file())
+
+    def test_sandbox_is_technical_and_scope_is_operational(self) -> None:
+        for name in READ_ONLY:
+            self.assertEqual(self.agent_configs[name]["sandbox_mode"], "read-only", name)
+        for name in WRITERS:
+            self.assertEqual(self.agent_configs[name]["sandbox_mode"], "workspace-write", name)
+        for name in {"builder_fast", "builder", "builder_deep", "godot_adapter"}:
+            instructions = self.agent_configs[name]["developer_instructions"]
+            for term in ("allowed", "forbidden", "TEST CONTRACT", "write set"):
+                self.assertIn(term, instructions, f"{name}: {term}")
+
+    def test_models_and_reasoning_match_router_variants(self) -> None:
+        fast = {"test_strategist_fast", "planner_fast", "builder_fast", "code_reviewer_fast"}
+        standard = {"test_strategist", "planner", "builder", "code_reviewer"}
+        deep = {"test_strategist_deep", "planner_deep", "builder_deep", "code_reviewer_deep"}
+        for name in fast:
+            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6-terra", "low"))
+        for name in standard:
+            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6", "high"))
+        for name in deep:
+            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6", "xhigh"))
+        for name, config in self.agent_configs.items():
+            self.assertNotIn("openai/", config["model"], name)
+            self.assertNotRegex(config["model"], r"gpt-5\.[45](?:-mini)?$")
+
+    def test_router_has_all_four_routes_and_escalation_guards(self) -> None:
+        self.assertEqual(set(self.contract["router"]), {"simple", "normal", "complex", "critical"})
+        router_text = (SKILL / "references" / "model_router.md").read_text(encoding="utf-8")
+        for term in ("previous_failed_cycles", "must_fix", "validator", "test_strategist_deep", "builder_deep"):
+            self.assertIn(term, router_text)
+
+    def test_workflow_continuity_and_final_states(self) -> None:
+        self.assertEqual(self.contract["max_cycles"], 5)
+        self.assertEqual(set(self.contract["phase_statuses"]), {"completed", "blocked", "failed", "skipped", "not_applicable"})
+        self.assertEqual(set(self.contract["task_statuses"]), {"completed", "partial", "blocked", "failed"})
+        self.assertEqual(self.contract["exceptional_stop"], "planning_only")
+        transitions = self.contract["automatic_transitions"]
+        self.assertEqual(transitions["PLAN.approved"], "PLAN_CRITIQUE")
+        self.assertEqual(transitions["REVIEW.approved"], "AI_AUDIT")
+        self.assertEqual(transitions["UPDATE_PLAN.continue_next_phase"], "NEXT_PHASE")
+        self.assertIn("PLAN", self.contract["forbidden_final_after"])
+        self.assertIn("REVIEW", self.contract["forbidden_final_after"])
+        self.assertEqual(self.contract["commit_prerequisites"], ["validator_pass", "review_approved", "ai_audit_approved_or_not_applicable"])
+
+    def test_test_contract_and_result_schemas_are_machine_readable(self) -> None:
+        self.assertTrue(MANDATORY_SCHEMAS <= set(self.schemas["agent_types"]))
+        required = self.schemas["agent_types"]["test_strategist"]["required"]
+        for field in ("existing_tests_authority", "tests_that_must_not_be_relaxed", "minimum_focused_commands", "verdict"):
+            self.assertIn(field, required)
+        self.assertEqual(self.schemas["agent_types"]["test_strategist"]["properties"]["verdict"]["enum"], ["sufficient", "insufficient", "not_applicable"])
+
+    def test_validator_rejects_empty_non_json_missing_and_invalid_enum(self) -> None:
+        with self.assertRaises(self.validator.ContractError):
+            self.validator.parse_result_text("")
+        with self.assertRaises(self.validator.ContractError):
+            self.validator.parse_result_text("not-json")
+        with self.assertRaises(self.validator.ContractError):
+            self.validator.validate_result("builder", {})
+        invalid = self.valid_builder_result()
+        invalid["status"] = "ok"
+        with self.assertRaises(self.validator.ContractError):
+            self.validator.validate_result("builder", invalid)
+
+    def test_validator_accepts_valid_result_and_alias(self) -> None:
+        result = self.valid_builder_result()
+        self.validator.validate_result("builder", result)
+        self.validator.validate_result("builder-deep", result)
+
+    def test_validator_accepts_minimal_valid_result_for_every_schema(self) -> None:
+        for agent_type, schema in self.schemas["agent_types"].items():
+            with self.subTest(agent_type=agent_type):
+                self.validator.validate_result(agent_type, self.minimal_value(schema))
+
+    def test_godot_agents_load_specialized_skill(self) -> None:
+        self.assertTrue((ROOT / ".agents" / "skills" / "godot-feature-adapter" / "SKILL.md").is_file())
+        for name in ("godot_source_analyzer", "godot_gap_analyzer", "godot_adapter"):
+            self.assertIn(".agents/skills/godot-feature-adapter/SKILL.md", self.agent_configs[name]["developer_instructions"])
+
+    @staticmethod
+    def valid_builder_result() -> dict:
+        return {
+            "builder_id": "builder-test",
+            "status": "completed",
+            "phase_status": "completed",
+            "files_changed": ["example.txt"],
+            "tests_added_or_modified": [],
+            "tests_deliberately_not_changed": [],
+            "commands_run": ["test"],
+            "write_scope_violations": [],
+            "risks": [],
+        }
+
+    @classmethod
+    def minimal_value(cls, schema: dict):
+        if "enum" in schema:
+            return schema["enum"][0]
+        expected = schema.get("type", "object")
+        if isinstance(expected, list):
+            expected = next(item for item in expected if item != "null")
+        if expected == "object":
+            properties = schema.get("properties", {})
+            return {name: cls.minimal_value(properties[name]) for name in schema.get("required", [])}
+        if expected == "array":
+            return []
+        if expected == "string":
+            return "x"
+        if expected == "integer":
+            return schema.get("minimum", 0)
+        if expected == "number":
+            return schema.get("minimum", 0)
+        if expected == "boolean":
+            return False
+        if expected == "null":
+            return None
+        raise AssertionError(f"unsupported schema type: {expected}")
+
+
+if __name__ == "__main__":
+    unittest.main()

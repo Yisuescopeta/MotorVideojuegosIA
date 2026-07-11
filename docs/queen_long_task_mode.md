@@ -22,6 +22,16 @@ LOAD PLAN -> PLAN SYNC -> TEST CONTRACT -> IMPLEMENTAR FASE -> DOCUMENTAR -> VAL
 El TEST CONTRACT se define antes de implementar. El resultado de AI AUDIT se
 registra en UPDATE PLAN antes de avanzar, bloquear o cerrar.
 
+Regla fuerte:
+
+```text
+phase completed != task completed
+```
+
+En este modo, `phase_status=completed` obliga a continuar. No devuelve control
+al usuario salvo `blocked`, `failed`, `partial`, `completed` final o
+`planning_only` explicito.
+
 ## Model Router por fase
 
 En Long Task Plan Mode, Queen recalcula `model_route` al inicio de cada fase,
@@ -169,6 +179,18 @@ Queen actualiza el plan con:
 5. **Risks**: nuevos riesgos detectados.
 6. **Updated at**: timestamp.
 
+Despues de registrar esos datos, UPDATE PLAN decide exactamente uno:
+
+- `continue_next_phase`: continuar inmediatamente a la siguiente fase sin
+  devolver control al usuario.
+- `block`: detenerse por bloqueo real.
+- `complete`: toda la tarea ya cumple Definition of Done.
+- `partial`: se alcanzo `max_cycles`, contexto insuficiente o limite explicito
+  de alcance.
+
+Un reporte intermedio de fase no es respuesta final. Es entrada operativa para
+la siguiente fase.
+
 ## Que pasa si el plan contradice codigo/tests/docs
 
 El plan operativo esta por debajo de codigo, tests y docs canonicas en el
@@ -187,6 +209,14 @@ Al terminar la tarea (completed, partial, blocked o failed):
 1. El plan versionado se mueve de `docs/plans/active/` a `docs/plans/archive/`.
 2. Se actualiza el header: `Status: completed|blocked|failed`.
 3. Se añade `Archived at: <ISO timestamp>`.
+
+## Codex y OpenCode
+
+Ambas integraciones comparten planes en `docs/plans/active/`. En Codex, sesion
+raiz carga `.agents/skills/queen/SKILL.md`, recalcula route por fase y valida
+cada resultado JSON antes de UPDATE PLAN. `continue_next_phase` obliga a
+continuar sin devolver control al usuario. Contrato compacto:
+`.agents/skills/queen/references/long_task_mode.md`.
 
 ## Ver tambien
 

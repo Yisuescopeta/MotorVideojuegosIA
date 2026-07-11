@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "codex_root_role": "queen",
+  "agents": {
+    "context_recon": {
+      "opencode": "context-recon",
+      "sandbox_mode": "read-only"
+    },
+    "test_strategist_fast": {
+      "opencode": "test-strategist-fast",
+      "sandbox_mode": "read-only"
+    },
+    "test_strategist": {
+      "opencode": "test-strategist",
+      "sandbox_mode": "read-only"
+    },
+    "test_strategist_deep": {
+      "opencode": "test-strategist-deep",
+      "sandbox_mode": "read-only"
+    },
+    "planner_fast": {
+      "opencode": "planner-fast",
+      "sandbox_mode": "read-only"
+    },
+    "planner": {
+      "opencode": "planner",
+      "sandbox_mode": "read-only"
+    },
+    "planner_deep": {
+      "opencode": "planner-deep",
+      "sandbox_mode": "read-only"
+    },
+    "builder_fast": {
+      "opencode": "builder-fast",
+      "sandbox_mode": "workspace-write"
+    },
+    "builder": {
+      "opencode": "builder",
+      "sandbox_mode": "workspace-write"
+    },
+    "builder_deep": {
+      "opencode": "builder-deep",
+      "sandbox_mode": "workspace-write"
+    },
+    "documenter": {
+      "opencode": "documenter",
+      "sandbox_mode": "workspace-write"
+    },
+    "validator": {
+      "opencode": "validator",
+      "sandbox_mode": "read-only"
+    },
+    "code_reviewer_fast": {
+      "opencode": "code-reviewer-fast",
+      "sandbox_mode": "read-only"
+    },
+    "code_reviewer": {
+      "opencode": "code-reviewer",
+      "sandbox_mode": "read-only"
+    },
+    "code_reviewer_deep": {
+      "opencode": "code-reviewer-deep",
+      "sandbox_mode": "read-only"
+    },
+    "ai_friendliness": {
+      "opencode": "ai-friendliness",
+      "sandbox_mode": "read-only"
+    },
+    "committer": {
+      "opencode": "committer",
+      "sandbox_mode": "workspace-write"
+    },
+    "godot_source_analyzer": {
+      "opencode": "godot-source-analyzer",
+      "sandbox_mode": "read-only"
+    },
+    "godot_gap_analyzer": {
+      "opencode": "godot-gap-analyzer",
+      "sandbox_mode": "read-only"
+    },
+    "godot_adapter": {
+      "opencode": "godot-adapter",
+      "sandbox_mode": "workspace-write"
+    }
+  }
+}

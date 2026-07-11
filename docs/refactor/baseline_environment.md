@@ -38,3 +38,12 @@ Date: 2026-07-01
 - Effective Python command remains `py -3 -m ...`.
 - No Rust/PyO3 change was introduced.
 - No new runtime dependency was introduced.
+
+## Codex Queen migration update - 2026-07-10
+
+- Codex CLI detected: `codex-cli 0.118.0`; `multi_agent` is stable.
+- Native project config: `.codex/config.toml`; standalone agents:
+  `.codex/agents/*.toml`; project skill: `.agents/skills/queen/`.
+- Local `py` launcher did not resolve installed Python in this shell. Focused
+  checks used `C:\Users\usuario\AppData\Local\Programs\Python\Python311\python.exe`.
+- No dependency, Rust/PyO3 or motor runtime change introduced.

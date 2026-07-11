@@ -1,0 +1,61 @@
+{
+  "schema_version": "gamespec2d.v1",
+  "game_type": "platformer",
+  "source": {
+    "width": 320,
+    "height": 180,
+    "path": "examples/vision/simple_platformer.png",
+    "metadata": {
+      "note": "Synthetic no-asset fixture for CLI tests"
+    }
+  },
+  "camera": {
+    "x": 160.0,
+    "y": 90.0,
+    "width": 320.0,
+    "height": 180.0,
+    "confidence": 0.9
+  },
+  "grid": {
+    "width": 10,
+    "height": 6,
+    "tile_size": 32.0,
+    "origin_x": 0.0,
+    "origin_y": 0.0,
+    "confidence": 0.95
+  },
+  "tilemap": {
+    "solid_cells": [
+      {"x": 0, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 1, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 2, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 3, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 4, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 5, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 6, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 7, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 8, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 9, "y": 5, "label": "solid_ground", "confidence": 0.95},
+      {"x": 4, "y": 3, "label": "platform", "confidence": 0.8},
+      {"x": 5, "y": 3, "label": "platform", "confidence": 0.8}
+    ],
+    "decorative_cells": [],
+    "confidence": 0.9
+  },
+  "entities": [
+    {"type": "player_spawn", "x": 48.0, "y": 128.0, "confidence": 0.95},
+    {"type": "coin", "x": 160.0, "y": 72.0, "confidence": 0.85},
+    {"type": "goal", "x": 288.0, "y": 128.0, "confidence": 0.9}
+  ],
+  "warnings": [
+    {
+      "code": "synthetic_fixture",
+      "message": "Example is hand-authored for CLI validation; no image asset is required.",
+      "confidence": 1.0
+    }
+  ],
+  "confidence": 0.9,
+  "metadata": {
+    "license": "example-fixture-no-commercial-assets"
+  }
+}

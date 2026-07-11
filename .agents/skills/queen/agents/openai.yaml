@@ -1,0 +1,7 @@
+interface:
+  display_name: "Queen"
+  short_description: "Orquestación multiagente explícita para tareas largas o críticas de OpenGame"
+  default_prompt: "Usa $queen para ejecutar esta tarea larga o crítica con planificación persistente, TEST CONTRACT y revisión independiente."
+
+policy:
+  allow_implicit_invocation: false

@@ -1806,7 +1806,7 @@ class Game:
             "released": bool(rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)),
             "keys_pressed": self._runtime_pressed_keys(),
         }
-        viewport_rect = self.editor_layout.get_center_view_rect()
+        viewport_rect: Any | None = self.editor_layout.get_center_view_rect()
         if tab == "GAME" and hasattr(self.editor_layout, "map_game_view_screen_point_to_texture"):
             viewport_x, viewport_y = self.editor_layout.map_game_view_screen_point_to_texture(
                 float(mouse.x),

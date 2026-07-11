@@ -166,6 +166,10 @@ from motor.cli_core import (
     cmd_ui_preset_add,
     cmd_ui_preset_list,
     cmd_ui_create_text,
+    cmd_vision_annotate,
+    cmd_vision_build_scene,
+    cmd_vision_build_platformer,
+    cmd_vision_spec_validate,
 )
 
 __all__ = ["main", "cli_main", "run_motor_command", "create_motor_parser"]
@@ -363,6 +367,68 @@ Documentation:
         help="Path to project directory (default: current directory)"
     )
     doctor_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === vision ===
+    vision_parser = subparsers.add_parser(
+        "vision",
+        help="Experimental GameSpec workflows",
+    )
+    vision_subparsers = vision_parser.add_subparsers(dest="vision_subcommand", required=True)
+
+    vision_spec_parser = vision_subparsers.add_parser(
+        "spec",
+        help="GameSpec2D operations",
+    )
+    vision_spec_subparsers = vision_spec_parser.add_subparsers(dest="vision_spec_subcommand", required=True)
+
+    vision_spec_validate_parser = vision_spec_subparsers.add_parser(
+        "validate",
+        help="Validate a GameSpec2D JSON file",
+    )
+    vision_spec_validate_parser.add_argument("path", help="Path to GameSpec2D JSON file")
+    vision_spec_validate_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    vision_spec_validate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    vision_build_scene_parser = vision_subparsers.add_parser(
+        "build-scene",
+        help="Build a scene from a GameSpec2D JSON file",
+    )
+    vision_build_scene_parser.add_argument("gamespec_path", help="Path to GameSpec2D JSON file")
+    vision_build_scene_parser.add_argument("--out", dest="out_path", required=True, help="Output scene path")
+    vision_build_scene_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    vision_build_scene_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    vision_build_platformer_parser = vision_subparsers.add_parser(
+        "build-platformer",
+        help="Build a platformer scene from a simple image without ML",
+    )
+    vision_build_platformer_parser.add_argument("image_path", help="Path to supported input image (PPM P3/P6)")
+    vision_build_platformer_parser.add_argument("--out", dest="out_path", required=True, help="Output scene path")
+    vision_build_platformer_parser.add_argument("--gamespec-out", dest="gamespec_out", default=None, help="Optional output GameSpec2D JSON sidecar path")
+    vision_build_platformer_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    vision_build_platformer_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    vision_annotate_parser = vision_subparsers.add_parser(
+        "annotate",
+        help="Generate a deterministic PPM debug overlay for a GameSpec2D image",
+    )
+    vision_annotate_parser.add_argument("image_path", help="Path to supported input image (PPM P3/P6)")
+    vision_annotate_parser.add_argument("--gamespec", dest="gamespec_path", required=True, help="Path to GameSpec2D JSON file")
+    vision_annotate_parser.add_argument("--out", dest="out_path", required=True, help="Output PPM overlay path")
+    vision_annotate_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    vision_annotate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === editor ===
     editor_parser = subparsers.add_parser(
@@ -2226,6 +2292,38 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
             project_path=Path(parsed.project_root).resolve(),
             json_output=parsed.json,
         )
+
+    # === vision ===
+    elif parsed.command == "vision":
+        if parsed.vision_subcommand == "spec" and parsed.vision_spec_subcommand == "validate":
+            return cmd_vision_spec_validate(
+                spec_path=Path(parsed.path),
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        if parsed.vision_subcommand == "build-scene":
+            return cmd_vision_build_scene(
+                gamespec_path=Path(parsed.gamespec_path),
+                out_path=Path(parsed.out_path),
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        if parsed.vision_subcommand == "build-platformer":
+            return cmd_vision_build_platformer(
+                image_path=Path(parsed.image_path),
+                out_path=Path(parsed.out_path),
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+                gamespec_out=Path(parsed.gamespec_out) if parsed.gamespec_out else None,
+            )
+        if parsed.vision_subcommand == "annotate":
+            return cmd_vision_annotate(
+                image_path=Path(parsed.image_path),
+                gamespec_path=Path(parsed.gamespec_path),
+                out_path=Path(parsed.out_path),
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
 
     # === editor ===
     elif parsed.command == "editor":

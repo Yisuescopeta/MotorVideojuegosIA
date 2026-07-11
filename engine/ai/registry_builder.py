@@ -30,6 +30,7 @@ class CapabilityRegistryBuilder:
         """Build and return the full capability registry."""
         self._register_scene_capabilities()
         self._register_game_capabilities()
+        self._register_vision_capabilities()
         self._register_entity_capabilities()
         self._register_component_capabilities()
         self._register_asset_capabilities()
@@ -52,6 +53,67 @@ class CapabilityRegistryBuilder:
         self._register_service_capabilities()
         self._register_entity_group_capabilities()
         return self._registry
+
+    def _register_vision_capabilities(self) -> None:
+        self._add(Capability(
+            id="vision:spec:validate",
+            summary="Validate an experimental GameSpec2D JSON file",
+            mode="both",
+            api_methods=["CapabilityRegistry.cmd_vision_spec_validate"],
+            cli_command="motor vision spec validate <path> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Validate a GameSpec2D file",
+                api_calls=[{"method": "CapabilityRegistry.cmd_vision_spec_validate", "args": {}}],
+                expected_outcome="Returns schema version, game type, warnings and confidence summary",
+            ),
+            notes="Experimental CLI for GameSpec workflows; reads JSON and does not mutate the project.",
+            tags=["vision", "gamespec", "validation", "experimental"],
+        ))
+
+        self._add(Capability(
+            id="vision:build-scene",
+            summary="Build a scene from a valid experimental GameSpec2D JSON file",
+            mode="edit",
+            api_methods=["CapabilityRegistry.cmd_vision_build_scene"],
+            cli_command="motor vision build-scene <gamespec_path> --out <scene_path> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Build a scene from a GameSpec2D file",
+                api_calls=[{"method": "CapabilityRegistry.cmd_vision_build_scene", "args": {}}],
+                expected_outcome="Writes a scene file and returns a SceneBuildReport payload",
+            ),
+            notes="Refuses to overwrite existing output by default and uses public EngineAPI scene authoring through the builder.",
+            tags=["vision", "gamespec", "scene", "experimental"],
+        ))
+
+        self._add(Capability(
+            id="vision:build-platformer",
+            summary="Build a platformer scene from a simple image through GameSpec2D",
+            mode="edit",
+            api_methods=["CapabilityRegistry.cmd_vision_build_platformer"],
+            cli_command="motor vision build-platformer <image_path> --out <scene_path> [--gamespec-out <path>] [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Build a platformer scene from a deterministic PPM image",
+                api_calls=[{"method": "CapabilityRegistry.cmd_vision_build_platformer", "args": {}}],
+                expected_outcome="Writes a GameSpec2D sidecar and scene file using deterministic tilemap reconstruction; JSON data includes warnings, confidence and unsupported_features fields",
+            ),
+            notes="CLI/internal helper only via motor vision build-platformer and CapabilityRegistry.cmd_vision_build_platformer; not an EngineAPI method. Supports the internal simple-image pipeline only; no object detection ML and no PNG support is claimed. Refuses to overwrite scene or GameSpec outputs by default.",
+            tags=["vision", "gamespec", "platformer", "experimental"],
+        ))
+
+        self._add(Capability(
+            id="vision:annotate",
+            summary="Generate a deterministic PPM debug overlay for a GameSpec2D image",
+            mode="both",
+            api_methods=["CapabilityRegistry.cmd_vision_annotate"],
+            cli_command="motor vision annotate <image_path> --gamespec <gamespec_path> --out <overlay_path> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Annotate a PPM image with GameSpec2D grid, cells and entity markers",
+                api_calls=[{"method": "CapabilityRegistry.cmd_vision_annotate", "args": {}}],
+                expected_outcome="Writes a same-size PPM overlay and returns dimensions, annotation_counts, warning_count and format",
+            ),
+            notes="Stdlib-only PPM overlay helper; no PIL/Pillow/cv2/numpy/render/editor dependency. Refuses to overwrite output.",
+            tags=["vision", "gamespec", "debug", "overlay", "experimental"],
+        ))
 
     def _register_export_capabilities(self) -> None:
         self._add(Capability(
@@ -2473,6 +2535,7 @@ class MotorAIBootstrapBuilder:
             "Recipes": ["recipe:"],
             "Agent": ["agent:"],
             "Game": ["game:"],
+            "Vision": ["vision:"],
             "Runtime": ["runtime:"],
             "Physics": ["physics:"],
             "Introspection": ["introspect:"],
