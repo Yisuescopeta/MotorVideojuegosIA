@@ -4,8 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
-
 JsonDict = dict[str, Any]
+
+SEMANTIC_RGBA_PALETTE: dict[str, tuple[int, int, int, int]] = {
+    "player_spawn": (80, 160, 255, 255),
+    "solid_ground": (110, 95, 70, 255),
+    "platform": (130, 130, 150, 255),
+    "coin": (255, 220, 50, 255),
+    "enemy_patrol": (220, 60, 60, 255),
+    "hazard": (255, 80, 20, 255),
+    "goal": (80, 230, 120, 255),
+    "checkpoint": (80, 220, 255, 255),
+    "killzone": (180, 20, 20, 150),
+    "decorative_prop": (180, 180, 180, 255),
+}
 
 
 def transform_payload(x: float, y: float) -> JsonDict:
@@ -48,6 +60,26 @@ def sprite_payload(width: float, height: float, tint: tuple[int, int, int, int])
     }
 
 
+def polygon_payload(width: float, height: float, color: tuple[int, int, int, int]) -> JsonDict:
+    """Return an asset-free rectangle centered on its entity Transform."""
+    half_width = float(width) / 2.0
+    half_height = float(height) / 2.0
+    return {
+        "enabled": True,
+        "points": [
+            [-half_width, -half_height],
+            [half_width, -half_height],
+            [half_width, half_height],
+            [-half_width, half_height],
+        ],
+        "color": list(color),
+        "texture": {"guid": "", "path": ""},
+        "texture_path": "",
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+    }
+
+
 def camera_payload(world_width: float, world_height: float, follow_entity: str = "") -> JsonDict:
     return {
         "offset_x": 0.0,
@@ -70,42 +102,53 @@ def camera_payload(world_width: float, world_height: float, follow_entity: str =
 
 def semantic_components(entity_type: str, width: float, height: float, *, index: int = 1) -> JsonDict:
     """Return registered component payloads for a GameSpec2D entity type."""
+    color = SEMANTIC_RGBA_PALETTE.get(entity_type, SEMANTIC_RGBA_PALETTE["decorative_prop"])
     if entity_type == "player_spawn":
         return {
             "RespawnPoint2D": {"spawn_id": "player", "active": True},
-            "Sprite": sprite_payload(width, height, (80, 160, 255, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "solid_ground":
-        return {"Collider": collider_payload(width, height), "Sprite": sprite_payload(width, height, (110, 95, 70, 255))}
+        return {
+            "Collider": collider_payload(width, height),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
+        }
     if entity_type == "platform":
         return {
             "Collider": collider_payload(width, height),
             "MovingPlatform2D": {"path": [], "speed": 80.0, "loop": True, "start_active": True},
-            "Sprite": sprite_payload(width, height, (130, 130, 150, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "coin":
         return {
             "Collider": collider_payload(width, height, is_trigger=True),
             "Collectible2D": {"points": 1, "destroy_on_collect": True, "event_name": "collectible_collected"},
-            "Sprite": sprite_payload(width, height, (255, 220, 50, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "enemy_patrol":
         return {
             "Collider": collider_payload(width, height, is_trigger=True),
             "EnemyPatrol2D": {"patrol_points": [], "speed": 80.0, "damage": 1, "event_name": "enemy_touched"},
-            "Sprite": sprite_payload(width, height, (220, 60, 60, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "hazard":
         return {
             "Collider": collider_payload(width, height, is_trigger=True),
             "Hazard2D": {"damage": 1, "respawn_on_touch": True, "event_name": "hazard_touched"},
-            "Sprite": sprite_payload(width, height, (255, 80, 20, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "goal":
         return {
             "Collider": collider_payload(width, height, is_trigger=True),
             "Goal2D": {"complete_on_touch": True, "next_scene": "", "event_name": "goal_reached"},
-            "Sprite": sprite_payload(width, height, (80, 230, 120, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "checkpoint":
         return {
@@ -116,15 +159,20 @@ def semantic_components(entity_type: str, width: float, height: float, *, index:
                 "set_respawn_on_touch": True,
                 "event_name": "checkpoint_reached",
             },
-            "Sprite": sprite_payload(width, height, (80, 220, 255, 255)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
     if entity_type == "killzone":
         return {
             "Collider": collider_payload(width, height, is_trigger=True),
             "KillZone2D": {"damage": 1, "respawn_on_touch": True, "event_name": "killzone_touched"},
-            "Sprite": sprite_payload(width, height, (180, 20, 20, 150)),
+            "Sprite": sprite_payload(width, height, color),
+            "Polygon2D": polygon_payload(width, height, color),
         }
-    return {"Sprite": sprite_payload(width, height, (180, 180, 180, 255))}
+    return {
+        "Sprite": sprite_payload(width, height, color),
+        "Polygon2D": polygon_payload(width, height, color),
+    }
 
 
 REGISTERED_COMPONENTS_USED = frozenset(
@@ -132,6 +180,7 @@ REGISTERED_COMPONENTS_USED = frozenset(
         "Transform",
         "Collider",
         "Sprite",
+        "Polygon2D",
         "Camera2D",
         "RespawnPoint2D",
         "MovingPlatform2D",

@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
 from typing import Any
 
 from engine.api import EngineAPI
 
 from .gamespec2d import GameSpec2D, TileCell
-from .semantic_prefabs import camera_payload, collider_payload, semantic_components, transform_payload
-
+from .semantic_prefabs import (
+    SEMANTIC_RGBA_PALETTE,
+    camera_payload,
+    collider_payload,
+    polygon_payload,
+    semantic_components,
+    transform_payload,
+)
 
 JsonDict = dict[str, Any]
 
@@ -86,6 +92,11 @@ def build_scene_from_gamespec2d(
                 {
                     "Transform": transform_payload(x, y),
                     "Collider": collider_payload(spec.grid.tile_size, spec.grid.tile_size),
+                    "Polygon2D": polygon_payload(
+                        spec.grid.tile_size,
+                        spec.grid.tile_size,
+                        SEMANTIC_RGBA_PALETTE[semantic],
+                    ),
                 },
                 tag=_tag_for(semantic),
                 layer="Collision",

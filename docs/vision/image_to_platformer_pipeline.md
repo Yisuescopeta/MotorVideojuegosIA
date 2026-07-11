@@ -114,6 +114,24 @@ no, se devuelven con defaults o vacios y el error sigue siendo estructurado en
 Para la fase de overlay, el JSON expone `overlay_path`, `source`, `gamespec`,
 `dimensions`, `annotation_counts`, `warning_count` y `format`.
 
+## Fase 8A.1 — Geometria semantica determinista
+
+Las escenas generadas conservan sus componentes `Sprite` y añaden un
+`Polygon2D` rectangular, centrado respecto al `Transform`, para cada tipo
+semantico soportado. Las celdas solidas creadas directamente desde el tilemap
+tambien incluyen este fallback visible.
+
+- La paleta RGBA es explicita y estable por tipo semantico.
+- La geometria depende solo del ancho y alto del elemento.
+- No usa texturas, assets binarios, red ni dependencias nuevas.
+- `Polygon2D` se serializa y recarga mediante la ruta publica existente.
+- La representacion del reporte sigue siendo `collider_blocks`.
+
+Esta geometria sirve para inspeccion estructural y smoke visual. No reproduce
+el arte de la imagen fuente. La captura real del render y cualquier validacion
+visual automatica pertenecen a fases posteriores y no quedan demostradas por
+este fallback.
+
 ## Limitaciones
 
 - Solo PPM controlado; no screenshots ni soportes de assets visuales generales.
@@ -127,10 +145,12 @@ Para la fase de overlay, el JSON expone `overlay_path`, `source`, `gamespec`,
 
 Si esta fase introduce una regresion, revertir en este orden:
 
-1. `engine/vision/image_to_platformer.py`
-2. hooks de CLI en `motor/cli_core.py` y `motor/cli.py`
-3. registro de capacidad en `engine/ai/registry_builder.py`
-4. luego, si hace falta, la reconstruccion determinista de tilemap
+1. retirar solo los payloads `Polygon2D` semanticos de
+   `engine/vision/semantic_prefabs.py` y `engine/vision/gamespec_to_scene.py`;
+2. mantener `Sprite`, `Collider`, `GameSpec2D` y `representation="collider_blocks"`;
+3. para un rollback mas amplio de la pipeline, retirar
+   `engine/vision/image_to_platformer.py`, los hooks de CLI y la capability en
+   ese orden.
 
 Mantener el comportamiento experimental desactivado o retirarlo antes que
 romper el flujo `GameSpec2D -> Scene` existente.

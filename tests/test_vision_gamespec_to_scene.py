@@ -3,13 +3,35 @@ from __future__ import annotations
 import ast
 import importlib
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from engine.api import EngineAPI
-from engine.vision.gamespec2d import CameraSpec, EntitySpec, GameSpec2D, GridSpec, TileCell, TileMapSpec
+from engine.vision import semantic_prefabs
+from engine.vision.gamespec2d import (
+    ALLOWED_ENTITY_TYPES,
+    CameraSpec,
+    EntitySpec,
+    GameSpec2D,
+    GridSpec,
+    TileCell,
+    TileMapSpec,
+)
 from engine.vision.gamespec_to_scene import build_scene_from_gamespec2d
+
+EXPECTED_SEMANTIC_PALETTE = {
+    "player_spawn": (80, 160, 255, 255),
+    "solid_ground": (110, 95, 70, 255),
+    "platform": (130, 130, 150, 255),
+    "coin": (255, 220, 50, 255),
+    "enemy_patrol": (220, 60, 60, 255),
+    "hazard": (255, 80, 20, 255),
+    "goal": (80, 230, 120, 255),
+    "checkpoint": (80, 220, 255, 255),
+    "killzone": (180, 20, 20, 150),
+    "decorative_prop": (180, 180, 180, 255),
+}
 
 
 def sample_spec() -> GameSpec2D:
@@ -32,6 +54,56 @@ def sample_spec() -> GameSpec2D:
 
 
 class GameSpecToSceneTests(unittest.TestCase):
+    def test_polygon_payload_is_centered_complete_and_color_independent(self) -> None:
+        expected_points = [[-8.0, -6.0], [8.0, -6.0], [8.0, 6.0], [-8.0, 6.0]]
+        first = semantic_prefabs.polygon_payload(16.0, 12.0, (1, 2, 3, 4))
+        second = semantic_prefabs.polygon_payload(16.0, 12.0, (200, 201, 202, 203))
+
+        self.assertEqual(
+            first,
+            {
+                "enabled": True,
+                "points": expected_points,
+                "color": [1, 2, 3, 4],
+                "texture": {"guid": "", "path": ""},
+                "texture_path": "",
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+            },
+        )
+        self.assertEqual(second["points"], expected_points)
+
+    def test_all_semantic_prefabs_keep_sprite_and_gain_stable_polygon(self) -> None:
+        self.assertEqual(set(EXPECTED_SEMANTIC_PALETTE), set(ALLOWED_ENTITY_TYPES))
+        self.assertEqual(semantic_prefabs.SEMANTIC_RGBA_PALETTE, EXPECTED_SEMANTIC_PALETTE)
+
+        for entity_type in sorted(ALLOWED_ENTITY_TYPES):
+            with self.subTest(entity_type=entity_type):
+                components = semantic_prefabs.semantic_components(entity_type, 16.0, 12.0, index=2)
+                self.assertIn("Sprite", components)
+                self.assertEqual(
+                    components["Sprite"],
+                    {
+                        "texture": {"guid": "", "path": ""},
+                        "texture_path": "",
+                        "width": 16,
+                        "height": 12,
+                        "origin_x": 0.5,
+                        "origin_y": 0.5,
+                        "flip_x": False,
+                        "flip_y": False,
+                        "tint": list(EXPECTED_SEMANTIC_PALETTE[entity_type]),
+                        "source_slice": "",
+                    },
+                )
+                self.assertEqual(
+                    components["Polygon2D"],
+                    semantic_prefabs.polygon_payload(16.0, 12.0, EXPECTED_SEMANTIC_PALETTE[entity_type]),
+                )
+                self.assertTrue(all(0 <= channel <= 255 for channel in components["Polygon2D"]["color"]))
+
+        self.assertIn("Polygon2D", semantic_prefabs.REGISTERED_COMPONENTS_USED)
+
     def test_valid_spec_builds_saved_loadable_scene_via_public_engine_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "levels" / "generated.scene"
@@ -89,6 +161,43 @@ class GameSpecToSceneTests(unittest.TestCase):
             self.assertEqual(ground["components"]["Transform"]["x"], 18.0)
             self.assertEqual(ground["components"]["Transform"]["y"], 44.0)
             self.assertEqual(ground["components"]["Collider"]["width"], 16.0)
+
+    def test_solid_cells_gain_centered_semantic_polygon_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "generated.scene"
+            build_scene_from_gamespec2d(sample_spec(), output, project_root=tmp)
+            api = EngineAPI(project_root=tmp, auto_ensure_project=True)
+            api.load_level(output.as_posix())
+
+            expected_points = [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0], [-8.0, 8.0]]
+            for name, semantic in (
+                ("solid_ground_cell_001_000", "solid_ground"),
+                ("platform_cell_002_002", "platform"),
+            ):
+                with self.subTest(name=name):
+                    components = api.get_entity(name)["components"]
+                    self.assertIn("Transform", components)
+                    self.assertIn("Collider", components)
+                    self.assertIn("Polygon2D", components)
+                    self.assertEqual(components["Polygon2D"]["points"], expected_points)
+                    self.assertEqual(components["Polygon2D"]["color"], list(EXPECTED_SEMANTIC_PALETTE[semantic]))
+
+    def test_polygon_payload_survives_public_scene_save_load_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "generated.scene"
+            build_scene_from_gamespec2d(sample_spec(), output, project_root=tmp)
+            persisted = json.loads(output.read_text(encoding="utf-8"))
+            persisted_entities = {entity["name"]: entity["components"] for entity in persisted["entities"]}
+
+            api = EngineAPI(project_root=tmp, auto_ensure_project=True)
+            api.load_level(output.as_posix())
+            loaded_polygon = api.get_entity("coin_001")["components"]["Polygon2D"]
+
+            self.assertEqual(loaded_polygon, persisted_entities["coin_001"]["Polygon2D"])
+            self.assertEqual(
+                loaded_polygon,
+                semantic_prefabs.polygon_payload(16.0, 16.0, EXPECTED_SEMANTIC_PALETTE["coin"]),
+            )
 
     def test_collider_fallback_represents_solid_cells_and_camera_created(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

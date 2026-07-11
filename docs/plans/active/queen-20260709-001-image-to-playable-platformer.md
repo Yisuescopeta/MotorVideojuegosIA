@@ -4,12 +4,12 @@ Status: active
 Authority: operational-plan
 Task ID: queen-20260709-001
 Created at: 2026-07-09T00:00:00
-Updated at: 2026-07-10T00:00:00
+Updated at: 2026-07-11T00:00:00
 Mode: long-task-plan
 
 ## Objective
 
-Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGame Scene -> validation -> debug overlay -> render comparison -> playtest smoke.
+Experimental pipeline reference image -> deterministic vision analysis -> GameSpec2D -> OpenGame Scene -> deterministic visible semantic representation -> real off-screen render capture -> playtest smoke -> bounded hardening -> documentation sync -> explicit exit decision.
 
 ## Non-goals
 
@@ -19,25 +19,35 @@ Experimental pipeline reference image -> vision analysis -> GameSpec2D -> OpenGa
 - No SceneManager/EngineAPI/serialization/runtime/editor/physics changes in early phases.
 - No mandatory OpenCV/supervision.
 - No test relaxation.
+- No automated reference-vs-render visual comparison in this MVP closure.
+- No pixel-match, RGB-error, block-similarity, occupancy-similarity, or visual-similarity scores in Phase 8B.
 
 ## Current phase
 
-- Name: Phase 8 — Render comparison
-- phase_status: blocked
+- Name: Phase 8A.1 — Deterministic semantic visual representation
+- phase_status: completed
 - task_status: partial
-- Decision: block
-- Allowed files: `engine/vision/**`, focused tests, experiment docs, this active plan
-- Forbidden files: protected modules, canonical docs, render core/editor/runtime/EngineAPI surfaces, direct Scene JSON mutation
-- Test contract: test-contract-queen-20260709-001-phase-8-render-comparison
-- Verdict: insufficient
-- Blockers:
-  - no public or vision-local API exists to capture rendered pixels;
-  - allowed scope excludes render core/editor/runtime/EngineAPI surfaces needed for real capture;
-  - no dedicated render-comparison fixture or test exists.
-- Recommended unblock options:
-  - rescope to offline vision-only comparison against the deterministic overlay/output;
-  - explicitly allow a headless render-capture contract and fixture without protected edits.
-- Next phase: blocked until clarified
+- Decision: commit completed Phase 8A.1; do not start 8A.2 before clean worktree
+- Allowed files: `engine/vision/semantic_prefabs.py`, `engine/vision/gamespec_to_scene.py`, `engine/vision/__init__.py`, focused vision tests/fixtures, `docs/vision/image_to_platformer_pipeline.md`, this active plan
+- Forbidden files: protected modules, render core, EngineAPI, Scene/serialization/runtime/editor/physics, Pyray shim/stub, archive docs
+- Test contract: test-contract-queen-20260709-001-phase-8a1-semantic-visuals
+- Verdict: sufficient
+- Next phase: authorized Phase 8A.1 commit `feat(vision): agregar representacion visual determinista`
+
+## Authorized Phase 8 decision
+
+Authorize a vision-local off-screen render capture contract using a hidden
+Raylib graphics context and a dedicated RenderTexture.
+
+The capture is not guaranteed to be displayless on every operating system.
+When a real graphics backend or context is unavailable, the command must fail
+with a structured actionable error.
+
+The Pyray stub must never produce a successful capture.
+
+Automated visual comparison is deferred because the current deterministic
+semantic representation is not visually comparable enough to the reference
+image for meaningful similarity metrics.
 
 ## Blocked conditions
 
@@ -63,14 +73,17 @@ task_complexity complex; risk_level high; reasoning_required high; selected_agen
 
 ## Recon summary
 
-- No engine/vision exists.
-- CLI motor/cli.py exists.
-- EngineAPI/tilemap helpers exist but are protected.
-- Dependency system: pyproject + requirements; no vision extra.
-- Render headless exists, but there is no image compare pipeline.
-- Current branch: fix/ciclosReina.
-- Remote default: origin/main.
-- No task_id collision found.
+- Initial continuation recon id: `recon-queen-20260709-001`; status completed; 18/18 required findings confirmed.
+- Current branch: `fix/ciclosReina`; starting continuation HEAD: `9db99afe71d917eca9106578ba067447d3aaae87`; worktree clean.
+- Commits after Phase 7: `cd3da76` and `99fa389` are unrelated migration/revert with net zero; `9db99af` is an attributed but incomplete Codex Queen migration, unrelated to vision, preserved without reset.
+- `HeadlessGame.run()` is unbounded logic-only execution and is forbidden for capture.
+- `RenderSystem.render()` returns before drawing without a ready window and exposes the required public `viewport_size` / `allow_render_targets=False` route.
+- Public existing route is sufficient: `EngineAPI.load_level`, `EngineAPI.game.world`, `EngineAPI.game.render_system`, and public `RenderSystem.render()`.
+- Semantic `Sprite` payloads have empty textures; solid cells have no visual component; `Polygon2D` is registered, serializable, and rendered without assets.
+- Real installed Pyray backend exposes `FLAG_WINDOW_HIDDEN` and required texture/image functions; local stub advertises `_IS_STUB=True`, simulates image functions, and must be rejected explicitly.
+- No protected module modification is required.
+- Real hidden-context initialization, foreground capture, and cleanup remain unproven until Phase 8A.2 smoke.
+- Preexisting Queen migration defect: `.codex` role config/tests reference missing `result_schemas.json` and `validate_result.py`; outside vision scope.
 
 ## TEST CONTRACT
 
@@ -87,6 +100,60 @@ task_complexity complex; risk_level high; reasoning_required high; selected_agen
   - `py -m unittest discover -s tests`
   - targeted tests for any new experimental GameSpec2D surface
   - governance checks if docs/plans or prompts change
+
+### Phase 8A.1 TEST CONTRACT
+
+- Contract id: `test-contract-queen-20260709-001-phase-8a1-semantic-visuals`
+- Task type: experimental tooling
+- Verdict: sufficient
+- Authority: `tests/test_vision_gamespec_to_scene.py`, `tests/test_vision_gamespec2d.py`, `tests/test_polygon2d.py`, `tests/test_official_contract_regression.py`, `tests/test_repository_governance.py`
+- Required changes: assert centered `polygon_payload`; explicit stable RGBA palette for all ten semantic types; every semantic prefab keeps `Sprite` and gains `Polygon2D`; solid cells gain centered `Polygon2D`; `REGISTERED_COMPONENTS_USED` includes `Polygon2D`; public save/load round-trip preserves polygon payload; deterministic ordering remains unchanged.
+- Tests that must not be relaxed: existing GameSpec projection/load/determinism/public-route tests, GameSpec2D allowed-type/round-trip tests, Polygon2D serialization tests, official contract regression, repository governance.
+- Minimum commands:
+  - `py -m unittest tests.test_vision_gamespec_to_scene tests.test_vision_gamespec2d -v`
+  - `py -m unittest tests.test_polygon2d -v`
+  - `py -m unittest tests.test_official_contract_regression tests.test_repository_governance -v`
+  - `git diff --check`
+  - protected normal/staged diff audits covering component registry, render core, EngineAPI, Scene/serialization/runtime/editor/physics, Pyray shim/stub, and archive docs
+- Recommended regression: `py -m unittest tests.test_render_graph -v`; full suite at final task validation.
+- Manual smoke: not required for 8A.1; public scene round-trip is automated.
+- Acceptance: deterministic asset-free semantic geometry; valid RGBA; Sprite preserved; solid cells visible; serialization survives; no protected changes; validator pass; reviewer approved with no must-fix; AI audit score >= 90 with no must-fix.
+- Risks: collider/geometry dimension drift, component/entity ordering drift, palette drift, omitted semantic type or solid cell, insufficient mock-only round-trip, protected scope bleed.
+- Strategy evidence: all required unittest modules exist; current only local change is attributed Queen plan sync; no tests executed by strategist.
+
+## Continuation baseline
+
+- `py -m unittest discover -s tests`: failed; 3602 tests, 20 failures, 1 error, 8 skipped; all classified `preexisting_failure`; zero demonstrated new regressions.
+- `ruff check engine motor cli tests`: executable unavailable in PATH; equivalent `py -m ruff check engine motor cli tests` ran and failed with 25 preexisting findings (I001=23, W293=1, F401=1).
+- `mypy engine motor cli`: executable unavailable in PATH; equivalent `py -m mypy engine motor cli` ran and failed with 16 preexisting errors in 5 files.
+- `py -m motor doctor --project . --json`: passed; healthy, no issues or warnings.
+- Queen tooling error: missing `.agents/skills/queen/references/agent_mapping.json`; preexisting from `9db99af`, unrelated to vision.
+- Merge gate: closed until global CI failures are repaired in a separate task/PR and this branch is updated.
+- Phase rule: focused validation must prove no new regression relative to this baseline; preexisting failures are recorded, not ignored or repaired in vision commits.
+
+## Phase 8A.1 implementation plan
+
+- Plan id: `plan-queen-20260709-001-phase-8a1-semantic-visuals`
+- Route: one `builder_deep`; root owns only this operational plan; validator/reviewer/AI audit are read-only; committer stages explicit paths only.
+- TDD red: add focused tests for exact centered geometry, full payload, literal ten-type RGBA palette, Sprite preservation, solid-cell Polygon2D, deterministic order/build, and public save/load round-trip.
+- Green: add one explicit semantic palette and `polygon_payload` in `semantic_prefabs.py`; add Polygon2D to all semantic prefabs and `REGISTERED_COMPONENTS_USED`; add Polygon2D to sorted solid cells in `gamespec_to_scene.py`; preserve report representation and authoring behavior.
+- Document: describe asset-free semantic geometry and limits in experimental vision pipeline; do not claim render capture or visual comparison validated.
+- Validate: TEST CONTRACT minimum commands plus focused Ruff/mypy, render-graph regression, protected normal/staged diff audits.
+- Rollback: revert only 8A.1 code/tests/docs; preserve Phase 7, plan history, protected modules, registry, and render core.
+- Terminal: validator pass for focused contract, reviewer approved with no must-fix, AI audit score >= 90 with no must-fix, plan updated, exclusive authorized commit, clean worktree.
+
+### Phase 8A.1 plan critique
+
+- Verdict: approved.
+- Ten types: exact key equality with `ALLOWED_ENTITY_TYPES` and literal expected RGBA values required.
+- Palette: single explicit source in implementation; tests retain independent literals to detect drift.
+- Geometry: exact ordered points at `±width/2`, `±height/2`; color changes cannot affect points.
+- Solid cells: loaded entities must contain Transform, Collider, and Polygon2D sized from tile size.
+- Round-trip: assert persisted payload after public EngineAPI load, not mocks only.
+- Sprite: additive Polygon2D only; existing Sprite payload retained.
+- Determinism: preserve sorted cells, entity names/order, semantic mapping, and `representation="collider_blocks"`.
+- Protected scope: normal and staged audits must be empty.
+- Ownership: builder cannot edit active plan; root cannot edit functional code/tests/docs.
 
 ## Phase transition rules
 
@@ -190,18 +257,43 @@ Docs affected: `docs/cli.md`, `docs/vision/image_to_platformer_pipeline.md`, `do
 Evidence: implementation landed as stdlib-only PPM debug overlay helper plus CLI `motor vision annotate`, registry `vision:annotate`, tests, and docs; review cycle 1 flagged non-atomic output create and cycle 2 fixed it with exclusive `open("x")`/equivalent and safe cleanup; validator cycle 2 passed focused vision, CLI, regression, governance, registry audits, and `motor doctor`; review cycle 2 approved with no findings; AI audit approved with score 90.
 Risks: UI bleed into core contracts; mistaken assumptions about render/runtime integration; PPM-only, no text rendering, diagnostic-only output.
 
-### Phase 8 — Render comparison
+### Phase 8A.1 — Deterministic semantic visual representation
 
-Status: blocked
-Goal: compare expected image cues with rendered output.
-Allowed files: `engine/vision/**`, focused tests, experiment docs
-Forbidden files: protected modules, canonical docs
-Acceptance checks: comparison is reproducible and headless-capable
-Docs affected: experimental docs only
-Decision: block
-Blockers: no public or vision-local API to capture rendered pixels; allowed scope excludes render core/editor/runtime/EngineAPI surfaces needed for real capture; no dedicated render-comparison fixture/test exists.
-Recommended unblock options: rescope to offline vision-only comparison; or explicitly allow a headless render-capture contract and fixture without protected edits.
-Risks: false confidence from noisy comparisons; scope drift if render capture is forced through protected surfaces
+Status: completed
+Goal: add asset-free deterministic `Polygon2D` geometry to semantic prefabs and directly generated solid cells while preserving existing `Sprite` payloads and authoring semantics.
+Allowed files: `engine/vision/semantic_prefabs.py`, `engine/vision/gamespec_to_scene.py`, `engine/vision/__init__.py`, focused vision tests/fixtures, `docs/vision/image_to_platformer_pipeline.md`, this plan
+Forbidden files: protected modules, render core, central component registry, EngineAPI, Scene/serialization/runtime/editor/physics, Pyray shim/stub, archive docs
+Test contract: `test-contract-queen-20260709-001-phase-8a1-semantic-visuals`
+Acceptance checks: deterministic centered geometry and stable RGBA palette; known semantics and solid cells contain `Polygon2D`; `Sprite` compatibility and entity order preserved; scene round-trip passes; protected modules unchanged; validator pass; reviewer `must_fix=[]`; AI friendliness score >= 90
+Docs affected: experimental vision pipeline and this plan
+Risks: prefab serialization drift; visual geometry diverging from collider dimensions; accidental protected registry/render changes
+Evidence: TDD red failed only for absent palette/helper/Polygon2D; builder changed four authorized functional/test/doc files with no write-scope violation; validator passed 114 focused/regression tests and TEST CONTRACT; focused Ruff and isolated mypy passed; normal mypy retained only the 10 baseline errors from unchanged `gamespec2d.py`; protected normal/staged audits empty; independent deep review approved with no findings or must-fix; AI audit approved with score 95 and no must-fix.
+
+### Phase 8A.2 — Deterministic off-screen scene capture
+
+Status: pending
+Goal: capture actual OpenGame `RenderSystem` output to deterministic PPM P6 using a dedicated RenderTexture and off-screen capture using a hidden Raylib context.
+Allowed files: `engine/vision/render_capture.py`, `engine/vision/__init__.py`, `motor/cli.py`, `motor/cli_core.py`, `engine/ai/registry_builder.py`, focused vision/CLI tests and fixtures, required canonical discoverability docs, this plan
+Forbidden files: `engine/core/game.py`, `cli/headless_game.py`, render core/pipeline, EngineAPI, Scene/SceneManager/serialization, component registry, runtime/editor/physics, Pyray shim/stub, archive docs
+Test contract: `test-contract-queen-20260709-001-phase-8a2-render-capture`
+Acceptance checks: real backend required and stub rejected; safe hidden-context ownership; existing window preserved; dedicated RenderTexture/Image/colors cleanup; public scene-load/render route; vertical flip and exact deterministic PPM; bounded dimensions; no overwrite/partials; atomic publish; JSON-only stdout; experimental capability; protected modules unchanged; real backend smoke passed
+Partial rule: implementation and contract tests may be complete while phase remains `partial` when real backend smoke is unavailable.
+Docs affected: vision pipeline, CLI/agent discoverability, `START_HERE_AI.md`, this plan
+Risks: OS graphics context unavailable; false positive from stub; resource leaks; stdout contamination; capture not displayless on every OS
+
+### Phase 8B — Automated visual comparison report
+
+Status: deferred
+Reason: current semantic Polygon2D output is structurally useful but not visually comparable enough to the source image for meaningful automated similarity metrics.
+Decision: do not implement comparison code, CLI, capability, fixtures, or metrics in this session.
+
+The generated semantic render is suitable for structural inspection,
+debugging and smoke validation, but it is not yet a sufficiently faithful
+visual reconstruction of the reference image for meaningful automated
+pixel-similarity scoring.
+
+Future work may introduce visual comparison after tile, sprite or texture
+reconstruction provides a comparable visual domain.
 
 ### Phase 9 — Playtest smoke
 
@@ -260,7 +352,9 @@ Risks: premature closure
 - Phase 5 rollback summary: remove scene projection code that bypasses supported surfaces; keep the internal spec and validation inputs.
 - Phase 6 rollback summary: remove optional Supervision adapter additions only; keep projection and earlier phase artifacts.
 - Phase 7 rollback summary: remove debug overlay code and its tests/docs; keep validation outputs unchanged.
-- Phase 8 rollback summary: remove render comparison tooling and baselines; keep the overlay and validation layers.
+- Phase 8A.1 rollback summary: revert only semantic `Polygon2D` fallback payloads/tests/docs; keep Phase 7 and earlier outputs.
+- Phase 8A.2 rollback summary: revert only vision-local capture service, CLI/capability/tests/docs; keep Phase 8A.1 semantic geometry.
+- Phase 8B rollback summary: remove only its deferred plan decision if scope is re-authorized later; no implementation exists.
 - Phase 9 rollback summary: remove playtest smoke harness and fixtures; keep render comparison artifacts.
 - Phase 10 rollback summary: remove hardening-only guards, limits, and retry/stop logic; keep the working experiment path.
 - Phase 11 rollback summary: remove documentation sync edits for later phases; keep implementation state unchanged.
@@ -280,3 +374,12 @@ Risks: premature closure
 - 2026-07-10: Phase 6 gate closed after validator, review, and AI audit approval; decision set to continue_next_phase; phase 7 advanced to debug overlay generation.
 - 2026-07-10: Phase 7 gate closed after validator, review cycle 2, and AI audit approval; decision set to continue_next_phase; phase 8 remains render comparison.
 - 2026-07-10: Phase 8 RECON blocked; decision set to block; unblock requires scope clarification or a headless render-capture contract/fixture.
+- 2026-07-11: Continuation preflight accepted current clean HEAD `9db99af`; post-Phase-7 commits classified and preserved; no reset performed.
+- 2026-07-11: PLAN SYNC — user authorized Phase 8A.1 semantic visuals and Phase 8A.2 off-screen capture using a hidden Raylib context; Phase 8B deferred; phases 9-12 retain numbering.
+- 2026-07-11: CONTEXT RECON `recon-queen-20260709-001` completed with all 18 required findings confirmed and no protected change required; Phase 8A.1 awaits sufficient TEST CONTRACT.
+- 2026-07-11: TEST CONTRACT `test-contract-queen-20260709-001-phase-8a1-semantic-visuals` returned `sufficient`; implementation remains blocked pending plan and critique.
+- 2026-07-11: Baseline completed: full unittest/Ruff/mypy red with documented preexisting failures; doctor green; zero new regressions; merge gate remains closed.
+- 2026-07-11: Deep plan `plan-queen-20260709-001-phase-8a1-semantic-visuals` approved by root critique; Phase 8A.1 may enter TDD implementation with one builder.
+- 2026-07-11: Phase 8A.1 builder completed TDD implementation in authorized write set; red evidence captured; 114 focused/regression tests passed; no new regressions.
+- 2026-07-11: Phase 8A.1 validator passed with `test_contract_satisfied=true`; deep reviewer approved with `must_fix=[]`; AI audit approved with score 95 and `must_fix=[]`.
+- 2026-07-11: Phase 8A.1 marked completed and authorized for exclusive commit `feat(vision): agregar representacion visual determinista`; task remains partial.
