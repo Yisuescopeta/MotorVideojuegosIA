@@ -24,15 +24,15 @@ Experimental pipeline reference image -> deterministic vision analysis -> GameSp
 
 ## Current phase
 
-- Name: Phase 8A.1 — Deterministic semantic visual representation
-- phase_status: completed
+- Name: Phase 8A.2 — Deterministic off-screen scene capture
+- phase_status: blocked
 - task_status: partial
-- Decision: commit completed Phase 8A.1; do not start 8A.2 before clean worktree
-- Allowed files: `engine/vision/semantic_prefabs.py`, `engine/vision/gamespec_to_scene.py`, `engine/vision/__init__.py`, focused vision tests/fixtures, `docs/vision/image_to_platformer_pipeline.md`, this active plan
-- Forbidden files: protected modules, render core, EngineAPI, Scene/serialization/runtime/editor/physics, Pyray shim/stub, archive docs
-- Test contract: test-contract-queen-20260709-001-phase-8a1-semantic-visuals
+- Decision: block before implementation because required planner result is missing
+- Allowed files: `engine/vision/render_capture.py`, `engine/vision/__init__.py`, `motor/cli.py`, `motor/cli_core.py`, `engine/ai/registry_builder.py`, focused vision/CLI tests and fixtures, required canonical discoverability docs, this active plan
+- Forbidden files: protected game/render/EngineAPI/Scene/serialization/runtime/editor/physics surfaces, component registry, HeadlessGame, Pyray shim/stub, archive docs
+- Test contract: test-contract-queen-20260709-001-phase-8a2-render-capture
 - Verdict: sufficient
-- Next phase: authorized Phase 8A.1 commit `feat(vision): agregar representacion visual determinista`
+- Next phase: resume Phase 8A.2 planning only after a valid structured `planner_deep` result is available
 
 ## Authorized Phase 8 decision
 
@@ -120,6 +120,25 @@ task_complexity complex; risk_level high; reasoning_required high; selected_agen
 - Acceptance: deterministic asset-free semantic geometry; valid RGBA; Sprite preserved; solid cells visible; serialization survives; no protected changes; validator pass; reviewer approved with no must-fix; AI audit score >= 90 with no must-fix.
 - Risks: collider/geometry dimension drift, component/entity ordering drift, palette drift, omitted semantic type or solid cell, insufficient mock-only round-trip, protected scope bleed.
 - Strategy evidence: all required unittest modules exist; current only local change is attributed Queen plan sync; no tests executed by strategist.
+
+### Phase 8A.2 TEST CONTRACT
+
+- Contract id: `test-contract-queen-20260709-001-phase-8a2-render-capture`
+- Task type: experimental tooling
+- Verdict: sufficient
+- Authority: focused vision projection/capture/CLI tests; motor CLI and registry contracts; render target/graph/pipeline/safety tests; official/parser/registry/governance/AI coherence regressions.
+- Limits: width and height must be non-bool positive integers, each <= 4096; total pixels <= 4,194,304; default background `(24, 24, 32, 255)`.
+- Backend: reject `_IS_STUB=True` before EngineAPI/context/resources/files; use real symbolic `FLAG_WINDOW_HIDDEN`; preserve existing windows; verify created context becomes ready.
+- Capture: public `EngineAPI.load_level`, `game.world`, `game.render_system`; dedicated RenderTexture; exact viewport; `allow_render_targets=False`; balanced texture mode; vertical flip before pixel extraction.
+- Pixel contract: verify image dimensions; support sized sequences and real indexable CFFI pointers whose `len()` raises; read exactly expected count; encode direct deterministic PPM P6 and discard alpha only in output.
+- File contract: same-directory temporary, validate before publication, atomic no-clobber publication, no overwrite or partials, cleanup every failure path.
+- Resource contract: unload colors, Image, RenderTexture, close only owned window, shutdown EngineAPI; cleanup failures cannot stop later cleanup or hide primary errors.
+- CLI/registry: `motor vision render-scene`; JSON-only stdout, nonzero errors, structured error/report, `vision:render-scene` implemented with experimental tag and honest hidden-context/backend notes.
+- Required tests: new `tests/test_vision_render_capture.py`; extend vision CLI/motor CLI and controlled GameSpec fixture coverage; fake-real API, stub, window ownership, init/render/read/write/cleanup failures, PPM/determinism/foreground, dimension limits, atomic race, capability metadata.
+- Minimum commands: all focused commands specified by user for vision capture/projection, CLI, render core regressions, official/parser/registry/governance/AI coherence, doctor, Ruff, mypy, diff check, and protected audit from commit `6b2a1b0`.
+- Real smoke: mandatory against real backend at 256x144; require JSON parse, PPM exact payload, foreground, >1 color, cleanup, no artifacts. Report `contract_tests` and `real_backend_smoke` separately.
+- Completion: Phase 8A.2 can be completed only with real smoke passed; if implementation/contracts pass but backend unavailable, remain partial; fake/stub/mock/overlay never count.
+- Risks: OS/session context failure, CFFI pointer handling, unbalanced texture mode, cleanup masking errors, publication race, stdout contamination, background-only false positive, protected scope bleed.
 
 ## Continuation baseline
 
@@ -271,7 +290,7 @@ Evidence: TDD red failed only for absent palette/helper/Polygon2D; builder chang
 
 ### Phase 8A.2 — Deterministic off-screen scene capture
 
-Status: pending
+Status: blocked
 Goal: capture actual OpenGame `RenderSystem` output to deterministic PPM P6 using a dedicated RenderTexture and off-screen capture using a hidden Raylib context.
 Allowed files: `engine/vision/render_capture.py`, `engine/vision/__init__.py`, `motor/cli.py`, `motor/cli_core.py`, `engine/ai/registry_builder.py`, focused vision/CLI tests and fixtures, required canonical discoverability docs, this plan
 Forbidden files: `engine/core/game.py`, `cli/headless_game.py`, render core/pipeline, EngineAPI, Scene/SceneManager/serialization, component registry, runtime/editor/physics, Pyray shim/stub, archive docs
@@ -280,6 +299,12 @@ Acceptance checks: real backend required and stub rejected; safe hidden-context 
 Partial rule: implementation and contract tests may be complete while phase remains `partial` when real backend smoke is unavailable.
 Docs affected: vision pipeline, CLI/agent discoverability, `START_HERE_AI.md`, this plan
 Risks: OS graphics context unavailable; false positive from stub; resource leaks; stdout contamination; capture not displayless on every OS
+Blocker: `missing_subagent_result` — `planner_deep` remained running without a result, was interrupted, and again returned no JSON after the single allowed reformulation request. Queen result-contract rules forbid delegating implementation without this required structured plan.
+Implementation status: not started. No Phase 8A.2 code, tests, CLI, registry, or functional documentation changed.
+Environment evidence: Windows; real site-packages Pyray available with `_IS_STUB=false`, symbolic `FLAG_WINDOW_HIDDEN`, and required functions; safe real capture remains unexecuted.
+Protected files required: none according to recon and TEST CONTRACT.
+Rollback boundary: commit `6b2a1b0baf236eea4edb3bec986e399f033eef2a` (completed Phase 8A.1).
+Honest alternatives: resume this phase with a functioning `planner_deep` result; or explicitly revise Queen role/result requirements in a separate task before retrying. Do not substitute root implementation, fake backend, stub output, or debug overlay.
 
 ### Phase 8B — Automated visual comparison report
 
@@ -383,3 +408,7 @@ Risks: premature closure
 - 2026-07-11: Phase 8A.1 builder completed TDD implementation in authorized write set; red evidence captured; 114 focused/regression tests passed; no new regressions.
 - 2026-07-11: Phase 8A.1 validator passed with `test_contract_satisfied=true`; deep reviewer approved with `must_fix=[]`; AI audit approved with score 95 and `must_fix=[]`.
 - 2026-07-11: Phase 8A.1 marked completed and authorized for exclusive commit `feat(vision): agregar representacion visual determinista`; task remains partial.
+- 2026-07-11: Phase 8A.1 committed as `6b2a1b0baf236eea4edb3bec986e399f033eef2a`; worktree verified clean; no push performed.
+- 2026-07-11: PLAN SYNC — current phase advanced to 8A.2; implementation remains blocked pending sufficient TEST CONTRACT.
+- 2026-07-11: TEST CONTRACT `test-contract-queen-20260709-001-phase-8a2-render-capture` returned `sufficient`; confirmed CFFI color pointer behavior, concrete limits, lifecycle/error/CLI/registry coverage, and mandatory real-backend smoke.
+- 2026-07-11: Phase 8A.2 blocked before implementation: `planner_deep` produced no structured result after initial run, interruption, and the single allowed reformulation; no builder was delegated and phases 9-12 were not started.
