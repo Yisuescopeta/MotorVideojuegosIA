@@ -80,12 +80,14 @@ class SceneWorkspace:
             return self.entries[str(key_or_path)]
         key_text = str(key_or_path)
         normalized = (
-            Path(key_text).resolve().as_posix()
+            self._normalize_path_reference(key_text)
             if key_text.endswith(".json") or "/" in key_text or "\\" in key_text
             else key_text
         )
+        if normalized in self.entries:
+            return self.entries[normalized]
         for entry in self.entries.values():
-            if entry.source_path == normalized:
+            if entry.source_path and self._normalize_path_reference(entry.source_path) == normalized:
                 return entry
         return None
 
@@ -160,8 +162,12 @@ class SceneWorkspace:
         activate: bool = True,
     ) -> "World":
         payload = self._validate_scene_payload(data)
-        key = self._build_scene_key(source_path, payload.get("name", "Untitled"))
-        entry = SceneWorkspaceEntry(key=key, scene=Scene.from_dict(copy.deepcopy(payload), source_path=source_path))
+        normalized_source_path = self._normalize_path_reference(source_path) if source_path else None
+        key = self._build_scene_key(normalized_source_path, payload.get("name", "Untitled"))
+        entry = SceneWorkspaceEntry(
+            key=key,
+            scene=Scene.from_dict(copy.deepcopy(payload), source_path=normalized_source_path),
+        )
         self._sync_scene_links_from_feature_metadata(entry)
         self._rebuild_edit_world(entry)
         self.entries[key] = entry
@@ -234,6 +240,8 @@ class SceneWorkspace:
 
     def rekey_entry(self, entry: SceneWorkspaceEntry, new_key: str) -> None:
         old_key = entry.key
+        if entry.source_path:
+            entry.scene.set_source_path(self._normalize_path_reference(entry.source_path))
         if old_key == new_key:
             return
         self.entries.pop(old_key, None)
@@ -241,6 +249,10 @@ class SceneWorkspace:
         self.entries[new_key] = entry
         if self.active_scene_key == old_key:
             self.active_scene_key = new_key
+
+    @staticmethod
+    def _normalize_path_reference(path: str) -> str:
+        return Path(path).resolve().as_posix()
 
     @staticmethod
     def _entity_id_for_name(entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
