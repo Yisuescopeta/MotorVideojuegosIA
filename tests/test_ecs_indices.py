@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from engine.ecs.component import Component
+from engine.ecs.entity import Entity
 from engine.ecs.world import World
 
 
@@ -21,6 +22,68 @@ class Acceleration(Component):
 
 
 class ECSIndexTests(unittest.TestCase):
+    def test_duplicate_name_last_writer_wins_without_restoring_shadowed_entity(self) -> None:
+        world = World()
+        first = world.create_entity("Shared")
+        second = world.create_entity("Shared")
+
+        self.assertIs(world.get_entity_by_name("Shared"), second)
+
+        world.remove_entity(second.id)
+
+        self.assertIs(world.get_entity(first.id), first)
+        self.assertIsNone(world.get_entity_by_name("Shared"))
+
+    def test_rename_collision_updates_selection_and_removal_clears_lookup(self) -> None:
+        world = World()
+        first = world.create_entity("Shared")
+        second = world.create_entity("Other")
+        world.selected_entity_name = first.name
+
+        second.name = "Shared"
+
+        self.assertIs(world.get_entity_by_name("Shared"), second)
+        self.assertEqual(world.selected_entity_name, "Shared")
+
+        world.remove_entity(second.id)
+
+        self.assertIs(world.get_entity(first.id), first)
+        self.assertIsNone(world.get_entity_by_name("Shared"))
+        self.assertIsNone(world.selected_entity_name)
+
+    def test_same_runtime_id_replaces_entity_and_all_indexed_state(self) -> None:
+        world = World()
+        previous = Entity("Previous", entity_id=77)
+        previous.serialized_id = "previous-id"
+        previous.parent_name = "PreviousParent"
+        previous.groups = ("PreviousGroup",)
+        previous_component = Position()
+        previous.add_component(previous_component)
+        world.add_entity(previous)
+
+        replacement = Entity("Replacement", entity_id=77)
+        replacement.serialized_id = "replacement-id"
+        replacement.parent_name = "ReplacementParent"
+        replacement.groups = ("ReplacementGroup",)
+        replacement_component = Velocity()
+        replacement.add_component(replacement_component)
+
+        world.add_entity(replacement)
+
+        self.assertIs(world.get_entity(77), replacement)
+        self.assertIsNone(world.get_entity_by_name("Previous"))
+        self.assertIs(world.get_entity_by_name("Replacement"), replacement)
+        self.assertIsNone(world.get_entity_by_serialized_id("previous-id"))
+        self.assertIs(world.get_entity_by_serialized_id("replacement-id"), replacement)
+        self.assertEqual(world.get_children("PreviousParent"), [])
+        self.assertEqual(world.get_children("ReplacementParent"), [replacement])
+        self.assertEqual(world.group_registry.get_entities("PreviousGroup"), [])
+        self.assertEqual(world.group_registry.get_entities("ReplacementGroup"), [replacement])
+        self.assertEqual(world.get_entities_with(Position), [])
+        self.assertEqual(world.get_entities_with(Velocity), [replacement])
+        self.assertIsNone(world.get_entity_by_component_instance(previous_component))
+        self.assertIs(world.get_entity_by_component_instance(replacement_component), replacement)
+
     def test_add_remove_and_replace_component_keep_indexes_synchronized(self) -> None:
         world = World()
         entity = world.create_entity("Actor")
@@ -57,6 +120,21 @@ class ECSIndexTests(unittest.TestCase):
         self.assertEqual(legacy_list, [second])
         self.assertIsNone(world.get_entity_by_name("First"))
         self.assertEqual(world.get_entities_with(Position), [second])
+
+    def test_clear_removes_entities_from_public_queries(self) -> None:
+        world = World()
+        entity = world.create_entity("Entity")
+        entity.serialized_id = "entity-id"
+        entity.groups = ("Actors",)
+        entity.add_component(Position())
+
+        world.clear()
+
+        self.assertEqual(world.entity_count(), 0)
+        self.assertIsNone(world.get_entity_by_name("Entity"))
+        self.assertIsNone(world.get_entity_by_serialized_id("entity-id"))
+        self.assertEqual(world.get_entities_with(Position), [])
+        self.assertEqual(world.group_registry.get_entities("Actors"), [])
 
     def test_name_groups_and_active_changes_preserve_deterministic_queries(self) -> None:
         world = World()

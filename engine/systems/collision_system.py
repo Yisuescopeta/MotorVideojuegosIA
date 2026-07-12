@@ -53,18 +53,6 @@ class _CollisionEntry:
 class CollisionSystem:
     """Sistema de deteccion de colisiones AABB."""
 
-    @staticmethod
-    def _world_has_any_component(world: World, *component_types: type) -> bool:
-        component_index = getattr(world, "_component_index", None)
-        if isinstance(component_index, dict):
-            if any(bool(component_index.get(component_type)) for component_type in component_types):
-                return True
-            legacy_component_index = getattr(world, "_entities_by_component", None)
-            if isinstance(legacy_component_index, dict):
-                return any(bool(legacy_component_index.get(component_type)) for component_type in component_types)
-            return False
-        return any(bool(world.get_entities_with(component_type)) for component_type in component_types)
-
     def __init__(self, event_bus: Optional["EventBus"] = None, *, deterministic_debug: bool = False) -> None:
         self._collisions: list[CollisionInfo] = []
         self._event_bus: Optional["EventBus"] = event_bus
@@ -100,14 +88,13 @@ class CollisionSystem:
         self._query_buffer.clear()
         self._checked_pairs.clear()
 
-        has_colliders = self._world_has_any_component(world, Collider)
-        has_dedicated_shapes = self._world_has_any_component(
-            world,
+        has_colliders = world.has_any_component_type(Collider)
+        has_dedicated_shapes = world.has_any_component_type(
             CollisionShapeSet2D,
             CollisionShape2D,
             CollisionPolygon2D,
         )
-        has_rigidbodies = self._world_has_any_component(world, RigidBody)
+        has_rigidbodies = world.has_any_component_type(RigidBody)
         if not has_colliders and not has_dedicated_shapes:
             if shared_grid is not None:
                 shared_grid.clear()

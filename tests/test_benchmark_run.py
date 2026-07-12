@@ -5,9 +5,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from engine.debug.benchmark_runner import BENCHMARK_REPORT_VERSION, run_benchmark
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
+from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_ENTITY_THRESHOLD, SceneManager
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -153,6 +155,48 @@ class BenchmarkRunTests(unittest.TestCase):
         self.assertEqual(len(measurement["samples_ms"]), 3)
         self.assertGreaterEqual(measurement["median_ms"], 0.0)
         self.assertGreaterEqual(measurement["p95_ms"], measurement["median_ms"])
+
+    def test_scene_save_microbenchmark_reports_compact_save_distribution(self) -> None:
+        entity_count = COMPACT_SCENE_SAVE_ENTITY_THRESHOLD + 1
+        primary_workspace_managers: list[SceneManager] = []
+        save_managers: list[SceneManager] = []
+        original_get_edit_world = SceneManager.get_edit_world
+        original_save_scene = SceneManager.save_scene_to_file
+
+        def record_get_edit_world(manager: SceneManager):
+            primary_workspace_managers.append(manager)
+            return original_get_edit_world(manager)
+
+        def record_save_scene(manager: SceneManager, *args, **kwargs):
+            save_managers.append(manager)
+            return original_save_scene(manager, *args, **kwargs)
+
+        with (
+            patch.object(SceneManager, "get_edit_world", record_get_edit_world),
+            patch.object(SceneManager, "save_scene_to_file", record_save_scene),
+        ):
+            report = run_benchmark(
+                scenario="many_transform_entities",
+                backend="legacy_aabb",
+                mode="edit",
+                frames=1,
+                entity_count=entity_count,
+                columns=50,
+                operation_warmup=0,
+                operation_repeats=3,
+            )
+
+        measurement = report["operations"]["scene_save"]
+        self.assertEqual(len(measurement["samples_ms"]), 3)
+        self.assertEqual(measurement["entity_count"], entity_count)
+        self.assertEqual(measurement["compact_threshold"], COMPACT_SCENE_SAVE_ENTITY_THRESHOLD)
+        self.assertTrue(measurement["workspace_isolated"])
+        self.assertGreaterEqual(measurement["median_ms"], 0.0)
+        self.assertTrue(primary_workspace_managers)
+        self.assertEqual(len(save_managers), 3)
+        self.assertTrue(all(manager is not primary_workspace_managers[0] for manager in save_managers))
+        self.assertTrue(all(manager is save_managers[0] for manager in save_managers))
+        self.assertEqual(report["operations"]["render_preparation"]["total_entities"], entity_count)
 
     def test_new_synthetic_benchmark_scenarios_run_headless(self) -> None:
         for scenario_name in NEW_SYNTHETIC_SCENARIOS:

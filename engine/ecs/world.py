@@ -8,157 +8,18 @@ PROPÓSITO:
 
 from __future__ import annotations
 
-import copy
-import warnings
 from collections import defaultdict, deque
-from typing import Any, Callable, Iterable, Iterator, TypeVar
+from typing import Callable, Iterable, Iterator, TypeVar
 
-from engine.ecs.component import (
-    Component,
-    LegacyComponentSerializationWarning,
-    has_explicit_serialization_contract,
-    has_explicit_to_dict,
-    is_official_component_type,
-)
-from engine.ecs.entity import Entity, normalize_entity_groups
-from engine.serialization.json_value import clone_json_value
+from engine.ecs import world_clone as _world_clone
+from engine.ecs import world_serialization as _world_serialization
+from engine.ecs.component import Component
+from engine.ecs.entity import Entity
+from engine.ecs.group_registry import GroupRegistry as _GroupRegistry
 
 T = TypeVar("T", bound=Component)
-
-
-class WorldCloneError(RuntimeError):
-    """Se lanza cuando el runtime world no puede clonarse de forma segura."""
-
-
-class WorldSerializationError(RuntimeError):
-    """Se lanza cuando la serializacion de la escena perderia datos."""
-
-
-class GroupRegistry:
-    """Indice runtime de grupos para consultas rapidas por entidad."""
-
-    def __init__(self, world: "World") -> None:
-        self._world = world
-        self._group_index: dict[str, set[int]] = defaultdict(set)
-        self._ordered_entity_ids: dict[str, tuple[int, ...]] = {}
-        self._ordered_group_names: tuple[str, ...] | None = None
-
-    def clear(self) -> None:
-        self._group_index.clear()
-        self._ordered_entity_ids.clear()
-        self._ordered_group_names = None
-
-    def _invalidate_group(self, group_name: str) -> None:
-        self._ordered_entity_ids.pop(group_name, None)
-
-    def entity_renamed(self, entity: Entity) -> None:
-        for group_name in entity.groups:
-            self._invalidate_group(group_name)
-
-    def register_entity(self, entity: Entity) -> None:
-        for group_name in entity.groups:
-            self._group_index[group_name].add(entity.id)
-            self._invalidate_group(group_name)
-        if entity.groups:
-            self._ordered_group_names = None
-
-    def unregister_entity(self, entity: Entity, groups: Any = None) -> None:
-        normalized_groups = normalize_entity_groups(entity.groups if groups is None else groups)
-        for group_name in normalized_groups:
-            member_ids = self._group_index.get(group_name)
-            if member_ids is None:
-                continue
-            member_ids.discard(entity.id)
-            self._invalidate_group(group_name)
-            if not member_ids:
-                self._group_index.pop(group_name, None)
-                self._ordered_group_names = None
-
-    def update_entity_groups(self, entity: Entity, previous_groups: Any, current_groups: Any) -> None:
-        previous = set(normalize_entity_groups(previous_groups))
-        current = set(normalize_entity_groups(current_groups))
-        for group_name in previous - current:
-            member_ids = self._group_index.get(group_name)
-            if member_ids is None:
-                continue
-            member_ids.discard(entity.id)
-            self._invalidate_group(group_name)
-            if not member_ids:
-                self._group_index.pop(group_name, None)
-        for group_name in current - previous:
-            self._group_index[group_name].add(entity.id)
-            self._invalidate_group(group_name)
-        if previous != current:
-            self._ordered_group_names = None
-
-    def list_groups(self) -> list[str]:
-        if self._ordered_group_names is None:
-            self._ordered_group_names = tuple(sorted(self._group_index))
-        return list(self._ordered_group_names)
-
-    def get_entity_names(self, group_name: str) -> list[str]:
-        return [
-            self._world._entities[entity_id].name
-            for entity_id in self._get_ordered_entity_ids(group_name)
-            if entity_id in self._world._entities
-        ]
-
-    def get_entities(self, group_name: str) -> list[Entity]:
-        return [
-            self._world._entities[entity_id]
-            for entity_id in self._get_ordered_entity_ids(group_name)
-            if entity_id in self._world._entities
-        ]
-
-    def _get_ordered_entity_ids(self, group_name: str) -> tuple[int, ...]:
-        normalized_group = str(group_name or "").strip()
-        if not normalized_group:
-            return ()
-        ordered_ids = self._ordered_entity_ids.get(normalized_group)
-        if ordered_ids is None:
-            member_ids = self._group_index.get(normalized_group)
-            if not member_ids:
-                return ()
-            ordered_ids = tuple(
-                sorted(
-                    member_ids,
-                    key=lambda entity_id: self._world._entities[entity_id].name,
-                )
-            )
-            self._ordered_entity_ids[normalized_group] = ordered_ids
-        return ordered_ids
-
-    def has(self, group_name: str, entity_name: str) -> bool:
-        entity = self._world.get_entity_by_name(entity_name)
-        return entity is not None and self.has_entity(group_name, entity)
-
-    def has_entity(self, group_name: str, entity: Entity) -> bool:
-        """Comprueba si una entidad concreta pertenece al grupo por su id."""
-        normalized_group = str(group_name or "").strip()
-        if not normalized_group:
-            return False
-        return entity.id in self._group_index.get(normalized_group, set())
-
-    def get_first_entity(self, group_name: str) -> Entity | None:
-        """Obtiene la primera entidad activa del grupo, o None si está vacío."""
-        for entity_id in self._get_ordered_entity_ids(group_name):
-            ent = self._world._entities.get(entity_id)
-            if ent is None:
-                continue
-            if ent.active:
-                return ent
-        return None
-
-    def count(self, group_name: str) -> int:
-        """Número de entidades actualmente en el grupo."""
-        normalized_group = str(group_name or "").strip()
-        if not normalized_group:
-            return 0
-        return len(self._group_index.get(normalized_group, set()))
-
-    def is_empty(self, group_name: str) -> bool:
-        """Indica si el grupo no tiene miembros."""
-        return self.count(group_name) == 0
+WorldCloneError = _world_clone.WorldCloneError
+WorldSerializationError = _world_serialization.WorldSerializationError
 
 
 class World:
@@ -179,7 +40,7 @@ class World:
         # directly, so keep them available alongside the canonical indexes.
         self._entities_by_name: dict[str, Entity] = {}
         self._entities_by_component: dict[type, list[Entity]] = defaultdict(list)
-        self.group_registry = GroupRegistry(self)
+        self.group_registry = _GroupRegistry(self)
         self._version: int = 0
         self._structure_version: int = 0
         self._transform_version: int = 0
@@ -341,6 +202,16 @@ class World:
         entity_id = self._component_owner_index.get(id(component))
         return self._entities.get(entity_id) if entity_id is not None else None
 
+    def has_any_component_type(self, *component_types: type) -> bool:
+        """Indica si existe alguna instancia de los tipos de componente dados."""
+        for component_type in component_types:
+            if self._component_index.get(component_type):
+                return True
+        for component_type in component_types:
+            if self._entities_by_component.get(component_type):
+                return True
+        return False
+
     def get_all_entities(self) -> list[Entity]:
         return list(self.iter_all_entities())
 
@@ -435,108 +306,7 @@ class World:
         self._touch_structure()
 
     def clone(self) -> "World":
-        new_world = World()
-        new_world.feature_metadata = clone_json_value(self.feature_metadata)
-        pending_links: list[tuple[Entity, str]] = []
-        cloned_entities: list[Entity] = []
-
-        for entity in self.iter_all_entities():
-            new_entity = Entity(entity.name)
-            new_entity.serialized_id = getattr(entity, "serialized_id", None)
-            new_entity.active = entity.active
-            new_entity.tag = entity.tag
-            new_entity.layer = entity.layer
-            new_entity.groups = entity.groups
-            new_entity.parent_name = entity.parent_name
-            new_entity.prefab_instance = clone_json_value(entity.prefab_instance)
-            new_entity.prefab_source_path = entity.prefab_source_path
-            new_entity.prefab_root_name = entity.prefab_root_name
-
-            for component in entity.iter_components():
-                cloned_component = self._clone_component(component, entity_name=entity.name)
-                new_entity.add_component(
-                    cloned_component,
-                    metadata=entity._get_component_metadata_ref(type(component)),
-                )
-
-            cloned_entities.append(new_entity)
-            if new_entity.parent_name:
-                pending_links.append((new_entity, new_entity.parent_name))
-
-        new_world._adopt_entities(cloned_entities)
-        self._link_parent_transforms(new_world, pending_links)
-        new_world.selected_entity_name = self.selected_entity_name
-        return new_world
-
-    def _link_parent_transforms(self, world: "World", pending_links: list[tuple[Entity, str]]) -> None:
-        from engine.components.transform import Transform
-
-        for entity, parent_name in pending_links:
-            parent = world.get_entity_by_name(parent_name)
-            if parent is None:
-                continue
-            child_transform = entity.get_component(Transform)
-            parent_transform = parent.get_component(Transform)
-            if child_transform is None:
-                continue
-            child_transform.parent = parent_transform
-
-    def _clone_component(self, component: Component, *, entity_name: str) -> Component:
-        component_class = type(component)
-        clone_error: Exception | None = None
-        try:
-            return component.clone()
-        except Exception as exc:
-            clone_error = exc
-
-        try:
-            return copy.deepcopy(component)
-        except Exception as exc:
-            detail = f"{entity_name}.{component_class.__name__}"
-            if clone_error is not None:
-                raise WorldCloneError(
-                    f"World.clone: no se pudo clonar {detail}; clone() fallo: {clone_error}; deepcopy fallo: {exc}"
-                ) from exc
-            raise WorldCloneError(
-                f"World.clone: no se pudo clonar {detail}; deepcopy fallo: {exc}"
-            ) from exc
-
-    def _serialize_component(self, entity: Entity, component: Component) -> dict[str, Any]:
-        component_type = type(component)
-        component_name = component_type.__name__
-        has_contract = has_explicit_serialization_contract(component_type)
-
-        if is_official_component_type(component_type) and not has_contract:
-            raise WorldSerializationError(
-                "World.serialize: componente oficial "
-                f"{entity.name}.{component_name} debe implementar to_dict()/from_dict() explicitos"
-            )
-
-        has_incomplete_legacy_contract = has_explicit_to_dict(component_type) and not has_contract
-
-        try:
-            payload = component.to_dict()
-        except Exception as exc:
-            raise WorldSerializationError(
-                f"World.serialize: no se pudo serializar {entity.name}.{component_name}: {exc}"
-            ) from exc
-
-        if not isinstance(payload, dict):
-            raise WorldSerializationError(
-                "World.serialize: "
-                f"{entity.name}.{component_name}.to_dict() debe devolver dict, "
-                f"no {type(payload).__name__}"
-            )
-        if has_incomplete_legacy_contract:
-            warnings.warn(
-                (
-                    f"{component_type.__module__}.{component_name} tiene un contrato "
-                    "de serializacion legacy incompleto; implemente from_dict() explicito"
-                ),
-                LegacyComponentSerializationWarning,
-                stacklevel=2,
-            )
-        return payload
+        return _world_clone.clone_world(self, world_factory=World)
 
     def _adopt_entities(self, entities: Iterable[Entity]) -> None:
         for entity in entities:
@@ -708,77 +478,4 @@ class World:
         return f"World(entities={self.entity_count()}, version={self.version})"
 
     def serialize(self) -> dict:
-        entities_data = []
-        consumed_prefab_entities: set[str] = set()
-        for entity in self.iter_all_entities():
-            if entity.name in consumed_prefab_entities:
-                continue
-
-            if entity.prefab_instance is not None and entity.prefab_source_path in (None, ""):
-                subtree = [entity] + self.get_descendants(entity.name)
-                overrides = {}
-                for node in subtree:
-                    relative_path = node.prefab_source_path or ""
-                    override_data = {
-                        "active": node.active,
-                        "tag": node.tag,
-                        "layer": node.layer,
-                        "components": {
-                            type(component).__name__: self._serialize_component(node, component)
-                            for component in node.iter_components()
-                        },
-                    }
-                    if node.groups:
-                        override_data["groups"] = list(node.groups)
-                    overrides[relative_path] = override_data
-                    consumed_prefab_entities.add(node.name)
-                prefab_entity_data = {
-                    "name": entity.name,
-                    "active": entity.active,
-                    "tag": entity.tag,
-                    "layer": entity.layer,
-                    "parent": entity.parent_name,
-                    "prefab_instance": {
-                        "prefab_path": entity.prefab_instance.get("prefab_path", ""),
-                        "root_name": entity.prefab_instance.get("root_name", entity.name),
-                        "overrides": overrides,
-                    },
-                }
-                if entity.groups:
-                    prefab_entity_data["groups"] = list(entity.groups)
-                entities_data.append(prefab_entity_data)
-                continue
-
-            ent_data: dict[str, Any] = {
-                "name": entity.name,
-                "active": entity.active,
-                "tag": entity.tag,
-                "layer": entity.layer,
-                "components": {},
-            }
-            if entity.groups:
-                ent_data["groups"] = list(entity.groups)
-            if entity.parent_name is not None:
-                ent_data["parent"] = entity.parent_name
-            if entity.prefab_instance is not None:
-                ent_data["prefab_instance"] = clone_json_value(entity.prefab_instance)
-            if entity.prefab_source_path is not None:
-                ent_data["prefab_source_path"] = entity.prefab_source_path
-            if entity.prefab_root_name is not None:
-                ent_data["prefab_root_name"] = entity.prefab_root_name
-
-            for component in entity.iter_components():
-                comp_name = type(component).__name__
-                ent_data["components"][comp_name] = self._serialize_component(entity, component)
-
-                metadata = entity._get_component_metadata_ref(type(component))
-                if metadata:
-                    ent_data.setdefault("component_metadata", {})[comp_name] = clone_json_value(metadata)
-
-            entities_data.append(ent_data)
-
-        return {
-            "entities": entities_data,
-            "rules": [],
-            "feature_metadata": clone_json_value(self.feature_metadata),
-        }
+        return _world_serialization.serialize_world(self)

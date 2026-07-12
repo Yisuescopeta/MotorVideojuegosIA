@@ -1,5 +1,6 @@
 import math
 import unittest
+from unittest.mock import patch
 
 from engine.components.area2d import Area2D
 from engine.components.collider import Collider
@@ -17,6 +18,15 @@ class PhysicsSystemTests(unittest.TestCase):
         collider = entity.get_component(Collider)
         assert collider is not None
         return _SolidCandidate(entity=entity, collider=collider)
+
+    def test_update_uses_world_component_presence_api(self) -> None:
+        world = World()
+        physics_system = PhysicsSystem()
+
+        with patch.object(world, "has_any_component_type", return_value=False) as has_any:
+            physics_system.update(world, 1.0 / 60.0)
+
+        has_any.assert_called_once()
 
     def test_record_swept_contact_deduplicates_pairs_while_preserving_first_seen_order(self) -> None:
         physics_system = PhysicsSystem()

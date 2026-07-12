@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.core.runtime_logging import log_err, log_info, log_warn
 from engine.scenes.scene import Scene
-from engine.scenes.storage import JsonSceneStorage, SceneStorage
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -170,25 +169,6 @@ class SceneWorkspace:
             self.active_scene_key = key
         log_info(f"SceneManager: Scene '{entry.scene.name}' loaded in workspace.")
         return entry.edit_world  # type: ignore[return-value]
-
-    def load_scene_from_file(
-        self,
-        path: str,
-        activate: bool = True,
-        storage: Optional[SceneStorage] = None,
-    ) -> Optional["World"]:
-        resolved_path = Path(path).resolve().as_posix()
-        existing = self.resolve_entry(resolved_path)
-        if existing is not None:
-            if activate:
-                self.active_scene_key = existing.key
-            return existing.edit_world
-        try:
-            data = (storage or JsonSceneStorage()).load(resolved_path)
-        except Exception as exc:
-            log_err(f"SceneManager: Error cargando {resolved_path}: {exc}")
-            return None
-        return self.load_scene(data, source_path=resolved_path, activate=activate)
 
     def create_new_scene(self, name: str = "New Scene", activate: bool = True) -> "World":
         key = self._create_untitled_key(name)

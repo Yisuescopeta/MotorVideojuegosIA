@@ -13,6 +13,58 @@ from engine.services.registro_servicios import RegistroServicios
 from engine.systems.animation_system import AnimationSystem
 
 
+class RuntimeComponentPresenceDoubleTests(unittest.TestCase):
+    class FirstComponent:
+        pass
+
+    class SecondComponent:
+        pass
+
+    def test_prefers_world_presence_api_over_query_fallback(self) -> None:
+        has_any_component_type = Mock(return_value=True)
+        get_entities_with = Mock(side_effect=AssertionError("query fallback used"))
+        world = SimpleNamespace(
+            has_any_component_type=has_any_component_type,
+            get_entities_with=get_entities_with,
+        )
+
+        result = RuntimeController._world_has_any_component(
+            world,
+            self.FirstComponent,
+            self.SecondComponent,
+        )
+
+        self.assertTrue(result)
+        has_any_component_type.assert_called_once_with(self.FirstComponent, self.SecondComponent)
+        get_entities_with.assert_not_called()
+
+    def test_uses_public_query_fallback_for_compatible_double(self) -> None:
+        get_entities_with = Mock(
+            side_effect=lambda component_type: [object()] if component_type is self.SecondComponent else []
+        )
+        world = SimpleNamespace(get_entities_with=get_entities_with)
+
+        result = RuntimeController._world_has_any_component(
+            world,
+            self.FirstComponent,
+            self.SecondComponent,
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(
+            get_entities_with.call_args_list,
+            [call(self.FirstComponent), call(self.SecondComponent)],
+        )
+
+    def test_double_without_component_introspection_preserves_previous_behavior(self) -> None:
+        self.assertTrue(
+            RuntimeController._world_has_any_component(
+                object(),
+                self.FirstComponent,
+            )
+        )
+
+
 class RuntimeControllerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.state = {"value": EngineState.EDIT}

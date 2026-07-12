@@ -6,6 +6,7 @@ import unittest
 
 from engine.ecs.entity import Entity
 from engine.ecs.group_operations import GroupOperations
+from engine.ecs.group_registry import GroupRegistry
 from engine.ecs.world import World
 
 
@@ -47,6 +48,9 @@ class TestGroupOperationsQueries(unittest.TestCase):
         for ent in (e1, e2, e3, e4):
             world.add_entity(ent)
         return world, e1, e2, e3, e4
+
+    def test_world_exposes_extracted_group_registry(self):
+        self.assertIsInstance(World().group_registry, GroupRegistry)
 
     def test_get_entities(self):
         world, *_ = self._make_world_with_entities()

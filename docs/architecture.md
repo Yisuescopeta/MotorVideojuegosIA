@@ -38,6 +38,21 @@ persistencia ni sustituye a `Scene`.
 `Game.world` y `HeadlessGame.world` exponen el mundo activo para sistemas, pero
 no son la fuente de verdad persistente.
 
+`World` conserva la autoridad sobre entidades, seleccion, callbacks,
+notificaciones y versionado. La separacion interna de sus servicios queda asi:
+
+- `engine.ecs.group_registry.GroupRegistry` es la autoridad del indice de
+  grupos. `world.group_registry` sigue siendo la superficie estable y el
+  registro mantiene su dependencia de `World` para resolver entidades.
+- `engine.ecs.world_serialization.serialize_world()` es la autoridad de
+  serializacion; `World.serialize()` permanece como fachada compatible.
+- `engine.ecs.world_clone.clone_world()` es la autoridad de clonacion;
+  `World.clone()` permanece como fachada compatible y pasa la factory exacta
+  `World`.
+
+Esta separacion no cambia Scene v2, el schema ni el payload serializado, la
+superficie publica de `EngineAPI` o el ciclo `EDIT -> PLAY -> STOP`.
+
 ## Ciclo EDIT -> PLAY -> STOP
 
 ```text
@@ -95,6 +110,20 @@ Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
 
 Responsable de workspace, escenas abiertas, escena activa, dirty state,
 transacciones, historial, operaciones estructurales y transicion entre modos.
+
+La persistencia tecnica queda separada por responsabilidades:
+
+- `ScenePersistenceService` es la autoridad de resolucion de rutas, storage
+  default o custom, escritura temporal y reemplazo del storage default,
+  readback, migracion, validacion, recuento de entidades y lectura de mtime.
+- `SceneManager` conserva instalacion de payloads, rekey del workspace, dirty y
+  pending state, tracking de mtime y callbacks de guardado.
+- `SceneWorkspace` conserva solo estado y ciclo de vida en memoria; no realiza
+  I/O.
+
+La separacion mantiene las firmas publicas, Scene v2 y su schema. Tambien
+preserva la atomicidad vigente: temporal mas reemplazo para storage default y
+la semantica provista por cada storage custom.
 
 ### Game y HeadlessGame
 

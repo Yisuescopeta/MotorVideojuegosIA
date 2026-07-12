@@ -14,6 +14,7 @@ from typing import Any
 from engine.api import EngineAPI
 from engine.components.transform import Transform
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
+from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_ENTITY_THRESHOLD, SceneManager
 
 BENCHMARK_REPORT_VERSION = 3
 
@@ -238,6 +239,33 @@ def run_benchmark(
                     warmup=operation_warmup,
                     repeats=operation_repeats,
                 )
+                scene_entity_count = len(current_scene.entities_data)
+                if scene_manager is not None and scene_entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD:
+                    scene_save_root = temp_root / "scene_save"
+                    scene_save_root.mkdir(parents=True, exist_ok=True)
+                    scene_save_path = scene_save_root / "benchmark_scene.json"
+                    workspace_key_before_save = scene_manager.active_scene_key
+                    scene_save_manager = SceneManager(api._registry)
+                    scene_save_manager.load_scene(current_scene.to_dict())
+
+                    def save_scene() -> None:
+                        if not scene_save_manager.save_scene_to_file(scene_save_path.as_posix()):
+                            raise RuntimeError("Scene save benchmark failed")
+
+                    operations["scene_save"] = _measure_repeated(
+                        save_scene,
+                        warmup=operation_warmup,
+                        repeats=operation_repeats,
+                    )
+                    if scene_manager.active_scene_key != workspace_key_before_save:
+                        raise RuntimeError("Scene save benchmark mutated the primary workspace")
+                    operations["scene_save"].update(
+                        {
+                            "entity_count": scene_entity_count,
+                            "compact_threshold": COMPACT_SCENE_SAVE_ENTITY_THRESHOLD,
+                            "workspace_isolated": True,
+                        }
+                    )
             if seed is not None:
                 api.set_seed(seed)
             if source == "scene":

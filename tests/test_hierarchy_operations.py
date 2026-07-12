@@ -7,6 +7,7 @@ serialization round-trip, and hierarchical movement.
 import unittest
 
 from engine.components.transform import Transform
+from engine.ecs.world import World
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import SceneManager
 
@@ -31,6 +32,22 @@ def _make_entity(name: str, x: float = 0.0, y: float = 0.0, parent: str | None =
     if parent is not None:
         data["parent"] = parent
     return data
+
+
+class TestWorldHierarchyIndexSemantics(unittest.TestCase):
+    def test_renaming_selected_parent_preserves_children_under_previous_name(self) -> None:
+        world = World()
+        parent = world.create_entity("Parent")
+        child = world.create_entity("Child")
+        child.parent_name = parent.name
+        world.selected_entity_name = parent.name
+
+        parent.name = "RenamedParent"
+
+        self.assertEqual(world.selected_entity_name, "RenamedParent")
+        self.assertEqual(child.parent_name, "Parent")
+        self.assertEqual(world.get_children("Parent"), [child])
+        self.assertEqual(world.get_children("RenamedParent"), [])
 
 
 class TestReparentPreservesWorldPosition(unittest.TestCase):

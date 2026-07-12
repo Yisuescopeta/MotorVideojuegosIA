@@ -1,6 +1,8 @@
+import copy
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import SceneManager
@@ -150,6 +152,71 @@ class SceneManagerContractsTests(unittest.TestCase):
         self.assertTrue(self.manager.set_entity_parent("Hero", "Parent"))
 
         self.assertEqual(self.manager.find_entity_data_by_id(player_id)["parent"], "Parent")
+
+    def test_serializable_rollback_restores_only_characterized_entry_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            secondary_path = Path(temp_dir) / "secondary.json"
+            self.manager.load_scene(
+                {
+                    "name": "Secondary",
+                    "entities": [
+                        {
+                            "name": "SecondaryPlayer",
+                            "active": True,
+                            "tag": "Untagged",
+                            "layer": "Default",
+                            "components": {},
+                        }
+                    ],
+                    "rules": [],
+                    "feature_metadata": {},
+                },
+                source_path=secondary_path.as_posix(),
+                activate=False,
+            )
+            entry = self.manager.resolve_entry(secondary_path.as_posix())
+
+            player_id = entry.scene.find_entity("SecondaryPlayer")["id"]
+            entry.selected_entity_name = "SecondaryPlayer"
+            entry.selected_entity_id = player_id
+            entry.edit_world.selected_entity_name = "SecondaryPlayer"
+            entry.dirty = False
+            entry.pending_edit_world_sync_reason = "contract_pending"
+            entry.dirty_before_pending_edit_world_sync = True
+            entry.edit_world_version = 777
+            scene_before = copy.deepcopy(entry.scene.to_dict())
+            original_install = self.manager._install_scene_payload
+            install_calls = 0
+
+            def fail_first_install(*args, **kwargs):
+                nonlocal install_calls
+                install_calls += 1
+                if install_calls == 1:
+                    raise ValueError("reject mutation")
+                return original_install(*args, **kwargs)
+
+            with patch.object(
+                self.manager,
+                "_install_scene_payload",
+                side_effect=fail_first_install,
+            ):
+                changed = self.manager.upsert_component_for_scene(
+                    entry.key,
+                    "SecondaryPlayer",
+                    "Marker2D",
+                    {"enabled": True, "marker_name": "probe"},
+                )
+
+        self.assertFalse(changed)
+        self.assertEqual(entry.scene.to_dict(), scene_before)
+        self.assertEqual(entry.selected_entity_name, "SecondaryPlayer")
+        self.assertEqual(entry.selected_entity_id, player_id)
+        self.assertEqual(entry.edit_world.selected_entity_name, "SecondaryPlayer")
+        self.assertFalse(entry.dirty)
+        self.assertEqual(entry.pending_edit_world_sync_reason, "contract_pending")
+        self.assertIsNone(entry.dirty_before_pending_edit_world_sync)
+        self.assertNotEqual(entry.edit_world_version, 777)
+        self.assertEqual(entry.edit_world_version, entry.edit_world.version)
 
 
 if __name__ == "__main__":
