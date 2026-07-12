@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from engine.components.collider import Collider
 from engine.components.collision_polygon_2d import CollisionPolygon2D
@@ -26,6 +27,15 @@ class CollisionSystemTests(unittest.TestCase):
         entity.add_component(Transform(x=x, y=y))
         entity.add_component(Collider(width=width, height=height, is_trigger=is_trigger))
         return entity
+
+    def test_update_uses_world_component_presence_api(self) -> None:
+        world = World()
+        collision_system = CollisionSystem()
+
+        with patch.object(world, "has_any_component_type", return_value=False) as has_any:
+            collision_system.update(world)
+
+        self.assertEqual(has_any.call_count, 3)
 
     def test_update_emits_collision_and_trigger_events_with_local_candidates(self) -> None:
         world = World()

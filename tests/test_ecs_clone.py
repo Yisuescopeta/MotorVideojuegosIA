@@ -6,6 +6,8 @@ from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.components.transform import Transform
 from engine.ecs.component import Component
 from engine.ecs.world import World, WorldCloneError
+from engine.ecs.world_clone import WorldCloneError as CloneAuthorityError
+from engine.ecs.world_clone import clone_world
 
 
 class LegacyCloneComponent(Component):
@@ -26,6 +28,16 @@ class UncloneableComponent(Component):
 
 
 class ECSCloneTests(unittest.TestCase):
+    def test_world_clone_delegates_with_exact_world_factory(self) -> None:
+        world = World()
+
+        with patch("engine.ecs.world_clone.clone_world", wraps=clone_world) as cloner:
+            cloned = world.clone()
+
+        cloner.assert_called_once_with(world, world_factory=World)
+        self.assertIs(type(cloned), World)
+        self.assertIs(WorldCloneError, CloneAuthorityError)
+
     def _build_world(self) -> World:
         world = World()
         world.feature_metadata = {"render_2d": {"sorting_layers": ["Default", "Gameplay"]}}
@@ -102,6 +114,14 @@ class ECSCloneTests(unittest.TestCase):
         self.assertEqual(original_child.get_component(Camera2D).profile_overrides["combat"]["zoom"], 1.5)
         self.assertEqual(original_child.get_component(ScriptBehaviour).public_data["inventory"][0]["id"], "key")
 
+    def test_world_subclass_clone_uses_world_factory_contract(self) -> None:
+        class DerivedWorld(World):
+            pass
+
+        cloned = DerivedWorld().clone()
+
+        self.assertIs(type(cloned), World)
+
     def test_world_clone_rebuilds_transform_hierarchy_and_preserves_enabled(self) -> None:
         original = self._build_world()
 
@@ -127,7 +147,7 @@ class ECSCloneTests(unittest.TestCase):
         world = self._build_world()
 
         with (
-            patch("engine.ecs.world.copy.deepcopy", side_effect=AssertionError("world deepcopy used")),
+            patch("engine.ecs.world_clone.copy.deepcopy", side_effect=AssertionError("world deepcopy used")),
             patch(
                 "engine.serialization.json_value.copy.deepcopy",
                 side_effect=AssertionError("json deepcopy used"),

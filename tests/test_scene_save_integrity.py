@@ -70,7 +70,7 @@ class SceneSaveIntegrityTests(unittest.TestCase):
             scene_path = Path(temp_dir) / "fail_val.json"
 
             with patch(
-                "engine.scenes.scene_manager.validate_scene_data",
+                "engine.scenes.scene_persistence.validate_scene_data",
                 return_value=["mock_post_write_error"],
             ):
                 result = self.manager.save_scene_to_file(scene_path.as_posix())

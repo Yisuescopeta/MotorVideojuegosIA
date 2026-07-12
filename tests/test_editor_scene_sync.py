@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import SceneManager
@@ -63,6 +64,44 @@ class EditorSceneSyncCallbackTests(unittest.TestCase):
         self.assertIn("key", info)
         self.assertEqual(info["scene_name"], "SyncTest")
         self.assertEqual(info["entity_count"], 1)
+
+    def test_callback_observes_installed_rekeyed_clean_scene(self) -> None:
+        self.assertTrue(self.manager.update_entity_property("Hero", "tag", "SavedTag"))
+        observed: dict = {}
+        expected_mtime = 1234.5
+
+        def on_saved(path: str, info: dict) -> None:
+            entry = self.manager.resolve_entry(info["key"])
+            observed.update(
+                {
+                    "disk": json.loads(Path(path).read_text(encoding="utf-8")),
+                    "active_key": self.manager.active_scene_key,
+                    "entry_key": entry.key,
+                    "source_path": entry.source_path,
+                    "dirty": entry.dirty,
+                    "pending": entry.edit_world_sync_pending,
+                    "world_tag": entry.edit_world.get_entity_by_name("Hero").tag,
+                    "tracked_mtime": self.manager._scene_file_mtimes.get(str(Path(path).resolve())),
+                }
+            )
+
+        self.manager.register_on_scene_saved(on_saved)
+
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            return_value=expected_mtime,
+        ):
+            self.assertTrue(self.manager.save_scene_to_file(self.scene_path.as_posix()))
+
+        resolved_path = self.scene_path.resolve().as_posix()
+        self.assertEqual(observed["disk"]["entities"][0]["tag"], "SavedTag")
+        self.assertEqual(observed["active_key"], resolved_path)
+        self.assertEqual(observed["entry_key"], resolved_path)
+        self.assertEqual(Path(observed["source_path"]).resolve(), self.scene_path.resolve())
+        self.assertFalse(observed["dirty"])
+        self.assertFalse(observed["pending"])
+        self.assertEqual(observed["world_tag"], "SavedTag")
+        self.assertEqual(observed["tracked_mtime"], expected_mtime)
 
     def test_save_scene_to_file_calls_multiple_callbacks(self) -> None:
         called_a: list = []
@@ -336,6 +375,117 @@ class EditorSceneSyncExternalChangeTests(unittest.TestCase):
         world = self.manager.refresh_active_scene_if_stale()
         self.assertIsNotNone(world)
         self.assertIsNotNone(world.get_entity_by_name("Hero"))
+
+    def test_refresh_invalid_json_preserves_current_memory(self) -> None:
+        world_before = self.manager.get_edit_world()
+        entry = self.manager.resolve_entry(self.manager.active_scene_key)
+        scene_before = self.manager.current_scene.to_dict()
+        self.scene_path.write_text("{not-json", encoding="utf-8")
+        mtime_key = str(self.scene_path.resolve())
+        previous_mtime = self.manager._scene_file_mtimes[mtime_key]
+        retry_mtime = previous_mtime + 1.0
+
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            return_value=retry_mtime,
+        ):
+            refreshed = self.manager.refresh_active_scene_if_stale()
+
+        self.assertIs(refreshed, world_before)
+        self.assertIs(entry.edit_world, world_before)
+        self.assertEqual(self.manager.current_scene.to_dict(), scene_before)
+        self.assertFalse(self.manager.is_dirty)
+        self.assertEqual(self.manager._scene_file_mtimes[mtime_key], previous_mtime)
+
+        self._write_scene_with_extra_entity()
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            return_value=retry_mtime,
+        ):
+            retried = self.manager.refresh_active_scene_if_stale()
+
+        self.assertIsNotNone(retried.get_entity_by_name("Enemy"))
+        self.assertEqual(self.manager._scene_file_mtimes[mtime_key], retry_mtime)
+
+    def test_refresh_inaccessible_file_preserves_current_memory(self) -> None:
+        world_before = self.manager.get_edit_world()
+        entry = self.manager.resolve_entry(self.manager.active_scene_key)
+        scene_before = self.manager.current_scene.to_dict()
+        mtime_key = str(self.scene_path.resolve())
+        previous_mtime = self.manager._scene_file_mtimes[mtime_key]
+        retry_mtime = previous_mtime + 1.0
+        self._write_scene_with_extra_entity()
+
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            side_effect=OSError("permission denied"),
+        ):
+            refreshed = self.manager.refresh_active_scene_if_stale()
+
+        self.assertIs(refreshed, world_before)
+        self.assertIs(entry.edit_world, world_before)
+        self.assertEqual(self.manager.current_scene.to_dict(), scene_before)
+        self.assertFalse(self.manager.is_dirty)
+        self.assertEqual(self.manager._scene_file_mtimes[mtime_key], previous_mtime)
+
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            return_value=retry_mtime,
+        ):
+            retried = self.manager.refresh_active_scene_if_stale()
+
+        self.assertIsNotNone(retried.get_entity_by_name("Enemy"))
+        self.assertEqual(self.manager._scene_file_mtimes[mtime_key], retry_mtime)
+
+    def test_refresh_install_failure_preserves_current_memory(self) -> None:
+        world_before = self.manager.get_edit_world()
+        entry = self.manager.resolve_entry(self.manager.active_scene_key)
+        scene_before = self.manager.current_scene.to_dict()
+        mtime_key = str(self.scene_path.resolve())
+        previous_mtime = self.manager._scene_file_mtimes[mtime_key]
+        retry_mtime = previous_mtime + 1.0
+        invalid_payload = json.loads(json.dumps(_SIMPLE_SCENE))
+        invalid_payload["entities"][0]["tag"] = "MainCamera"
+        invalid_payload["entities"][0]["components"]["Camera2D"] = {
+            "enabled": True,
+            "offset_x": 0.0,
+            "offset_y": 0.0,
+            "zoom": 0.0,
+            "rotation": 0.0,
+            "is_primary": True,
+            "follow_entity": "",
+            "framing_mode": "platformer",
+            "dead_zone_width": 0.0,
+            "dead_zone_height": 0.0,
+            "clamp_left": None,
+            "clamp_right": None,
+            "clamp_top": None,
+            "clamp_bottom": None,
+            "recenter_on_play": True,
+        }
+        self.scene_path.write_text(json.dumps(invalid_payload), encoding="utf-8")
+
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            return_value=retry_mtime,
+        ):
+            refreshed = self.manager.refresh_active_scene_if_stale()
+
+        self.assertIs(refreshed, world_before)
+        self.assertIs(entry.edit_world, world_before)
+        self.assertEqual(self.manager.current_scene.to_dict(), scene_before)
+        self.assertFalse(self.manager.is_dirty)
+        self.assertEqual(self.manager._scene_file_mtimes[mtime_key], previous_mtime)
+
+        self._write_scene_with_extra_entity()
+        with patch(
+            "engine.scenes.scene_persistence.ScenePersistenceService.get_mtime",
+            return_value=retry_mtime,
+        ):
+            retried = self.manager.refresh_active_scene_if_stale()
+
+        self.assertIsNotNone(retried.get_entity_by_name("Enemy"))
+        self.assertEqual(self.manager._scene_file_mtimes[mtime_key], retry_mtime)
 
 
 if __name__ == "__main__":

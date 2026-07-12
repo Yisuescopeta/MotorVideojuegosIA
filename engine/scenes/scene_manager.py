@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import os
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +20,17 @@ from engine.scenes.contracts import (
     SceneWorkspacePort,
 )
 from engine.scenes.scene import Scene
-from engine.scenes.storage import JsonSceneStorage, SceneStorage
+from engine.scenes.scene_persistence import (
+    COMPACT_SCENE_SAVE_ENTITY_THRESHOLD as _COMPACT_SCENE_SAVE_ENTITY_THRESHOLD,
+)
+from engine.scenes.scene_persistence import (
+    COMPACT_SCENE_SAVE_SEPARATORS as _COMPACT_SCENE_SAVE_SEPARATORS,
+)
+from engine.scenes.scene_persistence import (
+    ScenePersistenceService,
+    SceneStorageReadError,
+)
+from engine.scenes.storage import SceneStorage
 from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 from engine.serialization.json_value import clone_json_value
@@ -33,8 +42,8 @@ if TYPE_CHECKING:
 
 LEGACY_AUTHORING_SYNC_REASON = "legacy_authoring"
 TRANSIENT_PREVIEW_SYNC_REASON = "transient_preview"
-COMPACT_SCENE_SAVE_ENTITY_THRESHOLD = 1000
-COMPACT_SCENE_SAVE_SEPARATORS = (",", ":")
+COMPACT_SCENE_SAVE_ENTITY_THRESHOLD = _COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
+COMPACT_SCENE_SAVE_SEPARATORS = _COMPACT_SCENE_SAVE_SEPARATORS
 
 
 @dataclass
@@ -52,6 +61,15 @@ class AuthoringTransactionState:
     changes: Dict[tuple[str, str], AuthoringComponentDelta] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _SerializableMutationSnapshot:
+    scene_data: Dict[str, Any]
+    selected_entity_name: Optional[str]
+    selected_entity_id: Optional[str]
+    dirty: bool
+    pending_edit_world_sync_reason: Optional[str]
+
+
 class SceneManager:
     def __init__(self, registry: "ComponentRegistry") -> None:
         self._registry = registry
@@ -63,6 +81,7 @@ class SceneManager:
             sync_scene_links_from_feature_metadata=self._sync_scene_links_from_feature_metadata,
             entry_has_invalid_links=self._entry_has_invalid_links,
         )
+        self._persistence = ScenePersistenceService()
         self._untitled_counter: int = 1
         self._change_history = SceneChangeCoordinator(
             SceneChangeCoordinatorContext(
@@ -207,19 +226,21 @@ class SceneManager:
             return entry.edit_world
         resolved_source = str(Path(raw_source).resolve())
         try:
-            current_mtime = os.path.getmtime(resolved_source)
+            current_mtime = self._persistence.get_mtime(resolved_source)
         except OSError:
+            return entry.edit_world
+        if current_mtime is None:
             return entry.edit_world
         previous_mtime = self._scene_file_mtimes.get(resolved_source)
         if previous_mtime is not None and current_mtime <= previous_mtime:
             return entry.edit_world
         try:
-            data = JsonSceneStorage().load(resolved_source)
+            loaded = self._persistence.load(resolved_source)
         except Exception as exc:
             log_err(f"SceneManager: failed to reload stale scene from {resolved_source}: {exc}")
             return entry.edit_world
         try:
-            self._install_scene_payload(entry, data, source_path=resolved_source)
+            self._install_scene_payload(entry, loaded.payload, source_path=resolved_source)
             entry.dirty = False
             self._scene_file_mtimes[resolved_source] = current_mtime
         except Exception as exc:
@@ -335,11 +356,8 @@ class SceneManager:
             return False
         if entry.scene.find_entity(entity_name) is None:
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         normalized_payload = self._canonicalize_component_payload(component_name, component_data)
         if not entry.scene.replace_component_data(entity_name, component_name, normalized_payload):
             if not entry.scene.add_component(entity_name, component_name, normalized_payload):
@@ -353,11 +371,7 @@ class SceneManager:
             self._sync_feature_metadata_from_scene_links(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"upsert_component:{entity_name}.{component_name}",
         ):
             return False
@@ -387,22 +401,15 @@ class SceneManager:
         current = self.get_component_data_for_scene(scene_ref, entity_name, component_name)
         if current is None:
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         if not entry.scene.remove_component(entity_name, component_name):
             return False
         if component_name == "SceneLink":
             self._sync_feature_metadata_from_scene_links(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"remove_component:{entity_name}.{component_name}",
         ):
             return False
@@ -435,7 +442,9 @@ class SceneManager:
         if world is not None and source_path:
             try:
                 resolved_path = str(Path(source_path).resolve())
-                self._scene_file_mtimes[resolved_path] = os.path.getmtime(resolved_path)
+                mtime = self._persistence.get_mtime(resolved_path)
+                if mtime is not None:
+                    self._scene_file_mtimes[resolved_path] = mtime
             except OSError:
                 pass
         return world
@@ -446,13 +455,32 @@ class SceneManager:
         activate: bool = True,
         storage: Optional[SceneStorage] = None,
     ) -> Optional["World"]:
-        world = self._workspace.load_scene_from_file(path, activate=activate, storage=storage)
-        if world is not None:
+        resolved_path = self._persistence.resolve_path(path)
+        workspace_path = resolved_path.as_posix()
+        existing = self._workspace.resolve_entry(workspace_path)
+        if existing is not None:
+            if activate:
+                self._workspace.active_scene_key = existing.key
+            world = existing.edit_world
             try:
-                resolved_path = str(Path(path).resolve())
-                self._scene_file_mtimes[resolved_path] = os.path.getmtime(resolved_path)
+                mtime = self._persistence.get_mtime(resolved_path)
+                if mtime is not None:
+                    self._scene_file_mtimes[str(resolved_path)] = mtime
             except OSError:
                 pass
+            return world
+        try:
+            loaded = self._persistence.load(resolved_path, storage=storage)
+        except SceneStorageReadError as exc:
+            log_err(f"SceneManager: Error cargando {workspace_path}: {exc}")
+            return None
+        world = self._workspace.load_scene(
+            loaded.payload,
+            source_path=workspace_path,
+            activate=activate,
+        )
+        if world is not None and loaded.mtime is not None:
+            self._scene_file_mtimes[str(resolved_path)] = loaded.mtime
         return world
 
     def get_edit_world(self) -> Optional["World"]:
@@ -510,11 +538,8 @@ class SceneManager:
             )
         if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{component_name}.{property_name}"):
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         if not entry.scene.update_component(entity_name, component_name, property_name, value):
             if not self._structural_authoring.update_prefab_component_override(entry, entity_name, component_name, property_name, value):
                 return False
@@ -522,11 +547,7 @@ class SceneManager:
             self._sync_feature_metadata_from_scene_links(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"{entity_name}.{component_name}.{property_name}",
         ):
             return False
@@ -543,11 +564,8 @@ class SceneManager:
             return False
         if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{property_name}"):
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         if not entry.scene.update_entity_property(entity_name, property_name, value):
             if not self._structural_authoring.update_prefab_entity_override(entry, entity_name, property_name, value):
                 return False
@@ -563,11 +581,7 @@ class SceneManager:
                 entry.edit_world.selected_entity_name = value
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"{entity_name}.{property_name}",
         ):
             return False
@@ -584,11 +598,8 @@ class SceneManager:
             return False
         if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{component_name}"):
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         normalized_component_data = self._canonicalize_component_payload(component_name, component_data)
         if not entry.scene.replace_component_data(entity_name, component_name, normalized_component_data):
             if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, component_data):
@@ -597,11 +608,7 @@ class SceneManager:
             self._sync_feature_metadata_from_scene_links(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"{entity_name}.{component_name}",
         ):
             return False
@@ -696,11 +703,8 @@ class SceneManager:
             return False
         if not self._flush_pending_edit_world(entry, failure_context=f"add_component:{entity_name}.{component_name}"):
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         data = self._canonicalize_component_payload(component_name, component_data or {"enabled": True})
         if not entry.scene.add_component(entity_name, component_name, data):
             if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, data):
@@ -710,11 +714,7 @@ class SceneManager:
             self._sync_feature_metadata_from_scene_links(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"add_component:{entity_name}.{component_name}",
         ):
             return False
@@ -831,19 +831,12 @@ class SceneManager:
             return False
         if not self._flush_pending_edit_world(entry, failure_context=f"feature_metadata:{key}"):
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         entry.scene.set_feature_metadata(key, copy.deepcopy(value))
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=f"feature_metadata:{key}",
         ):
             return False
@@ -938,7 +931,6 @@ class SceneManager:
         entry = self._resolve_entry(key)
         if entry is None or entry.edit_world is None:
             return False
-        temp_path: Optional[Path] = None
         try:
             # Only legacy world-only authoring is flushed back into Scene before save.
             # Transient previews are intentionally discarded by the rebuild below.
@@ -951,59 +943,26 @@ class SceneManager:
             elif entry.edit_world.version != entry.edit_world_version:
                 self._sync_entry_from_edit_world(entry)
             data = self._validated_scene_payload(entry.scene.to_dict())
-            target_path = Path(path)
-            stored_entity_count = len(data.get("entities", [])) if isinstance(data.get("entities"), list) else 0
-            if storage is None:
-                temp_path = target_path.with_name(f"{target_path.name}.tmp")
-                use_compact_save = (
-                    compact_save if compact_save is not None else stored_entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
-                )
-                json_storage = JsonSceneStorage(compact=use_compact_save, separators=COMPACT_SCENE_SAVE_SEPARATORS)
-                json_storage.save(temp_path, data)
-                temp_path.replace(target_path)
-                # Post-write integrity verification
-                readback = json_storage.load(target_path)
-                verified = migrate_scene_data(readback)
-                validation_errors = validate_scene_data(verified)
-                if validation_errors:
-                    raise ValueError(f"Post-write validation failed: {'; '.join(validation_errors)}")
-                readback_entity_count = len(verified.get("entities", [])) if isinstance(verified.get("entities"), list) else 0
-                if readback_entity_count != stored_entity_count:
-                    raise ValueError(
-                        f"Post-write entity count mismatch: written={readback_entity_count}, expected={stored_entity_count}"
-                    )
-            else:
-                storage.save(target_path, data)
-                # Post-write integrity verification
-                readback = storage.load(target_path)
-                verified = migrate_scene_data(readback)
-                validation_errors = validate_scene_data(verified)
-                if validation_errors:
-                    raise ValueError(f"Post-write validation failed: {'; '.join(validation_errors)}")
-                readback_entity_count = len(verified.get("entities", [])) if isinstance(verified.get("entities"), list) else 0
-                if readback_entity_count != stored_entity_count:
-                    raise ValueError(
-                        f"Post-write entity count mismatch: written={readback_entity_count}, expected={stored_entity_count}"
-                    )
-            self._install_scene_payload(entry, data, source_path=path)
+            saved = self._persistence.save(
+                path,
+                data,
+                compact_save=compact_save,
+                storage=storage,
+            )
+            self._install_scene_payload(entry, saved.payload, source_path=path)
             self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
             entry.dirty = False
             self._clear_pending_edit_world_sync(entry)
-            saved_path = str(target_path.resolve())
-            try:
-                self._scene_file_mtimes[saved_path] = os.path.getmtime(saved_path)
-            except OSError:
-                pass
+            if saved.mtime is not None:
+                self._scene_file_mtimes[saved.resolved_path] = saved.mtime
             self._fire_on_scene_saved(
-                saved_path,
+                saved.resolved_path,
                 entry.key,
                 entry.scene.name,
-                stored_entity_count,
+                saved.entity_count,
             )
             return True
         except Exception as exc:
-            if temp_path is not None:
-                temp_path.unlink(missing_ok=True)
             log_err(f"SceneManager: error al guardar en {path}: {exc}")
             return False
 
@@ -1180,7 +1139,8 @@ class SceneManager:
             return False
         if not self._flush_pending_edit_world(entry, failure_context=f"scene_flow:{scene_key}"):
             return False
-        before = copy.deepcopy(entry.scene.to_dict())
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         scene_flow = entry.scene.feature_metadata.setdefault("scene_flow", {})
         if not isinstance(scene_flow, dict):
             scene_flow = {}
@@ -1194,11 +1154,7 @@ class SceneManager:
         self._sync_scene_links_from_feature_metadata(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=entry.selected_entity_name,
-            rollback_selected_id=entry.selected_entity_id,
-            rollback_dirty=entry.dirty,
-            rollback_pending_reason=entry.pending_edit_world_sync_reason,
+            snapshot,
             failure_context=f"scene_flow:{scene_key}",
         ):
             return False
@@ -1825,27 +1781,39 @@ class SceneManager:
     def _commit_serializable_scene_mutation(
         self,
         entry: SceneWorkspaceEntry,
-        before: Dict[str, Any],
+        snapshot: _SerializableMutationSnapshot,
         *,
-        rollback_selected_name: Optional[str],
-        rollback_dirty: bool,
-        rollback_pending_reason: Optional[str],
         failure_context: str,
-        rollback_selected_id: Optional[str] = None,
     ) -> bool:
         try:
             self._install_scene_payload(entry, entry.scene.to_dict())
             return True
         except ValueError as exc:
-            self._restore_entry_scene(entry, before)
-            entry.selected_entity_name = rollback_selected_name
-            entry.selected_entity_id = rollback_selected_id
-            if entry.edit_world is not None:
-                entry.edit_world.selected_entity_name = rollback_selected_name
-            entry.dirty = rollback_dirty
-            entry.pending_edit_world_sync_reason = rollback_pending_reason
+            self._restore_serializable_mutation(entry, snapshot)
             log_err(f"SceneManager: rejected invalid serializable mutation during {failure_context}: {exc}")
             return False
+
+    def _capture_serializable_mutation(self, entry: SceneWorkspaceEntry) -> _SerializableMutationSnapshot:
+        return _SerializableMutationSnapshot(
+            scene_data=copy.deepcopy(entry.scene.to_dict()),
+            selected_entity_name=entry.selected_entity_name,
+            selected_entity_id=entry.selected_entity_id,
+            dirty=entry.dirty,
+            pending_edit_world_sync_reason=entry.pending_edit_world_sync_reason,
+        )
+
+    def _restore_serializable_mutation(
+        self,
+        entry: SceneWorkspaceEntry,
+        snapshot: _SerializableMutationSnapshot,
+    ) -> None:
+        self._restore_entry_scene(entry, snapshot.scene_data)
+        entry.selected_entity_name = snapshot.selected_entity_name
+        entry.selected_entity_id = snapshot.selected_entity_id
+        if entry.edit_world is not None:
+            entry.edit_world.selected_entity_name = snapshot.selected_entity_name
+        entry.dirty = snapshot.dirty
+        entry.pending_edit_world_sync_reason = snapshot.pending_edit_world_sync_reason
 
     def _apply_authoring_component_state(
         self,
@@ -1868,11 +1836,8 @@ class SceneManager:
             if field_name not in component_state:
                 continue
             updated_state[field_name] = float(component_state[field_name])
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        snapshot = self._capture_serializable_mutation(entry)
+        before = snapshot.scene_data
         entry.selected_entity_name = entity_name
         entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
         if not entry.scene.replace_component_data(entity_name, component_name, updated_state):
@@ -1880,11 +1845,7 @@ class SceneManager:
                 return False
         if not self._commit_serializable_scene_mutation(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            snapshot,
             failure_context=label,
         ):
             return False

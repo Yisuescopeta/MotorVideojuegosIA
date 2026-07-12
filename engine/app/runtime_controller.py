@@ -608,17 +608,9 @@ class RuntimeController:
 
     @staticmethod
     def _world_has_any_component(world: "World", *component_types: type) -> bool:
-        component_index = getattr(world, "_component_index", None)
-        if isinstance(component_index, dict):
-            for component_type in component_types:
-                if component_index.get(component_type):
-                    return True
-            legacy_component_index = getattr(world, "_entities_by_component", None)
-            if isinstance(legacy_component_index, dict):
-                for component_type in component_types:
-                    if legacy_component_index.get(component_type):
-                        return True
-            return False
+        has_any_component_type = getattr(world, "has_any_component_type", None)
+        if callable(has_any_component_type):
+            return bool(has_any_component_type(*component_types))
 
         get_entities_with = getattr(world, "get_entities_with", None)
         if not callable(get_entities_with):

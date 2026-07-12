@@ -15,14 +15,31 @@ arquitectonico lee [architecture.md](architecture.md); para la taxonomia lee
 
 `Scene` es persistente. `World` es una proyeccion operativa.
 
+### Presencia de componentes ECS
+
+`World.has_any_component_type(*component_types)` es la capacidad estable para
+comprobar presencia por tipo exacto. Consulta primero el indice canonico y, si
+no encuentra ninguna instancia, usa el indice legacy como fallback. No filtra
+por estado `active` de la entidad ni por `enabled` del componente.
+
 ### Clonacion ECS
 
 `Component.clone()` es la ruta normal para crear componentes del mundo runtime:
 clona el payload de `to_dict()` y lo reconstruye mediante `from_dict()`.
-`World.clone()` usa este contrato y reserva `copy.deepcopy()` como fallback para
-componentes legacy incompatibles. Los metadatos serializables se copian con
-`clone_json_value()` para mantener independencia entre EDIT y PLAY sin activar
-el protocolo generico de copia profunda en la ruta normal.
+`engine.ecs.world_clone.clone_world()` es la autoridad de clonacion de mundos;
+`World.clone()` se mantiene como fachada compatible y le pasa la factory exacta
+`World`, no `type(self)`. Usa el contrato de componentes anterior y reserva
+`copy.deepcopy()` como fallback para componentes legacy incompatibles. Los
+metadatos serializables se copian con `clone_json_value()` para mantener
+independencia entre EDIT y PLAY sin activar el protocolo generico de copia
+profunda en la ruta normal. La extraccion no cambia el comportamiento ni el
+aislamiento mutable.
+
+### Serializacion ECS
+
+`engine.ecs.world_serialization.serialize_world()` es la autoridad de
+serializacion de `World`; `World.serialize()` se mantiene como fachada
+compatible. Esta extraccion no cambia el schema ni el payload serializado.
 
 Los componentes oficiales de `engine.components` deben implementar contratos
 explicitos `to_dict()` y `from_dict()`. `World.serialize()` rechaza un componente
@@ -893,6 +910,19 @@ Acciones de reglas soportadas por contrato:
 `SceneManager` coordina carga/guardado, workspace multi-escena, escena activa,
 dirty state, historial, transacciones, `EDIT -> PLAY -> STOP`, operaciones
 estructurales y prefabs.
+
+`engine.scenes.scene_persistence.ScenePersistenceService` es la autoridad
+tecnica de resolucion de rutas, storage default o custom, readback, migracion,
+validacion, recuento de entidades y lectura de mtime. Con storage default
+escribe primero un archivo temporal y lo reemplaza sobre el destino; con storage
+custom delega la escritura en el `SceneStorage` recibido. Ambos caminos
+verifican el contenido mediante readback antes de completar el guardado.
+
+`SceneManager` conserva la instalacion del payload verificado, rekey del
+workspace, dirty y pending state, tracking de mtime y callbacks. `SceneWorkspace`
+queda limitado al estado y ciclo de vida en memoria, sin I/O. Las firmas
+publicas, Scene v2, su schema y la atomicidad vigente de los caminos default y
+custom no cambian.
 
 El guardado de prefabs usa logging de proyecto (`ProjectLog`) para registrar
 fallos de escritura. La instanciacion de prefabs emplea nombrado atomico con

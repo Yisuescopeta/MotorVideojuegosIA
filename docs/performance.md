@@ -137,6 +137,34 @@ El parametro `compact_save` permite forzar el modo: `True` guarda compacto y
 cambio solo afecta espacios y saltos de linea; el payload serializable y
 `load_scene_from_file` siguen usando el mismo contrato.
 
+### Medicion `scene_save`
+
+El runner publica `operations.scene_save` cuando la escena cargada supera
+`COMPACT_SCENE_SAVE_ENTITY_THRESHOLD`. La operacion usa un `SceneManager`
+aislado: guarda una copia de la escena sin cambiar la clave ni el workspace
+principal del benchmark. Su salida estructurada contiene exactamente:
+
+- `ms`: mediana compatible con las demas operaciones;
+- `median_ms` y `p95_ms`;
+- `samples_ms`;
+- `entity_count` y `compact_threshold`;
+- `workspace_isolated`, que debe ser `true`.
+
+La comparacion reproducible de B1/B2 uso `play_mode_clone_stress` en modo
+`edit`, un frame, `--entity-count 10000`, `--columns 100`, un warmup y
+`--operation-repeats 10`. El escenario materializo 10001 entidades frente al
+umbral 1000. La mediana paso de 4542.7661 ms a 4386.55145 ms: -3.438756%.
+Con solo diez muestras, `p95_ms` queda como diagnostico de dispersion; no debe
+usarse por si solo para decidir una regresion.
+
+La suite quick A0 duro 18777.1229 ms y la de B-core 55267.3528 ms
+(+194.333446%), con 4/4 escenarios aprobados, cero warnings y cero fallos en
+ambos casos. Estas duraciones totales no forman una comparacion homogenea de
+rendimiento: B-core incorpora `scene_save` en cada workload que supera el
+umbral, con su warmup y guardados repetidos en workspace aislado. Ese trabajo
+operativo adicional explica el aumento de tiempo de pared; los umbrales de la
+suite siguen 4/4 en verde.
+
 ## Escenarios
 
 - `many_transform_entities`: muchas entidades con `Transform`.

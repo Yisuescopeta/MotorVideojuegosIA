@@ -1,0 +1,534 @@
+{
+  "benchmark_version": 3,
+  "source": "scenario",
+  "scenario_name": "play_mode_clone_stress",
+  "scene_path": null,
+  "backend": "legacy_aabb",
+  "mode": "play",
+  "frames_requested": 1,
+  "profiler_frames_recorded": 1,
+  "dt": 0.016666666666666666,
+  "environment": {
+    "python": "3.11.1",
+    "platform": "Windows-10-10.0.26200-SP0"
+  },
+  "measurement": {
+    "warmup": 1,
+    "repeats": 10
+  },
+  "parameters": {
+    "entity_count": 10000,
+    "total_entities": 10001,
+    "columns": 100,
+    "spacing": 24.0
+  },
+  "operations": {
+    "load_level": {
+      "ms": 3087.9552000005788
+    },
+    "world_clone": {
+      "ms": 514.6143000001757,
+      "median_ms": 514.6143000001757,
+      "p95_ms": 550.5592000008619,
+      "samples_ms": [
+        510.10320000204956,
+        487.50680000011926,
+        540.5845000022964,
+        533.1065000027593,
+        491.36319999888656,
+        550.5592000008619,
+        494.3261000007624,
+        491.11660000198754,
+        519.1253999983019,
+        522.3408000019845
+      ]
+    },
+    "world_serialize": {
+      "ms": 111.75949999960721,
+      "median_ms": 111.75949999960721,
+      "p95_ms": 160.41579999728128,
+      "samples_ms": [
+        160.41579999728128,
+        114.35770000025514,
+        70.42790000195964,
+        127.44360000215238,
+        65.76530000165803,
+        111.19770000004792,
+        133.75450000239653,
+        71.67969999863999,
+        112.32129999916651,
+        64.61659999695257
+      ]
+    },
+    "ecs_queries": {
+      "ms": 6.077900001400849,
+      "median_ms": 6.077900001400849,
+      "p95_ms": 6.524200001877034,
+      "samples_ms": [
+        5.377499997848645,
+        5.898300001717871,
+        6.507099998998456,
+        5.61559999914607,
+        6.524200001877034,
+        6.40420000127051,
+        6.094800002756529,
+        5.702800001017749,
+        6.180899999890244,
+        6.061000000045169
+      ]
+    },
+    "scene_create_world": {
+      "ms": 870.4948500017053,
+      "median_ms": 870.4948500017053,
+      "p95_ms": 930.2194000010786,
+      "samples_ms": [
+        864.0133000008063,
+        860.5480999976862,
+        877.4676000030013,
+        912.7401999976428,
+        930.2194000010786,
+        849.6959000003699,
+        829.9944999998843,
+        835.249699997803,
+        876.9764000026044,
+        883.1666000005498
+      ]
+    },
+    "scene_add_entity_canonicalization": {
+      "ms": 0.009299999874201603,
+      "median_ms": 0.009299999874201603,
+      "p95_ms": 0.013199998647905886,
+      "samples_ms": [
+        0.011999996786471456,
+        0.009999999747378752,
+        0.009400002454640344,
+        0.009199997293762863,
+        0.008800001523923129,
+        0.008999999408842996,
+        0.013199998647905886,
+        0.009400002454640344,
+        0.008800001523923129,
+        0.008400002116104588
+      ]
+    },
+    "edit_to_play": {
+      "ms": 494.2714999997406
+    },
+    "render_preparation": {
+      "ms": 96.44939999998314,
+      "stats": {
+        "render_entities": 885,
+        "render_commands": 885,
+        "draw_calls": 885,
+        "batches": 1,
+        "state_changes": 0,
+        "sprite_batches": 0,
+        "batched_sprites": 0,
+        "sprite_batch_fallbacks": 0,
+        "tilemap_chunks": 0,
+        "tilemap_total_chunks": 0,
+        "tilemap_visible_chunks": 0,
+        "tilemap_tile_draw_calls": 0,
+        "tilemap_chunk_rebuilds": 0,
+        "pass_count": 3,
+        "render_target_passes": 0,
+        "render_target_composites": 0,
+        "spatial_culling_enabled": true,
+        "spatial_total_entities": 10001,
+        "spatial_visible_entities": 885,
+        "sort_cache": {
+          "hits": 0,
+          "misses": 1
+        },
+        "passes": {
+          "World": {
+            "render_entities": 885,
+            "render_commands": 885,
+            "draw_calls": 885,
+            "tilemap_tile_draw_calls": 0,
+            "batches": 1,
+            "state_changes": 0,
+            "sprite_batches": 0,
+            "batched_sprites": 0,
+            "sprite_batch_fallbacks": 0
+          },
+          "Overlay": {
+            "render_entities": 0,
+            "render_commands": 0,
+            "draw_calls": 0,
+            "tilemap_tile_draw_calls": 0,
+            "batches": 0,
+            "state_changes": 0,
+            "sprite_batches": 0,
+            "batched_sprites": 0,
+            "sprite_batch_fallbacks": 0
+          },
+          "Debug": {
+            "render_entities": 0,
+            "render_commands": 0,
+            "draw_calls": 0,
+            "tilemap_tile_draw_calls": 0,
+            "batches": 0,
+            "state_changes": 0,
+            "sprite_batches": 0,
+            "batched_sprites": 0,
+            "sprite_batch_fallbacks": 0
+          }
+        }
+      },
+      "visible_entities": 885,
+      "total_entities": 10001
+    },
+    "play_to_edit": {
+      "ms": 884.3835000006948
+    },
+    "physics_cache_metrics": {
+      "cold_frame": {
+        "ccd_bodies": 0.0,
+        "swept_checks": 0.0,
+        "candidate_solids": 0.0,
+        "aabb_builds": 0.0,
+        "shape_builds": 0.0,
+        "aabb_cache_hits": 0.0,
+        "shape_cache_hits": 0.0
+      },
+      "hot_frame": {
+        "ccd_bodies": 0.0,
+        "swept_checks": 0.0,
+        "candidate_solids": 0.0,
+        "aabb_builds": 0.0,
+        "shape_builds": 0.0,
+        "aabb_cache_hits": 0.0,
+        "shape_cache_hits": 0.0
+      },
+      "aabb_build_reduction": 0.0,
+      "shape_build_reduction": 0.0,
+      "candidate_reduction": 0.0
+    }
+  },
+  "profiler_report": {
+    "profile_version": 1,
+    "run_label": "benchmark:play_mode_clone_stress:play",
+    "frames": 1,
+    "systems": {
+      "animation": {
+        "avg_ms": 0.013199998647905886,
+        "min_ms": 0.013199998647905886,
+        "max_ms": 0.013199998647905886,
+        "total_ms": 0.013199998647905886
+      },
+      "frame": {
+        "avg_ms": 0.10090000068885274,
+        "min_ms": 0.10090000068885274,
+        "max_ms": 0.10090000068885274,
+        "total_ms": 0.10090000068885274
+      },
+      "gameplay": {
+        "avg_ms": 0.03930000093532726,
+        "min_ms": 0.03930000093532726,
+        "max_ms": 0.03930000093532726,
+        "total_ms": 0.03930000093532726
+      },
+      "hierarchy": {
+        "avg_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "total_ms": 0.0
+      },
+      "inspector": {
+        "avg_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "total_ms": 0.0
+      },
+      "render": {
+        "avg_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "total_ms": 0.0
+      },
+      "scripts": {
+        "avg_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "total_ms": 0.0
+      },
+      "selection_gizmo": {
+        "avg_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "total_ms": 0.0
+      },
+      "ui": {
+        "avg_ms": 0.020800001948373392,
+        "min_ms": 0.020800001948373392,
+        "max_ms": 0.020800001948373392,
+        "total_ms": 0.020800001948373392
+      }
+    },
+    "counters": {
+      "avg": {
+        "entities": 10001.0,
+        "components": 30002.0,
+        "component_count": 30002.0,
+        "render_entities": 0.0,
+        "draw_calls": 0.0,
+        "batches": 0.0,
+        "tilemap_chunks": 0.0,
+        "tilemap_chunk_rebuilds": 0.0,
+        "render_target_passes": 0.0,
+        "physics_ccd_bodies": 0.0,
+        "physics_contacts": 0.0,
+        "physics_candidate_solids": 0.0,
+        "physics_swept_checks": 0.0,
+        "physics_aabb_builds": 0.0,
+        "physics_shape_builds": 0.0,
+        "physics_aabb_cache_hits": 0.0,
+        "physics_shape_cache_hits": 0.0,
+        "physics_spatial_cell_size": 0.0,
+        "physics_spatial_cell_count": 0.0,
+        "physics_spatial_references": 0.0,
+        "physics_spatial_oversized_entries": 0.0,
+        "collision_candidates": 0.0,
+        "collision_pairs_tested": 0.0,
+        "collision_hits": 0.0,
+        "collision_aabb_builds": 0.0,
+        "collision_shape_builds": 0.0,
+        "collision_aabb_cache_hits": 0.0,
+        "collision_shape_cache_hits": 0.0,
+        "canvases": 0.0,
+        "buttons": 0.0,
+        "scripts": 0.0,
+        "gc_gen0_count": 530.0,
+        "gc_gen1_count": 3.0,
+        "gc_gen2_count": 10.0,
+        "textures_loaded": 0.0,
+        "texture_load_failures": 0.0,
+        "texture_cache_approx_bytes": 0.0,
+        "render_sorted_entities_cache_size": 10001.0,
+        "render_graph_pass_cache_size": 3.0,
+        "tilemap_chunk_cache_size": 0.0,
+        "world_json_bytes": 0.0,
+        "entity_avg_json_bytes": 0.0
+      },
+      "max": {
+        "batches": 0.0,
+        "buttons": 0.0,
+        "canvases": 0.0,
+        "collision_aabb_builds": 0.0,
+        "collision_aabb_cache_hits": 0.0,
+        "collision_candidates": 0.0,
+        "collision_hits": 0.0,
+        "collision_pairs_tested": 0.0,
+        "collision_shape_builds": 0.0,
+        "collision_shape_cache_hits": 0.0,
+        "component_count": 30002.0,
+        "components": 30002.0,
+        "draw_calls": 0.0,
+        "entities": 10001.0,
+        "entity_avg_json_bytes": 0.0,
+        "gc_gen0_count": 530.0,
+        "gc_gen1_count": 3.0,
+        "gc_gen2_count": 10.0,
+        "physics_aabb_builds": 0.0,
+        "physics_aabb_cache_hits": 0.0,
+        "physics_candidate_solids": 0.0,
+        "physics_ccd_bodies": 0.0,
+        "physics_contacts": 0.0,
+        "physics_shape_builds": 0.0,
+        "physics_shape_cache_hits": 0.0,
+        "physics_spatial_cell_count": 0.0,
+        "physics_spatial_cell_size": 0.0,
+        "physics_spatial_oversized_entries": 0.0,
+        "physics_spatial_references": 0.0,
+        "physics_swept_checks": 0.0,
+        "render_entities": 0.0,
+        "render_graph_pass_cache_size": 3.0,
+        "render_sorted_entities_cache_size": 10001.0,
+        "render_target_passes": 0.0,
+        "scripts": 0.0,
+        "texture_cache_approx_bytes": 0.0,
+        "texture_load_failures": 0.0,
+        "textures_loaded": 0.0,
+        "tilemap_chunk_cache_size": 0.0,
+        "tilemap_chunk_rebuilds": 0.0,
+        "tilemap_chunks": 0.0,
+        "world_json_bytes": 0.0
+      }
+    },
+    "last_frame": {
+      "frame": 1,
+      "mode": "PLAY",
+      "backend": "legacy_aabb",
+      "timings_ms": {
+        "frame": 0.10090000068885274,
+        "render": 0.0,
+        "inspector": 0.0,
+        "hierarchy": 0.0,
+        "ui": 0.020800001948373392,
+        "scripts": 0.0,
+        "selection_gizmo": 0.0,
+        "animation": 0.013199998647905886,
+        "gameplay": 0.03930000093532726
+      },
+      "counters": {
+        "entities": 10001,
+        "components": 30002,
+        "component_count": 30002,
+        "render_entities": 0,
+        "draw_calls": 0,
+        "batches": 0,
+        "tilemap_chunks": 0,
+        "tilemap_chunk_rebuilds": 0,
+        "render_target_passes": 0,
+        "physics_ccd_bodies": 0,
+        "physics_contacts": 0,
+        "physics_candidate_solids": 0,
+        "physics_swept_checks": 0,
+        "physics_aabb_builds": 0,
+        "physics_shape_builds": 0,
+        "physics_aabb_cache_hits": 0,
+        "physics_shape_cache_hits": 0,
+        "physics_spatial_cell_size": 0,
+        "physics_spatial_cell_count": 0,
+        "physics_spatial_references": 0,
+        "physics_spatial_oversized_entries": 0,
+        "collision_candidates": 0,
+        "collision_pairs_tested": 0,
+        "collision_hits": 0,
+        "collision_aabb_builds": 0,
+        "collision_shape_builds": 0,
+        "collision_aabb_cache_hits": 0,
+        "collision_shape_cache_hits": 0,
+        "canvases": 0,
+        "buttons": 0,
+        "scripts": 0,
+        "gc_gen0_count": 530,
+        "gc_gen1_count": 3,
+        "gc_gen2_count": 10,
+        "textures_loaded": 0,
+        "texture_load_failures": 0,
+        "texture_cache_approx_bytes": 0,
+        "render_sorted_entities_cache_size": 10001,
+        "render_graph_pass_cache_size": 3,
+        "tilemap_chunk_cache_size": 0
+      },
+      "memory": {
+        "world_json_bytes": 0.0,
+        "entity_avg_json_bytes": 0.0
+      },
+      "backend_metrics": {
+        "ccd_bodies": 0,
+        "swept_checks": 0,
+        "candidate_solids": 0,
+        "aabb_builds": 0,
+        "shape_builds": 0,
+        "aabb_cache_hits": 0,
+        "shape_cache_hits": 0
+      }
+    }
+  },
+  "last_sample": {
+    "frame": 1,
+    "mode": "PLAY",
+    "backend": "legacy_aabb",
+    "timings_ms": {
+      "frame": 0.10090000068885274,
+      "render": 0.0,
+      "inspector": 0.0,
+      "hierarchy": 0.0,
+      "ui": 0.020800001948373392,
+      "scripts": 0.0,
+      "selection_gizmo": 0.0,
+      "animation": 0.013199998647905886,
+      "gameplay": 0.03930000093532726
+    },
+    "counters": {
+      "entities": 10001,
+      "components": 30002,
+      "component_count": 30002,
+      "render_entities": 0,
+      "draw_calls": 0,
+      "batches": 0,
+      "tilemap_chunks": 0,
+      "tilemap_chunk_rebuilds": 0,
+      "render_target_passes": 0,
+      "physics_ccd_bodies": 0,
+      "physics_contacts": 0,
+      "physics_candidate_solids": 0,
+      "physics_swept_checks": 0,
+      "physics_aabb_builds": 0,
+      "physics_shape_builds": 0,
+      "physics_aabb_cache_hits": 0,
+      "physics_shape_cache_hits": 0,
+      "physics_spatial_cell_size": 0,
+      "physics_spatial_cell_count": 0,
+      "physics_spatial_references": 0,
+      "physics_spatial_oversized_entries": 0,
+      "collision_candidates": 0,
+      "collision_pairs_tested": 0,
+      "collision_hits": 0,
+      "collision_aabb_builds": 0,
+      "collision_shape_builds": 0,
+      "collision_aabb_cache_hits": 0,
+      "collision_shape_cache_hits": 0,
+      "canvases": 0,
+      "buttons": 0,
+      "scripts": 0,
+      "gc_gen0_count": 530,
+      "gc_gen1_count": 3,
+      "gc_gen2_count": 10,
+      "textures_loaded": 0,
+      "texture_load_failures": 0,
+      "texture_cache_approx_bytes": 0,
+      "render_sorted_entities_cache_size": 10001,
+      "render_graph_pass_cache_size": 3,
+      "tilemap_chunk_cache_size": 0
+    },
+    "memory": {
+      "world_json_bytes": 0.0,
+      "entity_avg_json_bytes": 0.0
+    },
+    "backend_metrics": {
+      "ccd_bodies": 0,
+      "swept_checks": 0,
+      "candidate_solids": 0,
+      "aabb_builds": 0,
+      "shape_builds": 0,
+      "aabb_cache_hits": 0,
+      "shape_cache_hits": 0
+    }
+  },
+  "summary": {
+    "frame_avg_ms": 0.10090000068885274,
+    "frame_max_ms": 0.10090000068885274,
+    "gameplay_avg_ms": 0.03930000093532726,
+    "gameplay_max_ms": 0.03930000093532726,
+    "candidate_solids_avg": 0.0,
+    "candidate_solids_max": 0.0,
+    "swept_checks_avg": 0.0,
+    "swept_checks_max": 0.0,
+    "aabb_builds_avg": 0.0,
+    "aabb_builds_max": 0.0,
+    "shape_builds_avg": 0.0,
+    "shape_builds_max": 0.0,
+    "aabb_cache_hits_avg": 0.0,
+    "aabb_cache_hits_max": 0.0,
+    "shape_cache_hits_avg": 0.0,
+    "shape_cache_hits_max": 0.0,
+    "spatial_cell_size_avg": 0.0,
+    "spatial_cell_size_max": 0.0,
+    "collision_candidates_avg": 0.0,
+    "collision_candidates_max": 0.0,
+    "collision_pairs_tested_avg": 0.0,
+    "collision_pairs_tested_max": 0.0,
+    "collision_hits_avg": 0.0,
+    "collision_hits_max": 0.0,
+    "entities_avg": 10001.0,
+    "entities_max": 10001.0,
+    "draw_calls_avg": 0.0,
+    "draw_calls_max": 0.0,
+    "render_entities_avg": 0.0,
+    "render_entities_max": 0.0
+  }
+}

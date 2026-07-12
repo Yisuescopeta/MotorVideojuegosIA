@@ -53,6 +53,32 @@ class SerializedIdRuntimeTests(unittest.TestCase):
         self.assertIsNone(world.get_entity_by_serialized_id("entity_hero"))
         self.assertIs(world.get_entity_by_serialized_id("entity_player"), entity)
 
+    def test_duplicate_serialized_id_last_writer_wins_without_restoring_shadowed_entity(self) -> None:
+        world = World()
+        first = world.create_entity("First")
+        first.serialized_id = "shared-id"
+        second = world.create_entity("Second")
+        second.serialized_id = "shared-id"
+
+        self.assertIs(world.get_entity_by_serialized_id("shared-id"), second)
+
+        world.remove_entity(second.id)
+
+        self.assertIs(world.get_entity(first.id), first)
+        self.assertIsNone(world.get_entity_by_serialized_id("shared-id"))
+
+    def test_serialized_id_change_to_existing_value_replaces_lookup_owner(self) -> None:
+        world = World()
+        first = world.create_entity("First")
+        first.serialized_id = "shared-id"
+        second = world.create_entity("Second")
+        second.serialized_id = "second-id"
+
+        second.serialized_id = "shared-id"
+
+        self.assertIs(world.get_entity_by_serialized_id("shared-id"), second)
+        self.assertIsNone(world.get_entity_by_serialized_id("second-id"))
+
     def test_remove_entity_cleans_serialized_id_index(self) -> None:
         world = World()
         entity = world.create_entity("Hero")
