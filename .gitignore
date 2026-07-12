@@ -35,6 +35,7 @@ htmlcov/
 # Temporary
 *.tmp
 *.temp
+.codex-remote-attachments/
 
 # Node / Astro
 node_modules/
