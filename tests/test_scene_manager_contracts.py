@@ -153,6 +153,27 @@ class SceneManagerContractsTests(unittest.TestCase):
 
         self.assertEqual(self.manager.find_entity_data_by_id(player_id)["parent"], "Parent")
 
+    def test_workspace_canonicalizes_windows_short_path_aliases(self) -> None:
+        alias_path = "C:/Users/RUNNER~1/AppData/Local/Temp/secondary.json"
+        canonical_path = Path("C:/Users/runneradmin/AppData/Local/Temp/secondary.json")
+
+        with patch("engine.scenes.workspace_lifecycle.Path.resolve", return_value=canonical_path):
+            self.manager.load_scene(
+                {
+                    "name": "Secondary",
+                    "entities": [],
+                    "rules": [],
+                    "feature_metadata": {},
+                },
+                source_path=alias_path,
+                activate=False,
+            )
+            entry = self.manager.resolve_entry(alias_path)
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.key, canonical_path.as_posix())
+        self.assertEqual(entry.source_path, canonical_path.as_posix())
+
     def test_serializable_rollback_restores_only_characterized_entry_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             secondary_path = Path(temp_dir) / "secondary.json"
