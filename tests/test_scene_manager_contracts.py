@@ -196,6 +196,7 @@ class SceneManagerContractsTests(unittest.TestCase):
                 activate=False,
             )
             entry = self.manager.resolve_entry(secondary_path.as_posix())
+            self.assertIsNotNone(entry)
 
             player_id = entry.scene.find_entity("SecondaryPlayer")["id"]
             entry.selected_entity_name = "SecondaryPlayer"
