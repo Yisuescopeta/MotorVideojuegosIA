@@ -1,6 +1,6 @@
 # OpenGame - AI Quick Start
 
-**Project**: OpenGame
+**Project**: Opengame cartas
 **Engine Version**: 2026.06
 
 ## Overview
@@ -284,12 +284,6 @@ The entries below are available now and are safe to use from the CLI.
 - `game:platformer:set-bounds`: Create or update native platformer level bounds in the selected scene
 - `game:platformer:set-camera-follow`: Create or update Camera2D follow settings in the selected platformer scene
 - `game:platformer:validate`: Validate selected native platformer scene contract
-
-### Vision
-
-- `vision:annotate`: Generate a deterministic PPM debug overlay for a GameSpec2D image
-- `vision:build-scene`: Build a scene from a valid experimental GameSpec2D JSON file
-- `vision:spec:validate`: Validate an experimental GameSpec2D JSON file
 
 ### Runtime
 

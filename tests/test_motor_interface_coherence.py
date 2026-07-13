@@ -32,7 +32,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from engine.ai import get_default_registry
+from engine.ai import MotorAIBootstrapBuilder, get_default_registry
 
 # Import official CLI API
 from motor.cli import create_motor_parser
@@ -127,14 +127,25 @@ class MotorRegistryAlignmentTests(unittest.TestCase):
 class MotorDocumentationAlignmentTests(unittest.TestCase):
     """Tests that documentation uses official motor interface."""
 
+    @staticmethod
+    def _generated_start_here_content() -> str:
+        """Generate the project-local AI bootstrap document under test."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir) / "DocumentationContract"
+            project.mkdir()
+            builder = MotorAIBootstrapBuilder(get_default_registry())
+            builder.write_to_project(
+                project,
+                {"project": {"name": "DocumentationContract"}},
+            )
+            start_here_path = project / "START_HERE_AI.md"
+            if not start_here_path.exists():
+                raise AssertionError(f"Bootstrap did not create {start_here_path}")
+            return start_here_path.read_text(encoding="utf-8")
+
     def test_start_here_md_uses_motor_not_tools_engine_cli(self) -> None:
         """START_HERE_AI.md must use 'motor ' not 'tools.engine_cli' except in compatibility notes."""
-        start_here_path = ROOT / "START_HERE_AI.md"
-
-        self.assertTrue(start_here_path.exists(),
-            f"START_HERE_AI.md must exist at {start_here_path}")
-
-        content = start_here_path.read_text(encoding="utf-8")
+        content = self._generated_start_here_content()
 
         # Check for deprecated references, but allow them in context of "Legacy", "deprecated", "compatibility"
         deprecated_patterns = [
@@ -163,12 +174,7 @@ class MotorDocumentationAlignmentTests(unittest.TestCase):
 
     def test_start_here_md_commands_use_motor_prefix(self) -> None:
         """Commands in START_HERE_AI.md should use 'motor ' prefix."""
-        start_here_path = ROOT / "START_HERE_AI.md"
-
-        self.assertTrue(start_here_path.exists(),
-            f"START_HERE_AI.md must exist at {start_here_path}")
-
-        content = start_here_path.read_text(encoding="utf-8")
+        content = self._generated_start_here_content()
 
         # Find code blocks and command lines
         violations = []

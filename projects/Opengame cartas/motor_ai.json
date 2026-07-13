@@ -3679,9 +3679,9 @@
         "total": 125
     },
     "project": {
-        "name": "OpenGame",
+        "name": "Opengame cartas",
         "root": ".",
-        "engine_version": "2026.03",
+        "engine_version": "2026.06",
         "template": "empty",
         "paths": {
             "assets": "assets",

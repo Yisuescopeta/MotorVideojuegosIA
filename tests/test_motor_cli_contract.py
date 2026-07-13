@@ -1651,13 +1651,25 @@ class PrefabCLIContractTests(unittest.TestCase):
 class DocumentationContractTests(unittest.TestCase):
     """Contract tests for documentation alignment with motor CLI."""
 
+    @staticmethod
+    def _generated_start_here_content() -> str:
+        """Generate the project-local AI bootstrap document under test."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir) / "DocumentationContract"
+            project.mkdir()
+            builder = MotorAIBootstrapBuilder(get_default_registry())
+            builder.write_to_project(
+                project,
+                {"project": {"name": "DocumentationContract"}},
+            )
+            start_here_path = project / "START_HERE_AI.md"
+            if not start_here_path.exists():
+                raise AssertionError(f"Bootstrap did not create {start_here_path}")
+            return start_here_path.read_text(encoding="utf-8")
+
     def test_start_here_md_uses_motor_as_primary_interface(self) -> None:
         """START_HERE_AI.md debe usar `motor` como interfaz principal."""
-        start_here_path = ROOT / "START_HERE_AI.md"
-        self.assertTrue(start_here_path.exists(),
-            f"START_HERE_AI.md must exist at {start_here_path}")
-
-        content = start_here_path.read_text(encoding="utf-8")
+        content = self._generated_start_here_content()
         lines = content.split("\n")
 
         violations = []
@@ -1679,11 +1691,7 @@ class DocumentationContractTests(unittest.TestCase):
 
     def test_start_here_md_no_python_m_tools_pattern(self) -> None:
         """START_HERE_AI.md no debe tener `python -m tools...` como ejemplo principal."""
-        start_here_path = ROOT / "START_HERE_AI.md"
-        self.assertTrue(start_here_path.exists(),
-            f"START_HERE_AI.md must exist at {start_here_path}")
-
-        content = start_here_path.read_text(encoding="utf-8")
+        content = self._generated_start_here_content()
 
         # Buscar patrones prohibidos
         prohibited_patterns = [
