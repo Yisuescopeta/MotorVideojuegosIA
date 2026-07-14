@@ -52,6 +52,10 @@ class SerializableMutationCoordinator:
     def snapshot_scene_data(self, snapshot: object) -> dict[str, Any]:
         return copy.deepcopy(self._state(snapshot).scene_data)
 
+    def snapshot_entry_scene_data(self, entry: SceneWorkspaceEntry) -> dict[str, Any]:
+        """Return a defensive scene snapshot for history boundaries."""
+        return copy.deepcopy(entry.scene.to_dict())
+
     def restore_snapshot(
         self,
         entry: SceneWorkspaceEntry,
@@ -81,7 +85,7 @@ class SerializableMutationCoordinator:
                 entry.scene.to_dict(),
                 selection=selection,
             )
-        except ValueError as exc:
+        except Exception as exc:
             self.restore_snapshot(entry, snapshot)
             log_err(f"SceneManager: rejected invalid serializable mutation during {failure_context}: {exc}")
             return False

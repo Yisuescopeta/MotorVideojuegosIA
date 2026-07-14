@@ -464,6 +464,12 @@ class Scene:
     def set_feature_metadata(self, key: str, value: Any) -> None:
         self.feature_metadata[key] = value
 
+    def remove_feature_metadata(self, key: str) -> bool:
+        if key not in self.feature_metadata:
+            return False
+        del self.feature_metadata[key]
+        return True
+
     def find_entity(self, entity_name: str) -> Optional[Dict[str, Any]]:
         if not isinstance(entity_name, str):
             return None

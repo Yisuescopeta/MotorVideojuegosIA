@@ -963,14 +963,26 @@ dirty state, y limpia pending sync mediante el coordinador. La ruta incremental
 valida no usa rebuild completo y no depende de prefab overrides, persistencia ni
 scene flow.
 
-`engine.scenes.serializable_authoring.SceneSerializableAuthoring` concentra las
-consultas defensivas de authoring y las mutaciones serializables generales que
-no pertenecen a la ruta incremental ni a operaciones estructurales. Recibe ocho
-dependencias explicitas: `SceneWorkspace`, `SceneEditSyncCoordinator`,
-`SerializableMutationCoordinator`, `SceneProjectionService`,
-`SceneHistoryPort`, `PrefabOverridePort`, `SceneFlowPolicy` y
-`ComponentRegistry`. Esta composicion cohesiva es el estado vigente; la decision
-de mantenerla o dividirla corresponde a S7C.
+La decision S7C es `split_component_and_entity`.
+`engine.scenes.serializable_authoring.SceneSerializableAuthoring` permanece como
+fachada de compatibilidad y conserva los wrappers existentes. Compone una unica
+instancia de `SceneSerializableAuthoringPipeline`, una de
+`SceneComponentAuthoring` y una de `SceneEntityAuthoring`; no mantiene una
+segunda implementacion de authoring.
+
+`SceneComponentAuthoring` posee consultas defensivas, CRUD y metadata de
+componentes, ademas de la mutacion transaccional de scene flow.
+`SceneEntityAuthoring` posee consultas defensivas y CRUD de entidades, incluida
+la creacion incremental y su historial diferencial. Entre ambos, los cuatro
+fallbacks de prefab consumen exclusivamente `PrefabOverridePort`. Ambos consumen
+el mismo `SceneSerializableTransactionPort`, no dependen entre si y no dependen
+de `SceneStructuralAuthoring`.
+
+`SceneSerializableAuthoringPipeline` implementa ese port como limite
+transaccional unico. Sus dependencias son `SceneWorkspace`,
+`SceneEditSyncCoordinator`, `SerializableMutationCoordinator` y
+`SceneHistoryPort`; los dos propietarios no duplican flush, snapshot, rollback,
+commit, dirty state ni historial.
 
 `SceneManager` conserva las firmas publicas como wrappers y el routing. Para
 ediciones de componentes decide entre `SceneIncrementalAuthoring` y
@@ -1007,16 +1019,30 @@ sin dejar una instalacion parcial. El coordinador tambien ofrece el commit
 incremental de una entidad: valida el payload, publica conjuntamente `Scene` y
 `World`, o restaura el snapshot semantico ante cualquier fallo.
 
-`SceneSerializableAuthoring` captura, confirma o revierte sus operaciones con el
-token opaco del coordinador y registra historial mediante `SceneHistoryPort`.
-`SceneManager.set_scene_flow_target()` es la unica excepcion que conserva en el
-manager el limite completo de transaccion serializable; su migracion se difiere
-a S7D.
+`SceneSerializableAuthoringPipeline` captura, confirma o revierte las operaciones
+con el token opaco del coordinador y registra historial mediante
+`SceneHistoryPort`. `SceneComponentAuthoring.set_scene_flow_target()` posee la
+transaccion de scene flow; `SceneSerializableAuthoring` conserva el wrapper
+compatible y `SceneManager.set_scene_flow_target()` solo delega.
+
+El pipeline serializable rechaza PLAY antes de capturar estado y ejecuta, en
+orden, flush de pending, captura, mutacion encapsulada de `Scene`, commit o
+rollback, dirty state e historial. Una excepcion durante commit restaura el
+snapshot y no publica historial; las consultas retornan copias defensivas.
 
 `SceneSerializableEntityPort` define el limite minimo de creacion y actualizacion
-de entidades serializables requerido por structural authoring. Su conexion
-directa se difiere a S7D; mientras tanto `SceneStructuralAuthoringContext`
-conserva callables compatibles que pasan por wrappers de `SceneManager`.
+de entidades serializables requerido por structural authoring. `SceneManager`
+inyecta en `SceneStructuralAuthoring` exactamente la instancia compartida de
+`SceneEntityAuthoring` expuesta por la fachada. `SceneStructuralAuthoringContext`
+ya no contiene callbacks CRUD para `create_entity`, `create_entity_from_data` ni
+`update_entity_property`. La dependencia es unidireccional:
+`SceneStructuralAuthoring -> SceneSerializableEntityPort`; authoring serializable
+no depende de structural authoring y no aparece un ciclo.
+
+S7 no completa las fases siguientes. `SceneChangeCoordinator` conserva el
+dispatch de authoring pendiente de S8A. `SceneStructuralAuthoring` conserva
+contexto y mutaciones internas de `Scene` pendientes de S8B. La reduccion final
+de `SceneManager` a fachada fina queda pendiente de S9.
 
 `engine.scenes.scene_flow.SceneFlowPolicy` define sin estado de workspace ni I/O
 la precedencia y sincronizacion entre `SceneLink` y
@@ -1025,7 +1051,10 @@ su `flow_key` y, para duplicados, gana el ultimo en orden serializado. Un
 `target_path` ausente hereda metadata cuando existe; uno presente pero vacio
 elimina la clave efectiva y deja el link invalido. Metadata sin link se
 conserva. `SceneManager` aplica esta politica sobre la entrada destinataria, por
-lo que escenas activas e inactivas mantienen la misma semantica.
+lo que escenas activas e inactivas mantienen la misma semantica. Si el mapa
+efectivo queda vacio, la politica llama a `Scene.remove_feature_metadata()` y
+retira `feature_metadata.scene_flow`; no serializa el objeto vacio rechazado por
+el schema.
 
 El guardado de prefabs usa logging de proyecto (`ProjectLog`) para registrar
 fallos de escritura. La instanciacion de prefabs emplea nombrado atomico con
@@ -1102,7 +1131,8 @@ Base tecnica interna compartida:
   `SceneManager`, y expone el `SceneHistoryPort` minimo consumido por authoring
   incremental y serializable, el `PrefabOverridePort` de cuatro operaciones
   compartido por authoring serializable y structural, y
-  `SceneSerializableEntityPort` como limite pendiente de wiring directo en S7D.
+  `SceneSerializableEntityPort` como limite ya conectado directamente desde
+  structural authoring a la instancia compartida de `SceneEntityAuthoring`.
 - `engine/core/runtime_contracts.py` encapsula el wiring requerido por
   `RuntimeController` en `RuntimeControllerContext`.
 - `engine/api/_contracts.py` tipa el bundle interno que `EngineAPI` expone a

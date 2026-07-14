@@ -303,6 +303,24 @@ class TestMoveParentMovesChildren(unittest.TestCase):
 
 
 class TestHierarchyAuthoringScenarios(unittest.TestCase):
+    def test_create_child_with_missing_parent_leaves_created_entity_unparented(self) -> None:
+        sm = SceneManager(create_default_registry())
+        sm.load_scene(
+            {
+                "name": "MissingParent",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        created = sm.create_child_entity("Missing", "Orphan")
+
+        self.assertFalse(created)
+        orphan = sm.find_entity_data("Orphan")
+        self.assertIsNotNone(orphan)
+        self.assertIsNone(orphan["parent"])
+
     def test_create_child_entity_uses_local_transform_payload(self) -> None:
         sm = SceneManager(create_default_registry())
         sm.load_scene(

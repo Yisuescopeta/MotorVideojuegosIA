@@ -202,6 +202,27 @@ class SceneIndexTests(unittest.TestCase):
         self.assertTrue(entry_point["enabled"])
         self.assertEqual(entry_point["label"], "North Gate")
 
+    def test_remove_feature_metadata_removes_only_requested_key(self) -> None:
+        scene = Scene(
+            data={
+                "name": "FeatureMetadata",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {
+                    "scene_flow": {"next": "levels/next.json"},
+                    "signals": {"connections": []},
+                },
+            }
+        )
+
+        self.assertTrue(scene.remove_feature_metadata("scene_flow"))
+        self.assertNotIn("scene_flow", scene.feature_metadata)
+        self.assertEqual(
+            scene.feature_metadata["signals"],
+            {"connections": []},
+        )
+        self.assertFalse(scene.remove_feature_metadata("scene_flow"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -234,6 +234,54 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
             "feature_metadata:combat: reject mutation"
         )
 
+    def test_runtime_projection_failure_rolls_back_and_logs_context(self) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        self.workspace.mark_dirty(self.entry)
+        self.edit_sync.restore_pending_reason(
+            self.entry,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        token = self.coordinator.capture_snapshot(self.entry)
+        scene_before = copy.deepcopy(self.entry.scene.to_dict())
+        world_before = copy.deepcopy(self.entry.edit_world.serialize())
+        self.assertTrue(self.entry.scene.update_entity_property("Hero", "tag", "Mutated"))
+
+        original_create_world = self.projection.create_world
+        calls = 0
+
+        def fail_first_projection(scene):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("runtime projection failure")
+            return original_create_world(scene)
+
+        with patch.object(
+            self.projection,
+            "create_world",
+            side_effect=fail_first_projection,
+        ), patch.object(serializable_mutation_module, "log_err") as log_error:
+            self.assertFalse(
+                self.coordinator.commit_mutation(
+                    self.entry,
+                    token,
+                    failure_context="runtime_failure",
+                )
+            )
+
+        self.assertEqual(self.entry.scene.to_dict(), scene_before)
+        self.assertEqual(self.entry.edit_world.serialize(), world_before)
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertTrue(self.entry.dirty)
+        self.assertEqual(
+            self.entry.pending_edit_world_sync_reason,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        log_error.assert_called_once_with(
+            "SceneManager: rejected invalid serializable mutation during "
+            "runtime_failure: runtime projection failure"
+        )
+
     def test_snapshot_scene_data_is_defensive_and_cannot_poison_rollback(self) -> None:
         token = self.coordinator.capture_snapshot(self.entry)
         exposed = self.coordinator.snapshot_scene_data(token)
@@ -311,6 +359,25 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
             "_commit_serializable_scene_mutation",
         ):
             self.assertNotIn(f"def {removed_helper}", manager_class_source)
+
+    def test_manager_delegates_history_snapshots_to_mutation_coordinator(self) -> None:
+        manager = scene_manager_module.SceneManager(create_default_registry())
+        manager.load_scene(_scene_payload())
+        entry = manager.resolve_entry(manager.active_scene_key)
+        callback = manager._change_history._context.snapshot_scene
+
+        self.assertIs(callback.__self__, manager._serializable_mutations)
+        self.assertEqual(
+            callback.__func__,
+            SerializableMutationCoordinator.snapshot_entry_scene_data,
+        )
+        exposed = callback(entry)
+        exposed["entities"][0]["tag"] = "Poisoned"
+        self.assertEqual(entry.scene.find_entity("Hero")["tag"], "Untagged")
+        self.assertNotIn(
+            "snapshot_scene=lambda",
+            inspect.getsource(scene_manager_module.SceneManager),
+        )
 
 
 if __name__ == "__main__":

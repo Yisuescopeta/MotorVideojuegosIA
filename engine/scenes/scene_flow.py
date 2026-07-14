@@ -102,7 +102,10 @@ class SceneFlowPolicy:
 
     def sync_metadata_from_links(self, scene: "Scene") -> dict[str, str]:
         effective = self.get_effective_flow(scene)
-        scene.set_feature_metadata("scene_flow", copy.deepcopy(effective))
+        if effective:
+            scene.set_feature_metadata("scene_flow", copy.deepcopy(effective))
+        else:
+            scene.remove_feature_metadata("scene_flow")
         return effective
 
     def sync_links_from_metadata(self, scene: "Scene") -> None:
@@ -134,7 +137,10 @@ class SceneFlowPolicy:
             metadata[scene_key] = target
         else:
             metadata.pop(scene_key, None)
-        scene.set_feature_metadata("scene_flow", copy.deepcopy(metadata))
+        if metadata:
+            scene.set_feature_metadata("scene_flow", copy.deepcopy(metadata))
+        else:
+            scene.remove_feature_metadata("scene_flow")
         self.sync_links_from_metadata(scene)
         return self.sync_metadata_from_links(scene)
 

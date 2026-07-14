@@ -5,20 +5,22 @@
 - `task_id`: `queen-20260713-001`
 - `model_route`: `critical`
 - `max_cycles`: `5`
-- `cycle`: `4/5`
-- `current_phase`: `S7B`
-- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B in_progress`
+- `cycle`: `5/5`
+- `current_phase`: `GATE S7`
+- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 in_progress`
 - `task_status`: `partial`
-- `next_action`: extraer SceneSerializableAuthoring cohesivo en S7B sin separar componentes/entidades antes de S7C
+- `next_action`: cerrar GATE S7 con suite completa, Ruff, Mypy, benchmark comparable, review, documentación y AI audit antes de iniciar S8A
 - `commit_authorized`: `false`
 - `commit_created`: `false`
 - `push_authorized`: `false`
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
+- `resume_head_sha`: `0e073376204ac0f2d8f27a1f72bfe10f0b5b1005`
+- `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `final_sha`: pendiente
 
 ## Autoridades
 
-- Especificación maestra: `C:/Users/usuario/.codex/attachments/dc349715-f71f-4972-bbc5-509f99d814b3/pasted-text.txt`
+- Especificación maestra vigente aportada al reanudar: `D:/putas/plan_scene_manager_especificacion_maestra_corregida.md`
 - Baseline: `artifacts/refactor_scene_manager/baseline.json`
 - Benchmark bruto: `artifacts/refactor_scene_manager/baseline_benchmarks.json`
 - Baseline de rendimiento comparable autoridad desde S1: `artifacts/refactor_scene_manager/s1-benchmarks.json`
@@ -337,7 +339,7 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   unpack y persistencia completa de prefabs, y S7 necesitaría depender del
   servicio estructural completo. La extracción evita esa dependencia inversa,
   ofrece un segundo consumidor real y separa una causa de cambio demostrada.
-- S7C: pendiente.
+- S7C decision: `split_component_and_entity`.
 - Scene flow S1/S2: la divergencia active/inactive ante `SceneLink.target_path=""` se clasifica `architecture_contract_temporal`, no `behavior_contract`. S1 conserva y caracteriza el estado real sin tocar producción. S2 debe sustituir atómicamente ese test por paridad canónica: target explícitamente vacío elimina la clave del mapa efectivo y de `feature_metadata` tanto active como inactive, conserva invalid badge y otras claves; campo ausente sigue siendo distinto y puede completarse desde metadata. Prohibido conservar branch semántico por `active_scene_key`.
 - Documentación S1: `not_applicable` salvo cambio del harness documentable; plan y artifacts sí se actualizan.
 - PLAN SYNC S2-documentation: el write set S2 omitía por error los dos documentos
@@ -393,6 +395,342 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   La misma corrección encapsulada se aplica a la limpieza de overrides de
   `ScenePrefabAuthoring.apply_prefab_overrides`; no cambia persistencia ni schema.
 - Commit/push: no autorizados.
+- RECON de reanudación 2026-07-14: `git fetch --all --prune` completado;
+  rama `feat/SceneManagerRefactor`; HEAD
+  `0e073376204ac0f2d8f27a1f72bfe10f0b5b1005`; `origin/main` y merge base
+  `fded3556ed9509d5f0e06221f1655ba0f4053687`; working tree limpio antes de
+  actualizar este plan. El diff real confirma que la implementación inicial de
+  S7B ya existe; el estado operativo correcto es `in_progress` por falta de gate
+  definitivo, no por falta de implementación. Tests directos reanudados:
+  `py -3.11 -m unittest -v tests.test_scene_serializable_authoring
+  tests.test_serializable_mutation_coordinator` = 19/19 OK. Producción no
+  modificada durante reconciliación.
+- S7B validator de reanudación: directos amplios 188/188 OK, pero suite completa
+  `py -3.11 -m unittest discover -s tests` = 3.763 ejecutados, 5 fallos y 8
+  skips en 593,746 s. Los cinco fallos se reproducen aislados y son regresiones
+  funcionales reales: dos `InspectorCoreTests` de SceneLink, un test de panel
+  scene-flow y dos tests de reemplazo de UI presets. Gate S7B rechazado.
+- S7B-F1: `SerializableMutationCoordinator.commit_mutation` captura solo
+  `ValueError`; un `RuntimeError` fail-first de projection se propaga y deja la
+  Scene mutada. Causa raíz: catch estrecho heredado no satisface el contrato de
+  rollback ante cualquier excepción recuperable.
+- S7B-F2: `upsert_component_for_scene`, `remove_component_for_scene` y rutas
+  by-ID consultan Scene antes de `flush_pending`; una entidad presente solo en
+  `edit_world` con pending legacy no se materializa antes de la precondición.
+- S7B-F3: `SceneManager.__init__` conserva el algoritmo
+  `snapshot_scene=lambda entry: copy.deepcopy(entry.scene.to_dict())` fuera de
+  la excepción temporal `set_scene_flow_target`.
+- S7B-F7: `SceneFlowPolicy.sync_metadata_from_links()` instala
+  `feature_metadata["scene_flow"] = {}` cuando no hay claves efectivas. El
+  schema exige objeto no vacío; commit incremental revierte creaciones de
+  SceneLink con `flow_key` vacío y cualquier creación posterior a una
+  operación structural que haya sincronizado cero links. Origen `main` eliminaba
+  la clave vacía. Los cinco fallos completos comparten esta causa.
+- PLAN SYNC `S7B-resume-remediation`: se autorizan dentro de S7B
+  `serializable_mutation.py`, `serializable_authoring.py`, `scene_manager.py`,
+  `scene_flow.py`, tests directos S7B/manager/flow y, de forma condicional y
+  estrecha, `scene.py` + `tests/test_scene_index.py` para una primitiva
+  encapsulada que elimine una clave de feature metadata. No se autoriza
+  mutación directa desde policy, schema, API pública, structural ni S8A. La
+  captura legacy de historial debe delegarse en la autoridad transaccional sin
+  ejecutar snapshot desde manager; el God Context de historial permanece deuda
+  explícita S8A. Los cinco tests de suite que fallaron son regresión obligatoria
+  y no se relajan.
+- TEST CONTRACT SYNC `S7B-remediation`: `verdict=sufficient`. TDD obligatorio
+  para: rollback de `RuntimeError`; flush-before-lookup en upsert/remove y rutas
+  by-ID; ausencia de algoritmo snapshot genérico en manager; primitiva
+  `Scene.remove_feature_metadata`; ausencia de `scene_flow` cuando el mapa
+  efectivo queda vacío. Protege PLAY-before-flush/capture, identidad by-ID,
+  rollback de Scene/World/selección/dirty/pending, diagnóstico, metadata ajena,
+  schema no vacío y los cinco tests funcionales fallando. Comandos mínimos:
+  directos serializable/mutation, flow/index/schema, cinco regresiones aisladas,
+  Ruff enfocado y diff-check; suite/Ruff/Mypy completos tras builder.
+- S7B builder remediation: `status=completed`, sin violaciones de write set.
+  F1 captura `Exception` recuperable (no `BaseException`) en commit, restaura
+  estado semántico y conserva diagnóstico; F2 mueve las precondiciones de
+  entidad después de `flush_pending`, incluyendo rutas by-ID y undo
+  diferencial; F3 delega el snapshot defensivo de historial en
+  `SerializableMutationCoordinator`; F7 añade
+  `Scene.remove_feature_metadata()` y elimina `scene_flow` cuando el mapa
+  efectivo queda vacío sin tocar metadata ajena. Siete regresiones TDD
+  reprodujeron los defectos antes del fix y quedaron verdes después.
+- Evidencia builder S7B: directos 25/25 OK; flow/index/schema 79/79 OK; cinco
+  regresiones funcionales 5/5 OK; transacciones 6/6 OK; Ruff y Mypy enfocados
+  OK; `git diff --check` OK. No se relajaron los cinco tests fallando ni el
+  rechazo de schema a `scene_flow = {}`.
+- Verificación raíz S7B posterior al builder: directos 25/25 OK;
+  flow/index/schema 79/79 OK; transacciones 6/6 OK; cinco regresiones 5/5 OK.
+  Un primer comando de selección ejecutó los dos tests de Inspector en verde y
+  no encontró tres clases por nombre incorrecto; se corrigieron los nombres y
+  esos tres tests pasaron 3/3. Ruff completo de producción y tests OK; Mypy
+  completo OK sobre 421 archivos. Suite completa raíz:
+  `py -3.11 -m unittest discover -s tests` = 3.771/3.771 OK, 8 skips, 578,458 s.
+  `git diff --check` OK; `git status --short` limitado al plan y write set S7B.
+  Validator independiente en curso; S7B permanece `in_progress` hasta gate,
+  review, documentación y audit.
+- S7B validator independiente, ciclo 4: suite 3.771/3.771 OK (8 skips,
+  570,447 s), directos 115/115 OK, Ruff/Mypy completos y diff-check verdes;
+  `verdict=fail` y `test_contract_satisfied=false` por S7B-F8. No se relajaron
+  tests: 259 inserciones y 0 eliminaciones en los cuatro archivos de prueba.
+- S7B-F8: `_restore_entity_create_delta()` ejecuta `capture_snapshot` sin
+  `flush_pending`. Reproducción raíz confirmada: tras create+undo, World cambia
+  `Hero.Transform.x` de 1 a 42 y queda pending `legacy_authoring`; redo retorna
+  `True`, limpia pending, pero conserva Scene.x=1 y World.x=42. Es fallo
+  funcional real: viola flush → capture y deja representaciones divergentes.
+- PLAN SYNC `S7B-F8-remediation`: ciclo 5/5. Se autorizan exclusivamente
+  `engine/scenes/serializable_authoring.py` y
+  `tests/test_scene_serializable_authoring.py`, además de este plan. Cambio
+  mínimo: guard EDIT existente → flush pending → capture → redo incremental →
+  commit/rollback. Debe añadirse regresión con pending legacy y regresión de
+  fallo posterior al flush que restaure Scene y World. No se autoriza ampliar
+  producción, adelantar S7C/S7D/S8 ni relajar tests.
+- TEST CONTRACT `S7B-F8`: `verdict=sufficient`. Añadir TDD para redo con pending
+  legacy y orden flush → capture → add; fallo de projection después del flush
+  con rollback al estado ya sincronizado; y guard PLAY antes de flush/capture.
+  Proteger mismo ID, ausencia de entidad parcial, paridad Scene/World,
+  selección, dirty, pending e historial. Comandos mínimos: tres tests nuevos,
+  módulos serializable/mutation/edit-sync, Ruff/Mypy enfocados y diff-check;
+  suite completa en validator final.
+- S7B-F8 builder: `status=completed`, sin violaciones de write set. Dos pruebas
+  conductuales rojas reprodujeron ausencia de flush y rollback a x=1; el guard
+  PLAY ya estaba verde. Fix mínimo: `_restore_entity_create_delta()` hace
+  `flush_pending` tras guards y antes de capture. Después: F8 3/3 OK;
+  serializable/mutation/edit-sync 40/40 OK; Ruff/Mypy enfocados y diff-check OK.
+- Verificación raíz post-F8: F8 3/3 OK; cluster 40/40 OK; Ruff producción y
+  tests completos OK; Mypy completo 421 archivos OK; suite completa
+  `py -3.11 -m unittest discover -s tests` = 3.774/3.774 OK, 8 skips,
+  581,780 s. Validator independiente final en curso; S7B aún `in_progress`.
+- S7B validator final: `verdict=pass`, `test_contract_satisfied=true`.
+  Dirigidos 130/130 OK; reproducción F8 termina Scene.x=World.x=42 y pending
+  limpio; suite 3.774/3.774 OK, 8 skips, 572,345 s; Ruff producción/tests OK;
+  Mypy 421 archivos OK; diff-check OK; 381 inserciones y 0 eliminaciones en
+  tests S7B. Sin defectos ni riesgos bloqueantes. Review, documenter y AI audit
+  siguen pendientes; fase aún no cerrada.
+- S7B reviewer final: `verdict=approved`, `must_fix=[]`; 48/48 dirigidos OK,
+  Ruff enfocado y diff-check OK. `should_fix` no bloqueante para S7C/S7D:
+  upsert/remove multiescena de entidad inexistente hacen snapshot+restore y
+  reconstruyen identidades sin mutación; posible mejora es lookup después de
+  flush y antes de capture. Nice-to-have: eliminar doble flush by-ID si la
+  decisión S7C lo permite. No se abre ciclo 6: `max_cycles=5`.
+- S7B documenter: `status=updated`; `docs/architecture.md` y
+  `docs/TECHNICAL.md` documentan pipeline, PLAY, rollback sin historial,
+  copias defensivas y eliminación encapsulada de `scene_flow` vacío.
+  `git diff --check` OK; sin riesgos. AI audit pendiente.
+- S7B AI audit final: `verdict=approved`, `safe_for_agents=true`,
+  `must_fix=[]`; 176 contratos de authoring/API/CLI/IA OK, Ruff/Mypy enfocados
+  y diff-check OK. Riesgos no bloqueantes: reconstrucción en algunos no-op,
+  rollback reconstructivo presupone snapshot válido y prefijo diagnóstico
+  histórico `SceneManager`.
+- S7B cierre: `completed`. Builder, validator, reviewer, documenter y AI audit
+  registrados; suite final raíz 3.774/3.774 y validator 3.774/3.774, Ruff/Mypy
+  completos verdes. Working tree limitado a plan, docs y write set S7B. Sin
+  commit ni push. S7C se inicia sin decisión predeterminada.
+- S7C medición raíz: archivo 1.032 LOC, clase 1.014 LOC, 986 líneas no vacías,
+  750 líneas cubiertas por statements AST; 41 métodos (26 públicos, 15
+  privados), 8 dependencias constructoras. Medición alternativa estricta del
+  arquitecto: 665 LOC de algoritmo excluyendo constructor y 9 wrappers finos
+  (77 LOC), 405 statements AST. Matriz: queries 8; component authoring 19;
+  entity authoring 10; transacción/routing compartido 3; composición 1.
+- S7C testabilidad/coupling: fixture directa construye 8 dependencias, 6
+  colaboradores concretos y 2 fakes; 20 tests directos; único importador de
+  producción `SceneManager` con 28 call sites/26 métodos; 0 ciclos actuales.
+  Consumidores de entidad: fachada actual y, desde S7D, structural mediante el
+  port estrecho de 3 operaciones.
+- S7C causas observadas: (1) modelo/política de componentes: registry, metadata,
+  CRUD, overrides y SceneLink; (2) ciclo de vida/identidad de entidades:
+  payload, by-ID, creación incremental, selección por rename y undo/redo
+  diferencial; (3) invariantes transaccionales, ya delegadas a autoridades
+  compartidas y que no deben duplicarse.
+- S7C architect: recomienda `split_component_and_entity`; no por tamaño, sino
+  por dos causas y políticas distintas de commit/history. Rechaza
+  `redesign_dependency` porque no hay ciclo, doble autoridad ni imposibilidad de
+  prueba. La decisión aún no se fija: crítica obligatoria debe demostrar un
+  split sin duplicar flush/snapshot/rollback/history/flow/overrides ni crear un
+  contexto de callbacks.
+- S7C plan critique: `verdict=approved`, `decision_validated=split_component_and_entity`,
+  `must_fix=[]`. La decisión se fija exclusivamente como
+  `split_component_and_entity`. Se rechaza mantener cohesión porque componentes
+  y ciclo de vida/identidad cambian por causas independientes y usan políticas
+  de commit/history diferentes; se rechaza rediseñar dependencias porque no hay
+  ciclo, doble autoridad ni imposibilidad de prueba. Tamaño y ocho dependencias
+  son evidencia secundaria.
+- S7C arquitectura aprobada: `SceneComponentAuthoring` posee consultas/CRUD de
+  componentes por nombre y por ID, metadata/feature metadata, fallbacks de
+  componente, component-state y SceneLink. `SceneEntityAuthoring` posee
+  consultas/listado de entidades, propiedades/grupos, identidad, creación
+  incremental, rename selection, undo/redo diferencial e implementa
+  `SceneSerializableEntityPort`. `SceneSerializableAuthoring` queda como fachada
+  interna compatible, solo composición y delegación.
+- S7C pipeline compartido: `SceneSerializableAuthoringPipeline` implementa un
+  port estrecho sin callbacks CRUD y es el único adaptador de flush, begin,
+  rollback, commit, dirty e historial snapshot. Delega snapshot/rollback/commit
+  a la instancia única de `SerializableMutationCoordinator`, dirty a workspace
+  e historial a `SceneHistoryPort`; no conoce registry, prefab, flow ni CRUD.
+  Entity puede registrar únicamente deltas diferenciales propios de creación.
+- S7C ownership by-ID: `find_entity_data_by_id` y
+  `update_entity_property_by_id` pertenecen a entity; replace/add/remove de
+  componente por ID pertenecen a component y deben usar primitivas Scene by-ID,
+  nunca mutar otra entidad resuelta solo por nombre.
+- S7C pre-state: diff tracked hash
+  `64d11b0a9ddee39c3f1ff0b02463b340bc37d0fe`; 12 archivos S7B/docs/plan
+  modificados, íntegramente preservados. PLAN SYNC autoriza crear
+  `engine/scenes/component_authoring.py`, `engine/scenes/entity_authoring.py`,
+  `tests/test_scene_component_authoring.py`, `tests/test_scene_entity_authoring.py`;
+  modificar `contracts.py`, `serializable_authoring.py`, `scene_manager.py` y
+  `tests/test_scene_serializable_authoring.py`. No autoriza structural,
+  change-history, Scene, schema ni serializable-mutation en S7C. La fachada no
+  conserva algoritmos y no puede coexistir una segunda implementación activa.
+- PLAN SYNC `S7C-pipeline-location`: el pipeline concreto no puede vivir en la
+  fachada porque component/entity deben importarlo y la fachada los compone;
+  tampoco pertenece a `contracts.py`, que conserva solo protocolos. Se
+  autorizan adicionalmente crear `engine/scenes/serializable_pipeline.py` y
+  `tests/test_scene_serializable_pipeline.py`, y modificar
+  `tests/test_scene_manager_contracts.py` para migrar sin debilitar el assert de
+  PrefabOverridePort compartido. No se autoriza `serializable_mutation.py`: el
+  pipeline solo delega a su instancia única.
+- TEST CONTRACT S7C: `verdict=sufficient`. TDD en orden: tests rojos de
+  protocolo/pipeline/ownership/import graph; pipeline directo; extracción
+  component; extracción entity; fachada con tabla exacta de 26 delegaciones;
+  migración del contrato prefab del manager; regresiones S7B. Los 20 tests
+  actuales deben mantener correspondencia explícita, no borrarse sin migración.
+  Prohibido que component/entity llamen directamente flush, capture, rollback,
+  commit, dirty o historial snapshot; entity solo puede registrar sus deltas
+  diferenciales. El pipeline no recibe callbacks CRUD ni conoce registry,
+  prefab, flow, projection directa o los owners.
+- TEST CONTRACT S7C comandos mínimos: tests directos de pipeline, component,
+  entity, fachada/mutation, manager contracts/transacciones, flow/incremental/
+  prefab/edit-sync; Ruff/Mypy del write set; scans AST de ownership, imports,
+  ciclos y segunda implementación; diff-check. Suite/Ruff/Mypy completos en el
+  gate posterior al builder.
+- S7C builder: `status=completed`, sin violaciones de write set. TDD rojo por
+  tres módulos ausentes; se añadieron port de cinco operaciones, pipeline único,
+  component owner 17 métodos, entity owner 9 métodos y fachada compatible de
+  26 delegaciones. Focused ampliado 117/117 OK; Ruff/Mypy del write set y
+  diff-check OK; sin commit/push.
+- Verificación raíz S7C: inspección completa de contracts, pipeline, ambos
+  owners, fachada y tests; focused 35/35 + 22/22 + 60/60 = 117/117 OK; Ruff
+  write set OK; Mypy 6 módulos OK; diff-check OK. Gap potencial enviado a
+  validator: tests conductuales invocan owners directamente pero siguen en la
+  fixture amplia de `test_scene_serializable_authoring`; los nuevos archivos de
+  component/entity solo contienen checks arquitectónicos. No cerrar S7C hasta
+  clasificarlo contra el TEST CONTRACT.
+- S7C validator inicial: `verdict=fail`, `test_contract_satisfied=false` por
+  S7C-F1; producción/arquitectura pasan. Evidencia: 173/173 focused OK; fachada
+  26 delegaciones, component 17, entity 9, pipeline/port 5, DAG acíclico, una
+  instancia compartida de pipeline/flow/prefab, Ruff/Mypy write set verdes. El
+  fallo no es funcional: 18 tests conductuales siguen en fixture que construye
+  fachada y ambos owners; los nuevos tests directos contienen un solo check
+  arquitectónico cada uno.
+- S7C-F1 must-fix: migrar casos component a fixture que construya
+  `SceneComponentAuthoring` directamente sin facade/entity; migrar casos entity
+  a fixture directa sin facade/component; separar casos mixtos conservando
+  todas las aserciones; dejar en `test_scene_serializable_authoring.py` solo
+  composición/delegación y parent routing. PLAN SYNC tests-only: se autorizan
+  exclusivamente los tres tests S7C ya enumerados; producción queda congelada.
+  TEST CONTRACT existente sigue `sufficient`; repetir focused/AST/Ruff tests y
+  diff-check antes de revalidar.
+- S7C-F1 builder: `status=completed`, tests-only, sin violaciones. Dos pruebas
+  de independencia rojas contra la fixture anterior; después se migraron 18
+  contratos a fixtures directas y se separaron cinco casos mixtos, resultando
+  23 conductuales. Component instala solo component owner; entity solo entity;
+  support compartido no instala owners ni facade. Tres módulos 30/30 y gate
+  solicitado 55/55 OK; Ruff tests y diff-check OK.
+- Verificación raíz S7C-F1: lectura completa de ambas suites y support/facade;
+  mapeo 20 originales = 1 arquitectura + 18 conductuales migrados a 23 + 1
+  parent routing, sin pérdida de aserciones observada. Tests directos 30/30 y
+  cluster con pipeline/mutation/manager 55/55 OK; Ruff tests y diff-check OK.
+  Revalidator independiente final: `verdict=pass`,
+  `test_contract_satisfied=true`; 55/55 tests OK, los 20 contratos originales
+  están cubiertos por 23 pruebas conductuales directas más arquitectura y parent
+  routing, Mypy verde en los seis módulos S7C y hashes de producción sin cambios
+  desde la validación inicial. Sin riesgos bloqueantes; suite completa reservada
+  para GATE S7 después de S7D. S7C queda `completed`.
+- S7C cierre: decisión única `split_component_and_entity`; diff tracked hash al
+  cierre `9f0fde77a2b93f7665996ea4e56560bf2e020d46`. No hubo commit ni push.
+- S7D RECON: `set_scene_flow_target` sigue implementando en manager resolución,
+  PLAY, flush, snapshot, policy, commit, dirty e historial. Structural conserva
+  exactamente tres callbacks CRUD hacia manager (`create_entity`,
+  `create_entity_from_data`, `update_entity_property`). Baseline S7D: 78/78
+  tests OK en flow, component/entity/facade/pipeline/mutation, manager contracts
+  y prefab overrides.
+- TEST CONTRACT S7D: test strategist independiente `verdict=sufficient`,
+  `test_contract_satisfied=false` hasta implementación. Probar en TDD: (1) owner component ejecuta
+  `begin -> flow_policy.set_metadata_target -> commit_snapshot`; key vacía no
+  inicia transacción; PLAY rechaza antes de flush/capture/policy; excepción de
+  policy restaura Scene/World/pending/dirty y no crea historial; (2) facade y
+  manager conservan `get_scene_flow`/`set_scene_flow_target` como delegaciones
+  únicas, y manager no nombra flush, snapshot, mutation coordinator, policy,
+  dirty ni historial en esos métodos; (3) `SceneStructuralAuthoringContext` no
+  contiene callbacks CRUD; hierarchy/prefab reciben el mismo
+  `SceneSerializableEntityPort`; create child, fallback de parent e instantiate
+  prefab llaman solo ese port; (4) manager inyecta exactamente
+  `SceneSerializableAuthoring.entity_authoring`; serializable no importa
+  structural, structural no importa manager y el grafo es acíclico. Preservar
+  además undo/redo de scene flow, pending previo al snapshot y el caso histórico
+  de parent inexistente: la entidad hija queda creada, el parent se rechaza y no
+  se cambia esta semántica sin contrato explícito.
+- S7D write set mínimo ratificado y autorizado:
+  `engine/scenes/component_authoring.py`, `engine/scenes/serializable_authoring.py`,
+  `engine/scenes/structural_authoring.py`, `engine/scenes/scene_manager.py`,
+  `tests/test_scene_component_authoring.py`,
+  `tests/test_scene_serializable_authoring.py`,
+  `tests/test_scene_serializable_pipeline.py`, `tests/test_scene_manager_contracts.py`,
+  `tests/test_prefab_overrides.py`, `tests/test_scene_flow.py`, nuevo
+  `tests/test_scene_structural_authoring.py` y `tests/test_hierarchy_operations.py`.
+  PLAN SYNC `S7D-structural-contract-tests`: el nuevo test directo y la
+  caracterización de hierarchy son necesarios para demostrar el port estrecho y
+  preservar parent inexistente; ambos están dentro de los tests structural ya
+  previstos por S7B-D. No modificar
+  contracts, pipeline, mutation coordinator, Scene, schema, history ni docs en
+  el build S7D. Gate/doc/review posteriores son fases separadas.
+- S7D builder: `status=completed`, sin violaciones de write set. TDD rojo: 88
+  tests con 5 fallos y 11 errores esperados por owner/wrapper/port aún ausentes;
+  tras el cambio 92/92 dirigidos OK. Ruff del write set, Mypy de cuatro módulos
+  productivos y diff-check verdes. Manager queda en una delegación; facade tiene
+  27 wrappers; component owner posee flow; structural/context ya no tienen los
+  tres callbacks CRUD y reciben el mismo `SceneSerializableEntityPort`. Parent
+  inexistente conserva entidad hija creada y sin parent. Sin commit ni push.
+- Verificación raíz S7D: lectura del diff completo del build y 112/112 tests OK
+  en component/facade/pipeline/flow/structural/hierarchy/prefab persistence,
+  manager contracts, transacciones y mutation rollback. Validator adversarial
+  independiente final: `verdict=pass`, `test_contract_satisfied=true`; 198/198
+  tests dirigidos y regresión OK, Ruff/Mypy enfocados y diff-check verdes. AST,
+  imports e identidad confirman manager como delegación única y structural sobre
+  el mismo port estrecho; probes adversariales restauran Scene, World, pending,
+  dirty, selección e historial. S7D queda `completed`; GATE S7 se abre sin commit
+  ni push.
+- GATE S7 validación funcional/estática: suite completa 3.805/3.805 OK, 8 skips,
+  504,846 s; Ruff producción y tests verde; Mypy 424 archivos verde.
+- PLAN SYNC `S7-benchmark-artifact`: se autoriza únicamente
+  `artifacts/refactor_scene_manager/s7-benchmarks.json`. La tabla de write set
+  omitió el artifact S7 aunque la sección Validación exige usar en S7 el mismo
+  harness comparable de S1/S3/S5. No se autoriza modificar harness ni thresholds.
+- GATE S7 benchmark ronda 1: 4/4 casos, 0 warnings, 0 failures, 128,444 s,
+  siete muestras. Frente a S5 aparecen cinco medianas >10%: sprite ecs_queries
+  +78,12%, sprite world_clone +11,45%, static edit_to_play +13,97%, transform_edit
+  +16,37% y transform world_serialize +14,44%. La especificación obliga a repetir
+  antes de atribuir regresión.
+- PLAN SYNC `S7-benchmark-rerun`: se autoriza únicamente
+  `artifacts/refactor_scene_manager/s7-benchmarks-rerun.json` para preservar la
+  ronda 1 y ejecutar la repetición obligatoria con idéntico harness/parámetros.
+- GATE S7 benchmark ronda 2: 4/4 casos, 0 warnings, 0 failures, 123,900 s,
+  siete muestras. Performance reviewer: `verdict=benchmark_noise`; no regresión
+  causal ni tercera ronda requerida. Las dos alertas persistentes quedan dentro
+  del ruido combinado al agrupar 14 muestras: static edit_to_play delta 4,593 ms
+  frente a MAD combinado 8,598 ms; transform_edit delta 6,4 µs frente a MAD
+  combinado 8,75 µs. S7B-D no toca los hot paths: el hash de
+  `incremental_authoring.py` sigue exactamente el registrado en S5
+  (`C1D33D3D173C1006D415322A88D22D61D41A3DEF7345DE28B7200ACE1F983C04`)
+  y enter_play/workspace/World clone no fueron modificados. No optimizar; repetir
+  el benchmark obligatorio en S9 e investigar solo con A/B causal si reaparece
+  fuera del noise floor. Artifact ronda 1 SHA-256
+  `9864412BE42F14B90182EC2C6913A389FE279AA917847AC294852C7C1D784E14`;
+  ronda 2 `D2BE7C09A0CCFF54758BC80E7641FF5076B6AF5B36A6DF7C73F83B089E46C625`.
+- GATE S7 documenter: `updated`. `docs/architecture.md` y
+  `docs/TECHNICAL.md` documentan split, owners, pipeline único, scene flow en
+  component owner y structural sobre el port de entidades; señalan explícitamente
+  que dispatch de history, contexto/mutaciones structural y fachada final siguen
+  pendientes de S8A/S8B/S9. Diff-check documental verde.
 
 ## Archivos modificados
 
@@ -406,12 +744,16 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
 - `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
 - `engine/debug/benchmark_runner.py`
 - `engine/scenes/edit_sync.py`
+- `engine/scenes/contracts.py`
 - `engine/scenes/scene_flow.py`
 - `engine/scenes/incremental_authoring.py`
 - `engine/scenes/prefab_overrides.py`
 - `engine/scenes/scene_projection.py`
 - `engine/scenes/scene.py`
 - `engine/scenes/scene_manager.py`
+- `engine/scenes/serializable_authoring.py`
+- `engine/scenes/serializable_mutation.py`
+- `engine/scenes/structural_authoring.py`
 - `engine/scenes/workspace_lifecycle.py`
 - `tests/test_benchmark_run.py`
 - `tests/test_benchmark_suite.py`
@@ -423,10 +765,13 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
 - `tests/test_scene_incremental_creation.py`
 - `tests/test_scene_index.py`
 - `tests/test_scene_manager_contracts.py`
+- `tests/test_scene_manager_sync.py`
 - `tests/test_scene_mutation_rollback_contract.py`
 - `tests/test_scene_persistence_contract.py`
 - `tests/test_scene_projection.py`
+- `tests/test_scene_serializable_authoring.py`
 - `tests/test_scene_workspace.py`
+- `tests/test_serializable_mutation_coordinator.py`
 
 ## Hallazgos pendientes
 

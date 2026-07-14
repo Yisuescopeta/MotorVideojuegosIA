@@ -1,6 +1,8 @@
+import ast
 import copy
 import inspect
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -54,7 +56,10 @@ class SceneManagerContractsTests(unittest.TestCase):
 
     def test_prefab_override_authority_is_extracted_and_shared(self) -> None:
         manager_source = inspect.getsource(SceneManager)
-        serializable_source = inspect.getsource(self.manager._serializable_authoring.__class__)
+        component_authoring = self.manager._serializable_authoring.component_authoring
+        entity_authoring = self.manager._serializable_authoring.entity_authoring
+        component_source = inspect.getsource(component_authoring.__class__)
+        entity_source = inspect.getsource(entity_authoring.__class__)
         prefab_authoring_source = inspect.getsource(ScenePrefabAuthoring)
         structural_source = inspect.getsource(SceneStructuralAuthoring)
 
@@ -64,18 +69,25 @@ class SceneManagerContractsTests(unittest.TestCase):
             self.manager._prefab_overrides,
         )
         self.assertIs(
-            self.manager._serializable_authoring._prefab_overrides,
+            component_authoring._prefab_overrides,
+            self.manager._prefab_overrides,
+        )
+        self.assertIs(
+            entity_authoring._prefab_overrides,
             self.manager._prefab_overrides,
         )
         for direct_call in (
             "self._prefab_overrides.update_component_property(",
-            "self._prefab_overrides.update_entity_property(",
             "self._prefab_overrides.replace_component(",
             "self._prefab_overrides.remove_component(",
         ):
             self.assertNotIn(direct_call, manager_source)
-            self.assertIn(direct_call, serializable_source)
+            self.assertIn(direct_call, component_source)
             self.assertIn(direct_call, structural_source)
+        entity_override_call = "self._prefab_overrides.update_entity_property("
+        self.assertNotIn(entity_override_call, manager_source)
+        self.assertIn(entity_override_call, entity_source)
+        self.assertIn(entity_override_call, structural_source)
         for removed_name in (
             "_update_prefab_component_override",
             "_update_prefab_entity_override",
@@ -106,6 +118,29 @@ class SceneManagerContractsTests(unittest.TestCase):
         self.assertFalse(hasattr(self.manager, "_flush_pending_edit_world"))
         self.assertFalse(hasattr(self.manager, "_clear_pending_edit_world_sync"))
         self.assertFalse(hasattr(self.manager, "_sync_entry_from_edit_world"))
+
+    def test_scene_flow_target_is_one_serializable_delegation(self) -> None:
+        source = inspect.getsource(SceneManager.set_scene_flow_target)
+        tree = ast.parse(textwrap.dedent(source))
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+
+        self.assertEqual(len(calls), 1)
+        target = calls[0].func
+        self.assertIsInstance(target, ast.Attribute)
+        self.assertEqual(target.attr, "set_scene_flow_target")
+        self.assertIsInstance(target.value, ast.Attribute)
+        self.assertEqual(target.value.attr, "_serializable_authoring")
+        for forbidden in (
+            "flush_pending",
+            "capture_snapshot",
+            "snapshot_scene_data",
+            "serializable_mutations",
+            "flow_policy",
+            "commit_mutation",
+            "mark_dirty",
+            "record_scene_change",
+        ):
+            self.assertNotIn(forbidden, source)
 
     def test_legacy_sync_reason_constants_remain_reexported_by_manager_module(self) -> None:
         self.assertEqual(

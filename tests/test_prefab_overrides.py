@@ -420,12 +420,10 @@ class SceneStructuralOverrideDelegationTests(unittest.TestCase):
                 rebuild_edit_world=unused,
                 record_scene_change=unused,
                 sync_scene_links_from_feature_metadata=unused,
-                create_entity=unused,
-                create_entity_from_data=unused,
-                update_entity_property=unused,
                 unique_entity_name=unused,
             ),
             port,
+            Mock(),
         )
 
         self.assertTrue(
@@ -481,6 +479,7 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
         def unused(*args, **kwargs):
             return None
 
+        serializable_entities = Mock()
         context = SceneStructuralAuthoringContext(
             get_active_entry=lambda: entry,
             resolve_entry=unused,
@@ -488,12 +487,14 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
             rebuild_edit_world=rebuild,
             record_scene_change=record,
             sync_scene_links_from_feature_metadata=unused,
-            create_entity=unused,
-            create_entity_from_data=unused,
-            update_entity_property=unused,
             unique_entity_name=unused,
         )
-        return ScenePrefabAuthoring(context, SceneHierarchyAuthoring(context)), rebuild, record
+        hierarchy = SceneHierarchyAuthoring(context, serializable_entities)
+        return (
+            ScenePrefabAuthoring(context, hierarchy, serializable_entities),
+            rebuild,
+            record,
+        )
 
     def test_apply_overrides_clears_via_primitive_after_save(self) -> None:
         entry, root = _entry(legacy_overrides={"": {"tag": "Enemy"}})

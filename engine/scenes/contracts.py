@@ -46,6 +46,48 @@ class SceneSerializableEntityPort(Protocol):
     ) -> bool: ...
 
 
+class SceneSerializableTransactionPort(Protocol):
+    """Shared transaction boundary for serializable authoring owners."""
+
+    def flush_pending(
+        self,
+        entry: "SceneWorkspaceEntry",
+        *,
+        failure_context: str,
+    ) -> bool: ...
+
+    def begin(
+        self,
+        entry: "SceneWorkspaceEntry",
+        *,
+        failure_context: str,
+    ) -> Optional[tuple[object, Dict[str, Any]]]: ...
+
+    def rollback(
+        self,
+        entry: "SceneWorkspaceEntry",
+        token: object,
+    ) -> None: ...
+
+    def commit_snapshot(
+        self,
+        entry: "SceneWorkspaceEntry",
+        token: object,
+        before: Dict[str, Any],
+        *,
+        label: str,
+        record_history: bool = True,
+    ) -> bool: ...
+
+    def commit_incremental(
+        self,
+        entry: "SceneWorkspaceEntry",
+        token: object,
+        *,
+        failure_context: str,
+    ) -> bool: ...
+
+
 class PrefabOverridePort(Protocol):
     def update_component_property(
         self,

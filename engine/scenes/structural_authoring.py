@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from engine.scenes.contracts import PrefabOverridePort
+from engine.scenes.contracts import PrefabOverridePort, SceneSerializableEntityPort
 from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 
 
@@ -17,15 +17,13 @@ class SceneStructuralAuthoringContext:
     rebuild_edit_world: Callable[[SceneWorkspaceEntry], None]
     record_scene_change: Callable[[SceneWorkspaceEntry, str, dict[str, Any]], None]
     sync_scene_links_from_feature_metadata: Callable[[SceneWorkspaceEntry], None]
-    create_entity: Callable[[str, Optional[dict[str, dict[str, Any]]]], bool]
-    create_entity_from_data: Callable[[dict[str, Any]], bool]
-    update_entity_property: Callable[[str, str, Any], bool]
     unique_entity_name: Callable[[set[str], str], str]
 
 
 @dataclass
 class SceneHierarchyAuthoring:
     context: SceneStructuralAuthoringContext
+    serializable_entities: SceneSerializableEntityPort
     _clipboard: list[dict[str, Any]] = field(default_factory=list)
     _clipboard_root_name: str = ""
 
@@ -105,7 +103,11 @@ class SceneHierarchyAuthoring:
         before = copy.deepcopy(entry.scene.to_dict())
         world_tx = self.compute_world_transform_from_scene_data(entry, entity_name)
         if world_tx is None:
-            return self.context.update_entity_property(entity_name, "parent", parent_name)
+            return self.serializable_entities.update_entity_property(
+                entity_name,
+                "parent",
+                parent_name,
+            )
 
         wx, wy, w_rot, w_sx, w_sy = world_tx
         if not entry.scene.update_entity_property(entity_name, "parent", parent_name):
@@ -148,9 +150,16 @@ class SceneHierarchyAuthoring:
         name: str,
         components: Optional[dict[str, dict[str, Any]]] = None,
     ) -> bool:
-        if not self.context.create_entity(name, components):
+        if not self.serializable_entities.create_entity(name, components):
             return False
-        return self.context.update_entity_property(name, "parent", parent_name)
+        entry = self.context.get_active_entry()
+        if entry is None or not self.validate_parent(entry, name, parent_name):
+            return False
+        return self.serializable_entities.update_entity_property(
+            name,
+            "parent",
+            parent_name,
+        )
 
     def duplicate_entity_subtree(self, entity_name: str, new_root_name: Optional[str] = None) -> bool:
         entry = self.context.get_active_entry()
@@ -291,6 +300,7 @@ class SceneHierarchyAuthoring:
 class ScenePrefabAuthoring:
     context: SceneStructuralAuthoringContext
     hierarchy: SceneHierarchyAuthoring
+    serializable_entities: SceneSerializableEntityPort
 
     def create_prefab(
         self,
@@ -357,7 +367,7 @@ class ScenePrefabAuthoring:
         overrides: Optional[dict[str, Any]] = None,
         root_name: Optional[str] = None,
     ) -> bool:
-        return self.context.create_entity_from_data(
+        return self.serializable_entities.create_entity_from_data(
             {
                 "name": name,
                 "active": True,
@@ -461,9 +471,15 @@ class SceneStructuralAuthoring:
         self,
         context: SceneStructuralAuthoringContext,
         prefab_overrides: PrefabOverridePort,
+        serializable_entities: SceneSerializableEntityPort,
     ) -> None:
-        self._hierarchy = SceneHierarchyAuthoring(context)
-        self._prefabs = ScenePrefabAuthoring(context, self._hierarchy)
+        self._serializable_entities = serializable_entities
+        self._hierarchy = SceneHierarchyAuthoring(context, serializable_entities)
+        self._prefabs = ScenePrefabAuthoring(
+            context,
+            self._hierarchy,
+            serializable_entities,
+        )
         self._prefab_overrides = prefab_overrides
 
     def reset_state(self) -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
@@ -72,7 +71,7 @@ class SceneManager:
             SceneChangeCoordinatorContext(
                 resolve_entry=self._resolve_entry,
                 restore_entry_scene=self._restore_entry_scene,
-                snapshot_scene=lambda entry: copy.deepcopy(entry.scene.to_dict()),
+                snapshot_scene=self._serializable_mutations.snapshot_entry_scene_data,
                 edit_component=self.apply_edit_to_world,
                 set_entity_property=self.update_entity_property,
                 add_component=lambda entity, component, data: self.add_component_to_entity(
@@ -107,12 +106,10 @@ class SceneManager:
                 rebuild_edit_world=self._workspace.rebuild_edit_world,
                 record_scene_change=self._record_scene_change,
                 sync_scene_links_from_feature_metadata=self._sync_feature_metadata_from_scene_links,
-                create_entity=self.create_entity,
-                create_entity_from_data=self.create_entity_from_data,
-                update_entity_property=self.update_entity_property,
                 unique_entity_name=self._unique_entity_name,
             ),
             self._prefab_overrides,
+            self._serializable_authoring.entity_authoring,
         )
         self._runtime_port: SceneRuntimePort = SceneManagerRuntimeAdapter(self)
         self._authoring_port: SceneAuthoringPort = SceneManagerAuthoringAdapter(self)
@@ -861,26 +858,7 @@ class SceneManager:
         return self._flow_policy.get_effective_flow(entry.scene) if entry is not None else {}
 
     def set_scene_flow_target(self, key: str, target_path: str) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        scene_key = str(key).strip()
-        if not scene_key:
-            return False
-        if not self._edit_sync.flush_pending(entry, failure_context=f"scene_flow:{scene_key}"):
-            return False
-        snapshot = self._serializable_mutations.capture_snapshot(entry)
-        before = self._serializable_mutations.snapshot_scene_data(snapshot)
-        self._flow_policy.set_metadata_target(entry.scene, scene_key, target_path)
-        if not self._serializable_mutations.commit_mutation(
-            entry,
-            snapshot,
-            failure_context=f"scene_flow:{scene_key}",
-        ):
-            return False
-        self._workspace.mark_dirty(entry)
-        self._record_scene_change(entry, f"scene_flow:{scene_key}", before)
-        return True
+        return self._serializable_authoring.set_scene_flow_target(key, target_path)
 
     def _compile_runtime_signals_for_entry(self, entry: SceneWorkspaceEntry, runtime_world: "World") -> None:
         compiler = self._runtime_signal_compiler

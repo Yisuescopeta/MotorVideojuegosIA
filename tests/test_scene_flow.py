@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
@@ -114,6 +115,34 @@ class SceneFlowContractTests(unittest.TestCase):
         self.assertEqual(stored_link["target_path"], "levels/updated.json")
         self.assertEqual(manager.get_scene_flow(), {"route": "levels/updated.json"})
         self.assertFalse(manager.list_open_scenes()[0]["has_invalid_links"])
+
+    def test_scene_flow_target_preserves_undo_redo_history(self) -> None:
+        manager = self._load(metadata={"route": "levels/original.json"})
+        history = UndoRedoManager()
+        manager.set_history_manager(history)
+
+        self.assertTrue(
+            manager.set_scene_flow_target(
+                "route",
+                "levels/updated.json",
+            )
+        )
+        self.assertEqual(
+            manager.get_scene_flow(),
+            {"route": "levels/updated.json"},
+        )
+
+        self.assertTrue(history.undo())
+        self.assertEqual(
+            manager.get_scene_flow(),
+            {"route": "levels/original.json"},
+        )
+
+        self.assertTrue(history.redo())
+        self.assertEqual(
+            manager.get_scene_flow(),
+            {"route": "levels/updated.json"},
+        )
 
     def test_present_empty_target_path_is_not_treated_as_missing_when_metadata_is_set(self) -> None:
         manager = self._load(
@@ -243,6 +272,25 @@ class SceneFlowContractTests(unittest.TestCase):
 
 
 class SceneFlowPolicyTests(unittest.TestCase):
+    def test_sync_removes_empty_scene_flow_and_preserves_unrelated_metadata(self) -> None:
+        policy = SceneFlowPolicy()
+        scene = Scene.from_dict(
+            {
+                **_scene_payload(links=[_scene_link("stale", "")]),
+                "feature_metadata": {
+                    "scene_flow": {"stale": "levels/stale.json"},
+                    "signals": {"connections": []},
+                },
+            }
+        )
+
+        self.assertEqual(policy.sync_metadata_from_links(scene), {})
+        self.assertNotIn("scene_flow", scene.feature_metadata)
+        self.assertEqual(
+            scene.feature_metadata["signals"],
+            {"connections": []},
+        )
+
     def test_metadata_lookup_does_not_serialize_scene(self) -> None:
         policy = SceneFlowPolicy()
         scene = Scene.from_dict(
