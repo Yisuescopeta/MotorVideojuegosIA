@@ -1,0 +1,118 @@
+{
+  "task_id": "queen-20260713-001",
+  "captured_at": "2026-07-13T20:21:41.1396469+02:00",
+  "repository": {
+    "branch": "feat/SceneManagerRefactor",
+    "head_sha": "fded3556ed9509d5f0e06221f1655ba0f4053687",
+    "remote_main": "origin/main",
+    "remote_main_sha": "fded3556ed9509d5f0e06221f1655ba0f4053687",
+    "merge_base_sha": "fded3556ed9509d5f0e06221f1655ba0f4053687",
+    "ahead": 0,
+    "behind": 0,
+    "working_tree_before_baseline": "clean"
+  },
+  "environment": {
+    "python_command": "py -3.11",
+    "python_version": "3.11.1",
+    "operating_system": "Microsoft Windows 11 Pro 10.0.26200 64-bit",
+    "cpu": "11th Gen Intel(R) Core(TM) i5-11400F @ 2.60GHz",
+    "physical_cores": 6,
+    "logical_processors": 12,
+    "total_memory_mb": 16221,
+    "ruff_version": "0.15.8",
+    "mypy_version": "1.19.1"
+  },
+  "dependencies": {
+    "source": "pyproject.toml",
+    "requires_python": ">=3.11",
+    "dev_tools_available": [
+      "ruff",
+      "mypy"
+    ]
+  },
+  "tests": {
+    "focused": {
+      "command": "py -3.11 -m unittest tests.test_scene_workspace tests.test_scene_manager_contracts tests.test_scene_manager_sync tests.test_editor_scene_sync tests.test_engine_api_scene_sync tests.test_scene_save_integrity",
+      "status": "passed",
+      "ran": 84,
+      "duration_seconds": 3.884,
+      "failures": 0,
+      "errors": 0
+    },
+    "full": {
+      "command": "py -3.11 -m unittest discover -s tests",
+      "status": "passed",
+      "ran": 3670,
+      "duration_seconds": 471.158,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 8
+    }
+  },
+  "static_analysis": {
+    "ruff_source": {
+      "command": "py -3.11 -m ruff check engine cli tools main.py",
+      "status": "passed",
+      "diagnostics": 0
+    },
+    "ruff_tests": {
+      "command": "py -3.11 -m ruff check tests",
+      "status": "passed",
+      "diagnostics": 0
+    },
+    "mypy": {
+      "command": "py -3.11 -m mypy engine cli tools main.py",
+      "status": "passed",
+      "checked_source_files": 414,
+      "diagnostics": 0
+    }
+  },
+  "benchmarks": {
+    "command": "py -3.11 -m tools.benchmark_suite --quick --out artifacts/refactor_scene_manager/baseline_benchmarks.json",
+    "status": "passed",
+    "suite_version": 2,
+    "backend": "legacy_aabb",
+    "cases_passed": 4,
+    "cases_failed": 0,
+    "duration_ms": 73292.51430000295,
+    "artifact": "artifacts/refactor_scene_manager/baseline_benchmarks.json",
+    "metric_classification": {
+      "scene_create_world": "repeated_gate",
+      "scene_add_entity_canonicalization": "repeated_gate",
+      "scene_save": "repeated_gate",
+      "world_clone": "repeated_gate",
+      "transform_edit": "one_shot_diagnostic",
+      "edit_to_play": "one_shot_diagnostic",
+      "play_to_edit": "one_shot_diagnostic"
+    },
+    "measurement_limitations": [
+      "Repeated operations currently use 1 warmup and 3 samples; phase gates requiring performance decisions must use at least 7 samples.",
+      "transform_edit, edit_to_play and play_to_edit are one-shot diagnostics and cannot block a phase until the harness measures them repeatedly."
+    ]
+  },
+  "scene_manager": {
+    "path": "engine/scenes/scene_manager.py",
+    "lines": 1989,
+    "bytes": 86725,
+    "observed_private_state_types": [
+      "AuthoringComponentDelta",
+      "AuthoringTransactionState",
+      "_SerializableMutationSnapshot"
+    ],
+    "observed_callback_contexts": [
+      "SceneChangeCoordinatorContext",
+      "SceneStructuralAuthoringContext"
+    ]
+  },
+  "overlap_audit": {
+    "origin/feat/refactorWorldySceneManager": "ancestor_of_main; integrated; exclude_from_base",
+    "origin/codex/SceneManager": "ancestor_of_main; obsolete; exclude_from_base",
+    "pull_request_26": "head is ancestor_of_main but PR targets stale Implementacion branch; recommend close_as_obsolete; exclude_from_base",
+    "pull_request_10": "old DIRTY PR; no engine/scenes files; app/core scene workflow overlap only; exclude_from_base and reaudit if revived"
+  },
+  "preexisting_failures": [],
+  "artifacts": [
+    "artifacts/refactor_scene_manager/baseline.json",
+    "artifacts/refactor_scene_manager/baseline_benchmarks.json"
+  ]
+}

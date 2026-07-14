@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from engine.scenes.contracts import PrefabOverridePort
 from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 
 
@@ -421,203 +422,49 @@ class ScenePrefabAuthoring:
         entity_data = entry.scene.find_entity(entity_name)
         if entity_data is None:
             return False
-        entity_data["prefab_instance"]["overrides"] = {}
+        prefab_instance = entity_data.get("prefab_instance")
+        if not isinstance(prefab_instance, dict):
+            return False
+        updated_prefab_instance = copy.deepcopy(prefab_instance)
+        updated_prefab_instance["overrides"] = {}
+        raw_entity_id = entity_data.get("id")
+        entity_id = (
+            raw_entity_id.strip()
+            if isinstance(raw_entity_id, str) and raw_entity_id.strip()
+            else None
+        )
+        try:
+            installed = (
+                entry.scene.update_entity_property_by_id(
+                    entity_id,
+                    "prefab_instance",
+                    updated_prefab_instance,
+                )
+                if entity_id is not None
+                else entry.scene.update_entity_property(
+                    entity_name,
+                    "prefab_instance",
+                    updated_prefab_instance,
+                )
+            )
+        except Exception:
+            return False
+        if not installed:
+            return False
         self.context.rebuild_edit_world(entry)
         entry.dirty = True
         self.context.record_scene_change(entry, f"apply_prefab_overrides:{entity_name}", before)
         return True
 
-    def update_prefab_component_override(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        property_name: str,
-        value: Any,
-    ) -> bool:
-        resolved = self._resolve_prefab_override_target(entry, entity_name)
-        if resolved is None:
-            return False
-        root_scene_data, target_path = resolved
-        overrides = self.ensure_prefab_override_ops(root_scene_data)
-        self.upsert_prefab_override_operation(
-            overrides,
-            {
-                "op": "set_field",
-                "target": target_path,
-                "component": component_name,
-                "field": property_name,
-                "value": copy.deepcopy(value),
-            },
-            match_keys=("op", "target", "component", "field"),
-        )
-        return True
-
-    def update_prefab_entity_override(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        property_name: str,
-        value: Any,
-    ) -> bool:
-        resolved = self._resolve_prefab_override_target(entry, entity_name)
-        if resolved is None:
-            return False
-        root_scene_data, target_path = resolved
-        overrides = self.ensure_prefab_override_ops(root_scene_data)
-        self.upsert_prefab_override_operation(
-            overrides,
-            {
-                "op": "set_entity_property",
-                "target": target_path,
-                "field": property_name,
-                "value": copy.deepcopy(value),
-            },
-            match_keys=("op", "target", "field"),
-        )
-        return True
-
-    def replace_prefab_component_override(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        component_data: dict[str, Any],
-    ) -> bool:
-        resolved = self._resolve_prefab_override_target(entry, entity_name)
-        if resolved is None:
-            return False
-        root_scene_data, target_path = resolved
-        overrides = self.ensure_prefab_override_ops(root_scene_data)
-        self.upsert_prefab_override_operation(
-            overrides,
-            {
-                "op": "replace_component",
-                "target": target_path,
-                "component": component_name,
-                "data": copy.deepcopy(component_data),
-            },
-            match_keys=("op", "target", "component"),
-        )
-        return True
-
-    def remove_prefab_component_override(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-    ) -> bool:
-        resolved = self._resolve_prefab_override_target(entry, entity_name)
-        if resolved is None:
-            return False
-        root_scene_data, target_path = resolved
-        overrides = self.ensure_prefab_override_ops(root_scene_data)
-        self.remove_prefab_override_operations(overrides, target=target_path, component=component_name)
-        overrides.setdefault("operations", []).append(
-            {
-                "op": "remove_component",
-                "target": target_path,
-                "component": component_name,
-            }
-        )
-        return True
-
-    def ensure_prefab_override_ops(self, root_scene_data: dict[str, Any]) -> dict[str, Any]:
-        prefab_instance = root_scene_data.setdefault("prefab_instance", {})
-        overrides = prefab_instance.setdefault("overrides", {})
-        if "operations" in overrides:
-            return overrides
-        operations: list[dict[str, Any]] = []
-        for target_path, payload in list(overrides.items()):
-            if not isinstance(payload, dict):
-                continue
-            for field_name in ("active", "tag", "layer", "groups", "parent"):
-                if field_name in payload:
-                    operations.append(
-                        {
-                            "op": "set_entity_property",
-                            "target": target_path,
-                            "field": field_name,
-                            "value": copy.deepcopy(payload[field_name]),
-                        }
-                    )
-            components = payload.get("components", {})
-            if not isinstance(components, dict):
-                continue
-            for component_name, component_payload in components.items():
-                operations.append(
-                    {
-                        "op": "replace_component",
-                        "target": target_path,
-                        "component": component_name,
-                        "data": copy.deepcopy(component_payload),
-                    }
-                )
-        prefab_instance["overrides"] = {"operations": operations}
-        return prefab_instance["overrides"]
-
-    def upsert_prefab_override_operation(
-        self,
-        overrides: dict[str, Any],
-        operation: dict[str, Any],
-        *,
-        match_keys: tuple[str, ...],
-    ) -> None:
-        operations = overrides.setdefault("operations", [])
-        for index, existing in enumerate(operations):
-            if not isinstance(existing, dict):
-                continue
-            if all(existing.get(key) == operation.get(key) for key in match_keys):
-                operations[index] = operation
-                return
-        operations.append(operation)
-
-    def remove_prefab_override_operations(
-        self,
-        overrides: dict[str, Any],
-        *,
-        target: str,
-        component: str | None = None,
-    ) -> None:
-        operations = overrides.setdefault("operations", [])
-        filtered = []
-        for operation in operations:
-            if not isinstance(operation, dict):
-                filtered.append(operation)
-                continue
-            if operation.get("target") != target:
-                filtered.append(operation)
-                continue
-            if component is not None and operation.get("component") != component:
-                filtered.append(operation)
-                continue
-        overrides["operations"] = filtered
-
-    def _resolve_prefab_override_target(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-    ) -> Optional[tuple[dict[str, Any], str]]:
-        if entry.edit_world is None:
-            return None
-        entity = entry.edit_world.get_entity_by_name(entity_name)
-        if entity is None or entity.prefab_root_name is None:
-            return None
-        root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
-        if root_scene_data is None:
-            root = entry.edit_world.get_entity_by_name(entity.prefab_root_name)
-            root_id = getattr(root, "serialized_id", None) if root is not None else None
-            if isinstance(root_id, str) and root_id.strip():
-                root_scene_data = entry.scene.find_entity_by_id(root_id.strip())
-        if root_scene_data is None or "prefab_instance" not in root_scene_data:
-            return None
-        return root_scene_data, str(entity.prefab_source_path or "")
-
-
 class SceneStructuralAuthoring:
-    def __init__(self, context: SceneStructuralAuthoringContext) -> None:
+    def __init__(
+        self,
+        context: SceneStructuralAuthoringContext,
+        prefab_overrides: PrefabOverridePort,
+    ) -> None:
         self._hierarchy = SceneHierarchyAuthoring(context)
         self._prefabs = ScenePrefabAuthoring(context, self._hierarchy)
+        self._prefab_overrides = prefab_overrides
 
     def reset_state(self) -> None:
         self._hierarchy.reset_state()
@@ -702,7 +549,13 @@ class SceneStructuralAuthoring:
         property_name: str,
         value: Any,
     ) -> bool:
-        return self._prefabs.update_prefab_component_override(entry, entity_name, component_name, property_name, value)
+        return self._prefab_overrides.update_component_property(
+            entry,
+            entity_name,
+            component_name,
+            property_name,
+            value,
+        )
 
     def update_prefab_entity_override(
         self,
@@ -711,7 +564,12 @@ class SceneStructuralAuthoring:
         property_name: str,
         value: Any,
     ) -> bool:
-        return self._prefabs.update_prefab_entity_override(entry, entity_name, property_name, value)
+        return self._prefab_overrides.update_entity_property(
+            entry,
+            entity_name,
+            property_name,
+            value,
+        )
 
     def replace_prefab_component_override(
         self,
@@ -720,7 +578,12 @@ class SceneStructuralAuthoring:
         component_name: str,
         component_data: dict[str, Any],
     ) -> bool:
-        return self._prefabs.replace_prefab_component_override(entry, entity_name, component_name, component_data)
+        return self._prefab_overrides.replace_component(
+            entry,
+            entity_name,
+            component_name,
+            component_data,
+        )
 
     def remove_prefab_component_override(
         self,
@@ -728,25 +591,8 @@ class SceneStructuralAuthoring:
         entity_name: str,
         component_name: str,
     ) -> bool:
-        return self._prefabs.remove_prefab_component_override(entry, entity_name, component_name)
-
-    def ensure_prefab_override_ops(self, root_scene_data: dict[str, Any]) -> dict[str, Any]:
-        return self._prefabs.ensure_prefab_override_ops(root_scene_data)
-
-    def upsert_prefab_override_operation(
-        self,
-        overrides: dict[str, Any],
-        operation: dict[str, Any],
-        *,
-        match_keys: tuple[str, ...],
-    ) -> None:
-        self._prefabs.upsert_prefab_override_operation(overrides, operation, match_keys=match_keys)
-
-    def remove_prefab_override_operations(
-        self,
-        overrides: dict[str, Any],
-        *,
-        target: str,
-        component: str | None = None,
-    ) -> None:
-        self._prefabs.remove_prefab_override_operations(overrides, target=target, component=component)
+        return self._prefab_overrides.remove_component(
+            entry,
+            entity_name,
+            component_name,
+        )

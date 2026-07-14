@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import copy
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from engine.authoring.changes import Change
-from engine.components.recttransform import RectTransform
-from engine.components.transform import Transform
 from engine.core.runtime_logging import log_err
 from engine.scenes.change_history import SceneChangeCoordinator, SceneChangeCoordinatorContext
 from engine.scenes.contracts import (
@@ -19,7 +16,17 @@ from engine.scenes.contracts import (
     SceneRuntimePort,
     SceneWorkspacePort,
 )
+from engine.scenes.edit_sync import (
+    LEGACY_AUTHORING_SYNC_REASON,
+    SceneEditSyncCoordinator,
+)
+from engine.scenes.edit_sync import (
+    TRANSIENT_PREVIEW_SYNC_REASON as TRANSIENT_PREVIEW_SYNC_REASON,
+)
+from engine.scenes.incremental_authoring import SceneIncrementalAuthoring
+from engine.scenes.prefab_overrides import PrefabOverrideService
 from engine.scenes.scene import Scene
+from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_persistence import (
     COMPACT_SCENE_SAVE_ENTITY_THRESHOLD as _COMPACT_SCENE_SAVE_ENTITY_THRESHOLD,
 )
@@ -30,59 +37,37 @@ from engine.scenes.scene_persistence import (
     ScenePersistenceService,
     SceneStorageReadError,
 )
+from engine.scenes.scene_projection import SceneProjectionService
+from engine.scenes.serializable_authoring import SceneSerializableAuthoring
+from engine.scenes.serializable_mutation import SerializableMutationCoordinator
 from engine.scenes.storage import SceneStorage
 from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
-from engine.serialization.json_value import clone_json_value
-from engine.serialization.schema import build_canonical_scene_payload, migrate_scene_data, validate_scene_data
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
     from engine.levels.component_registry import ComponentRegistry
 
-LEGACY_AUTHORING_SYNC_REASON = "legacy_authoring"
-TRANSIENT_PREVIEW_SYNC_REASON = "transient_preview"
 COMPACT_SCENE_SAVE_ENTITY_THRESHOLD = _COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
 COMPACT_SCENE_SAVE_SEPARATORS = _COMPACT_SCENE_SAVE_SEPARATORS
-
-
-@dataclass
-class AuthoringComponentDelta:
-    entity_name: str
-    component_name: str
-    old_properties: Dict[str, Any] = field(default_factory=dict)
-    new_properties: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class AuthoringTransactionState:
-    label: str
-    key: str
-    changes: Dict[tuple[str, str], AuthoringComponentDelta] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class _SerializableMutationSnapshot:
-    scene_data: Dict[str, Any]
-    selected_entity_name: Optional[str]
-    selected_entity_id: Optional[str]
-    dirty: bool
-    pending_edit_world_sync_reason: Optional[str]
 
 
 class SceneManager:
     def __init__(self, registry: "ComponentRegistry") -> None:
         self._registry = registry
+        self._flow_policy = SceneFlowPolicy()
+        self._projection = SceneProjectionService(registry)
         self._workspace = SceneWorkspace(
-            validate_scene_payload=self._validated_scene_payload,
-            build_scene_key=self._build_scene_key,
-            create_untitled_key=self._create_untitled_scene_key,
-            rebuild_edit_world=self._rebuild_edit_world,
-            sync_scene_links_from_feature_metadata=self._sync_scene_links_from_feature_metadata,
-            entry_has_invalid_links=self._entry_has_invalid_links,
+            projection=self._projection,
+            flow_policy=self._flow_policy,
+        )
+        self._edit_sync = SceneEditSyncCoordinator(self._workspace, self._projection)
+        self._serializable_mutations = SerializableMutationCoordinator(
+            self._workspace,
+            self._projection,
+            self._edit_sync,
         )
         self._persistence = ScenePersistenceService()
-        self._untitled_counter: int = 1
         self._change_history = SceneChangeCoordinator(
             SceneChangeCoordinatorContext(
                 resolve_entry=self._resolve_entry,
@@ -90,31 +75,49 @@ class SceneManager:
                 snapshot_scene=lambda entry: copy.deepcopy(entry.scene.to_dict()),
                 edit_component=self.apply_edit_to_world,
                 set_entity_property=self.update_entity_property,
-                add_component=lambda entity, component, data: self.add_component_to_entity(entity, component, component_data=data),
+                add_component=lambda entity, component, data: self.add_component_to_entity(
+                    entity, component, component_data=data
+                ),
                 remove_component=self.remove_component_from_entity,
                 create_entity=self.create_entity,
                 delete_entity=self.remove_entity,
             )
         )
+        self._incremental_authoring = SceneIncrementalAuthoring(
+            self._workspace,
+            self._edit_sync,
+            self._change_history,
+        )
+        self._prefab_overrides = PrefabOverrideService()
+        self._serializable_authoring = SceneSerializableAuthoring(
+            self._workspace,
+            self._edit_sync,
+            self._serializable_mutations,
+            self._projection,
+            self._change_history,
+            self._prefab_overrides,
+            self._flow_policy,
+            self._registry,
+        )
         self._structural_authoring = SceneStructuralAuthoring(
             SceneStructuralAuthoringContext(
                 get_active_entry=self._get_active_entry,
                 resolve_entry=self._resolve_entry,
-                flush_pending_edit_world=self._flush_pending_edit_world,
-                rebuild_edit_world=self._rebuild_edit_world,
+                flush_pending_edit_world=self._edit_sync.flush_pending,
+                rebuild_edit_world=self._workspace.rebuild_edit_world,
                 record_scene_change=self._record_scene_change,
                 sync_scene_links_from_feature_metadata=self._sync_feature_metadata_from_scene_links,
                 create_entity=self.create_entity,
                 create_entity_from_data=self.create_entity_from_data,
                 update_entity_property=self.update_entity_property,
                 unique_entity_name=self._unique_entity_name,
-            )
+            ),
+            self._prefab_overrides,
         )
         self._runtime_port: SceneRuntimePort = SceneManagerRuntimeAdapter(self)
         self._authoring_port: SceneAuthoringPort = SceneManagerAuthoringAdapter(self)
         self._workspace_port: SceneWorkspacePort = SceneManagerWorkspaceAdapter(self)
         self._runtime_signal_compiler: Optional[Callable[[Scene, "World"], int]] = None
-        self._authoring_transaction: AuthoringTransactionState | None = None
         self._on_scene_saved_callbacks: list[Callable[[str, Dict[str, Any]], None]] = []
         self._scene_file_mtimes: dict[str, float] = {}
 
@@ -224,14 +227,15 @@ class SceneManager:
             return entry.edit_world
         if entry.dirty:
             return entry.edit_world
-        resolved_source = str(Path(raw_source).resolve())
+        resolved_source = self._workspace.normalize_path_reference(raw_source)
+        mtime_key = self._mtime_key(resolved_source)
         try:
             current_mtime = self._persistence.get_mtime(resolved_source)
         except OSError:
             return entry.edit_world
         if current_mtime is None:
             return entry.edit_world
-        previous_mtime = self._scene_file_mtimes.get(resolved_source)
+        previous_mtime = self._scene_file_mtimes.get(mtime_key)
         if previous_mtime is not None and current_mtime <= previous_mtime:
             return entry.edit_world
         try:
@@ -240,9 +244,10 @@ class SceneManager:
             log_err(f"SceneManager: failed to reload stale scene from {resolved_source}: {exc}")
             return entry.edit_world
         try:
-            self._install_scene_payload(entry, loaded.payload, source_path=resolved_source)
-            entry.dirty = False
-            self._scene_file_mtimes[resolved_source] = current_mtime
+            self._workspace.replace_entry_scene(entry, loaded.payload, source_path=resolved_source)
+            self._edit_sync.clear_pending(entry)
+            self._workspace.clear_dirty(entry)
+            self._scene_file_mtimes[mtime_key] = current_mtime
         except Exception as exc:
             log_err(f"SceneManager: failed to install refreshed scene payload from {resolved_source}: {exc}")
         return entry.edit_world
@@ -251,10 +256,7 @@ class SceneManager:
         return self._workspace.list_open_scenes()
 
     def get_feature_metadata(self) -> Dict[str, Any]:
-        entry = self._get_active_entry()
-        if entry is None:
-            return {}
-        return copy.deepcopy(entry.scene.feature_metadata)
+        return self._serializable_authoring.get_feature_metadata()
 
     def get_active_scene_summary(self) -> Dict[str, Any]:
         entry = self._get_active_entry()
@@ -268,17 +270,10 @@ class SceneManager:
         }
 
     def get_component_data(self, entity_name: str, component_name: str) -> Optional[Dict[str, Any]]:
-        entry = self._get_active_entry()
-        if entry is None:
-            return None
-        self._flush_pending_edit_world(entry, failure_context=f"read_component:{entity_name}.{component_name}")
-        entity_data = entry.scene.find_entity(entity_name)
-        if entity_data is None:
-            return None
-        component_data = entity_data.get("components", {}).get(component_name)
-        if not isinstance(component_data, dict):
-            return None
-        return copy.deepcopy(component_data)
+        return self._serializable_authoring.get_component_data(
+            entity_name,
+            component_name,
+        )
 
     def ensure_scene_open(self, scene_ref: str, activate: bool = False) -> Optional[SceneWorkspaceEntry]:
         normalized_ref = str(scene_ref or "").strip()
@@ -293,11 +288,17 @@ class SceneManager:
         return entry
 
     def find_entity_data_for_scene(self, scene_ref: str | None, entity_name: str) -> Optional[Dict[str, Any]]:
-        entry = self.ensure_scene_open(str(scene_ref or ""), activate=False) if scene_ref not in (None, "") else self._get_active_entry()
+        entry = (
+            self.ensure_scene_open(str(scene_ref or ""), activate=False)
+            if scene_ref not in (None, "")
+            else self._get_active_entry()
+        )
         if entry is None:
             return None
-        entity_data = entry.scene.find_entity(entity_name)
-        return copy.deepcopy(entity_data) if isinstance(entity_data, dict) else None
+        return self._serializable_authoring.find_entity_data_for_entry(
+            entry,
+            entity_name,
+        )
 
     def get_component_data_for_scene(
         self,
@@ -305,37 +306,28 @@ class SceneManager:
         entity_name: str,
         component_name: str,
     ) -> Optional[Dict[str, Any]]:
-        entity_data = self.find_entity_data_for_scene(scene_ref, entity_name)
-        if entity_data is None:
+        entry = (
+            self.ensure_scene_open(str(scene_ref or ""), activate=False)
+            if scene_ref not in (None, "")
+            else self._get_active_entry()
+        )
+        if entry is None:
             return None
-        components = entity_data.get("components", {})
-        if not isinstance(components, dict):
-            return None
-        component_data = components.get(component_name)
-        return copy.deepcopy(component_data) if isinstance(component_data, dict) else None
+        return self._serializable_authoring.get_component_data_for_entry(
+            entry,
+            entity_name,
+            component_name,
+        )
 
     def list_scene_entities(self, scene_ref: str | None = None) -> list[Dict[str, Any]]:
-        entry = self.ensure_scene_open(str(scene_ref or ""), activate=False) if scene_ref not in (None, "") else self._get_active_entry()
+        entry = (
+            self.ensure_scene_open(str(scene_ref or ""), activate=False)
+            if scene_ref not in (None, "")
+            else self._get_active_entry()
+        )
         if entry is None:
             return []
-        entities: list[Dict[str, Any]] = []
-        for entity_data in entry.scene.entities_data:
-            if not isinstance(entity_data, dict):
-                continue
-            components = entity_data.get("components", {})
-            component_names = sorted(components.keys()) if isinstance(components, dict) else []
-            entities.append(
-                {
-                    "name": str(entity_data.get("name", "") or ""),
-                    "scene_name": entry.scene.name,
-                    "scene_path": entry.source_path,
-                    "scene_key": entry.key,
-                    "scene_ref": entry.source_path or entry.key,
-                    "has_scene_link": "SceneLink" in component_names,
-                    "component_names": component_names,
-                }
-            )
-        return entities
+        return self._serializable_authoring.list_scene_entities(entry)
 
     def upsert_component_for_scene(
         self,
@@ -347,38 +339,15 @@ class SceneManager:
         record_history: bool = True,
     ) -> bool:
         entry = self.ensure_scene_open(scene_ref, activate=False)
-        if entry is None or entry.is_playing:
+        if entry is None:
             return False
-        if entry.key == self._active_scene_key and not self._flush_pending_edit_world(
+        return self._serializable_authoring.upsert_component_for_scene(
             entry,
-            failure_context=f"upsert_component:{entity_name}.{component_name}",
-        ):
-            return False
-        if entry.scene.find_entity(entity_name) is None:
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        normalized_payload = self._canonicalize_component_payload(component_name, component_data)
-        if not entry.scene.replace_component_data(entity_name, component_name, normalized_payload):
-            if not entry.scene.add_component(entity_name, component_name, normalized_payload):
-                return False
-            entry.scene.set_component_metadata(
-                entity_name,
-                component_name,
-                {"origin": self._registry.get_origin(component_name)},
-            )
-        if component_name == "SceneLink":
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"upsert_component:{entity_name}.{component_name}",
-        ):
-            return False
-        entry.dirty = True
-        if record_history and entry.key == self._active_scene_key:
-            self._record_scene_change(entry, f"{entity_name}.{component_name}", before)
-        return True
+            entity_name,
+            component_name,
+            component_data,
+            record_history=record_history,
+        )
 
     def remove_component_for_scene(
         self,
@@ -389,34 +358,14 @@ class SceneManager:
         record_history: bool = True,
     ) -> bool:
         entry = self.ensure_scene_open(scene_ref, activate=False)
-        if entry is None or entry.is_playing:
+        if entry is None:
             return False
-        if entry.key == self._active_scene_key and not self._flush_pending_edit_world(
+        return self._serializable_authoring.remove_component_for_scene(
             entry,
-            failure_context=f"remove_component:{entity_name}.{component_name}",
-        ):
-            return False
-        if entry.scene.find_entity(entity_name) is None:
-            return False
-        current = self.get_component_data_for_scene(scene_ref, entity_name, component_name)
-        if current is None:
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        if not entry.scene.remove_component(entity_name, component_name):
-            return False
-        if component_name == "SceneLink":
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"remove_component:{entity_name}.{component_name}",
-        ):
-            return False
-        entry.dirty = True
-        if record_history and entry.key == self._active_scene_key:
-            self._record_scene_change(entry, f"remove_component:{entity_name}.{component_name}", before)
-        return True
+            entity_name,
+            component_name,
+            record_history=record_history,
+        )
 
     def get_scene_view_state(self, key: Optional[str] = None) -> Dict[str, Any]:
         return self._workspace.get_scene_view_state(key)
@@ -441,10 +390,10 @@ class SceneManager:
         world = self._workspace.load_scene(data, source_path=source_path, activate=activate)
         if world is not None and source_path:
             try:
-                resolved_path = str(Path(source_path).resolve())
+                resolved_path = self._workspace.normalize_path_reference(source_path)
                 mtime = self._persistence.get_mtime(resolved_path)
                 if mtime is not None:
-                    self._scene_file_mtimes[resolved_path] = mtime
+                    self._scene_file_mtimes[self._mtime_key(resolved_path)] = mtime
             except OSError:
                 pass
         return world
@@ -456,7 +405,8 @@ class SceneManager:
         storage: Optional[SceneStorage] = None,
     ) -> Optional["World"]:
         resolved_path = self._persistence.resolve_path(path)
-        workspace_path = resolved_path.as_posix()
+        workspace_path = self._workspace.normalize_path_reference(str(resolved_path))
+        mtime_key = self._mtime_key(resolved_path)
         existing = self._workspace.resolve_entry(workspace_path)
         if existing is not None:
             if activate:
@@ -465,7 +415,7 @@ class SceneManager:
             try:
                 mtime = self._persistence.get_mtime(resolved_path)
                 if mtime is not None:
-                    self._scene_file_mtimes[str(resolved_path)] = mtime
+                    self._scene_file_mtimes[mtime_key] = mtime
             except OSError:
                 pass
             return world
@@ -480,7 +430,7 @@ class SceneManager:
             activate=activate,
         )
         if world is not None and loaded.mtime is not None:
-            self._scene_file_mtimes[str(resolved_path)] = loaded.mtime
+            self._scene_file_mtimes[mtime_key] = loaded.mtime
         return world
 
     def get_edit_world(self) -> Optional["World"]:
@@ -500,276 +450,154 @@ class SceneManager:
         return runtime_world
 
     def exit_play(self) -> Optional["World"]:
-        return self._workspace.exit_play()
+        entry = self._get_active_entry()
+        edit_world = self._workspace.exit_play()
+        if entry is not None:
+            self._edit_sync.clear_pending(entry)
+        return edit_world
 
     def restore_world(self, world: "World") -> None:
         self._workspace.restore_world(world)
 
     def reload_scene(self) -> Optional["World"]:
-        return self._workspace.reload_scene()
+        entry = self._get_active_entry()
+        edit_world = self._workspace.reload_scene()
+        if entry is not None:
+            self._edit_sync.clear_pending(entry)
+        return edit_world
 
     def apply_edit_to_world(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
         entry = self._get_active_entry()
         if entry is None or entry.is_playing or entry.edit_world is None:
             return False
-        if component_name == "Transform" and property_name in ("x", "y", "rotation", "scale_x", "scale_y"):
-            return self.apply_transform_state(
+        if self._incremental_authoring.supports(component_name, property_name):
+            apply_state = (
+                self.apply_transform_state if component_name == "Transform" else self.apply_rect_transform_state
+            )
+            return apply_state(
                 entity_name,
                 {property_name: value},
                 entry.key,
                 record_history=True,
                 label=f"{entity_name}.{component_name}.{property_name}",
             )
-        if component_name == "RectTransform" and property_name in (
-            "anchored_x",
-            "anchored_y",
-            "width",
-            "height",
-            "rotation",
-            "scale_x",
-            "scale_y",
-        ):
-            return self.apply_rect_transform_state(
-                entity_name,
-                {property_name: value},
-                entry.key,
-                record_history=True,
-                label=f"{entity_name}.{component_name}.{property_name}",
-            )
-        if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{component_name}.{property_name}"):
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        if not entry.scene.update_component(entity_name, component_name, property_name, value):
-            if not self._structural_authoring.update_prefab_component_override(entry, entity_name, component_name, property_name, value):
-                return False
-        if component_name == "SceneLink":
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"{entity_name}.{component_name}.{property_name}",
-        ):
-            return False
-        entry.dirty = True
-        self._record_scene_change(entry, f"{entity_name}.{component_name}.{property_name}", before)
-        return True
+        return self._serializable_authoring.apply_edit_to_world(
+            entity_name,
+            component_name,
+            property_name,
+            value,
+        )
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
         entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
+        if entry is None:
             return False
-        entity_id = self._entity_id_for_name(entry, entity_name)
-        if property_name == "parent" and value is not None and not self._structural_authoring.validate_parent(entry, entity_name, value):
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{property_name}"):
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        if not entry.scene.update_entity_property(entity_name, property_name, value):
-            if not self._structural_authoring.update_prefab_entity_override(entry, entity_name, property_name, value):
-                return False
-        if property_name == "name" and isinstance(value, str):
-            selected_matches = (
-                (entity_id is not None and entry.selected_entity_id == entity_id)
-                or (entry.selected_entity_id is None and entry.selected_entity_name == entity_name)
-            )
-            if selected_matches:
-                entry.selected_entity_name = value
-                entry.selected_entity_id = entity_id
-            if entry.edit_world is not None and entry.edit_world.selected_entity_name == entity_name:
-                entry.edit_world.selected_entity_name = value
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"{entity_name}.{property_name}",
+        if (
+            property_name == "parent"
+            and value is not None
+            and not self._structural_authoring.validate_parent(entry, entity_name, value)
         ):
             return False
-        entry.dirty = True
-        self._record_scene_change(entry, f"{entity_name}.{property_name}", before)
-        return True
+        return self._serializable_authoring.update_entity_property(
+            entity_name,
+            property_name,
+            value,
+        )
 
     def set_entity_groups(self, entity_name: str, groups: list[str]) -> bool:
-        return self.update_entity_property(entity_name, "groups", groups)
+        return self._serializable_authoring.set_entity_groups(entity_name, groups)
 
     def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing or entry.edit_world is None:
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{component_name}"):
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        normalized_component_data = self._canonicalize_component_payload(component_name, component_data)
-        if not entry.scene.replace_component_data(entity_name, component_name, normalized_component_data):
-            if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, component_data):
-                return False
-        if component_name == "SceneLink":
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"{entity_name}.{component_name}",
-        ):
-            return False
-        entry.dirty = True
-        self._record_scene_change(entry, f"{entity_name}.{component_name}", before)
-        return True
+        return self._serializable_authoring.replace_component_data(
+            entity_name,
+            component_name,
+            component_data,
+        )
 
     def get_component_metadata(self, entity_name: str, component_name: str) -> Dict[str, Any]:
-        entry = self._get_active_entry()
-        return entry.scene.get_component_metadata(entity_name, component_name) if entry is not None else {}
+        return self._serializable_authoring.get_component_metadata(
+            entity_name,
+            component_name,
+        )
 
     def set_component_metadata(self, entity_name: str, component_name: str, metadata: Dict[str, Any]) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{component_name}.metadata"):
-            return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        if not entry.scene.set_component_metadata(entity_name, component_name, metadata):
-            return False
-        self._rebuild_edit_world(entry)
-        entry.dirty = True
-        self._record_scene_change(entry, f"{entity_name}.{component_name}.metadata", before)
-        return True
+        return self._serializable_authoring.set_component_metadata(
+            entity_name,
+            component_name,
+            metadata,
+        )
 
     def create_entity(self, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"create_entity:{name}"):
-            return False
-        payload = {
-            "name": name,
-            "active": True,
-            "tag": "Untagged",
-            "layer": "Default",
-            "parent": None,
-            "components": components
-            or {"Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
-            "component_metadata": {},
-        }
-        components_payload = payload["components"]
-        metadata_payload = payload["component_metadata"]
-        if isinstance(components_payload, dict) and isinstance(metadata_payload, dict):
-            for component_name in components_payload.keys():
-                metadata_payload[component_name] = {"origin": self._registry.get_origin(str(component_name))}
-        canonical_entity = self._add_entity_incrementally(entry, payload, failure_context=f"create_entity:{name}")
-        if canonical_entity is None:
-            return False
-        entry.dirty = True
-        self._record_entity_create_delta(entry, f"create_entity:{name}", canonical_entity)
-        return True
+        return self._serializable_authoring.create_entity(name, components)
 
     def create_entity_from_data(self, entity_data: Dict[str, Any]) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        entity_name = str(entity_data.get("name", "") or "")
-        if not self._flush_pending_edit_world(entry, failure_context=f"create_entity:{entity_name}"):
-            return False
-        payload = clone_json_value(entity_data)
-        payload.setdefault("active", True)
-        payload.setdefault("tag", "Untagged")
-        payload.setdefault("layer", "Default")
-        payload.setdefault("parent", None)
-        payload.setdefault("components", {})
-        payload.setdefault("component_metadata", {})
-        for component_name in payload["components"].keys():
-            payload["component_metadata"].setdefault(component_name, {})
-            payload["component_metadata"][component_name].setdefault("origin", self._registry.get_origin(component_name))
-        canonical_entity = self._add_entity_incrementally(
-            entry,
-            payload,
-            failure_context=f"create_entity:{payload.get('name', '')}",
-        )
-        if canonical_entity is None:
-            return False
-        entry.dirty = True
-        self._record_entity_create_delta(
-            entry,
-            f"create_entity:{payload.get('name', '')}",
-            canonical_entity,
-        )
-        return True
+        return self._serializable_authoring.create_entity_from_data(entity_data)
 
     def remove_entity(self, entity_name: str) -> bool:
         return self._structural_authoring.remove_entity(entity_name)
 
-    def add_component_to_entity(self, entity_name: str, component_name: str, component_data: Optional[Dict[str, Any]] = None) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"add_component:{entity_name}.{component_name}"):
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        data = self._canonicalize_component_payload(component_name, component_data or {"enabled": True})
-        if not entry.scene.add_component(entity_name, component_name, data):
-            if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, data):
-                return False
-        entry.scene.set_component_metadata(entity_name, component_name, {"origin": self._registry.get_origin(component_name)})
-        if component_name == "SceneLink":
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"add_component:{entity_name}.{component_name}",
-        ):
-            return False
-        entry.dirty = True
-        self._record_scene_change(entry, f"add_component:{entity_name}.{component_name}", before)
-        return True
+    def add_component_to_entity(
+        self, entity_name: str, component_name: str, component_data: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        return self._serializable_authoring.add_component_to_entity(
+            entity_name,
+            component_name,
+            component_data,
+        )
 
     def remove_component_from_entity(self, entity_name: str, component_name: str) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"remove_component:{entity_name}.{component_name}"):
-            return False
-        before = copy.deepcopy(entry.scene.to_dict())
-        if not entry.scene.remove_component(entity_name, component_name):
-            if not self._structural_authoring.remove_prefab_component_override(entry, entity_name, component_name):
-                return False
-        if component_name == "SceneLink":
-            self._sync_feature_metadata_from_scene_links(entry)
-        self._rebuild_edit_world(entry)
-        entry.dirty = True
-        self._record_scene_change(entry, f"remove_component:{entity_name}.{component_name}", before)
-        return True
+        return self._serializable_authoring.remove_component_from_entity(
+            entity_name,
+            component_name,
+        )
 
     def set_component_enabled(self, entity_name: str, component_name: str, enabled: bool) -> bool:
-        return self.apply_edit_to_world(entity_name, component_name, "enabled", enabled)
+        return self._serializable_authoring.set_component_enabled(
+            entity_name,
+            component_name,
+            enabled,
+        )
 
     def find_entity_data(self, entity_name: str) -> Optional[Dict[str, Any]]:
-        entry = self._get_active_entry()
-        if entry is None:
-            return None
-        self._flush_pending_edit_world(entry, failure_context=f"read_entity:{entity_name}")
-        return entry.scene.find_entity(entity_name)
+        return self._serializable_authoring.find_entity_data(entity_name)
 
     def find_entity_data_by_id(self, entity_id: str) -> Optional[Dict[str, Any]]:
-        entry = self._get_active_entry()
-        if entry is None:
-            return None
-        self._flush_pending_edit_world(entry, failure_context=f"read_entity_id:{entity_id}")
-        return entry.scene.find_entity_by_id(entity_id)
+        return self._serializable_authoring.find_entity_data_by_id(entity_id)
 
     def update_entity_property_by_id(self, entity_id: str, property_name: str, value: Any) -> bool:
-        entity_data = self.find_entity_data_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return self.update_entity_property(entity_name, property_name, value) if isinstance(entity_name, str) else False
+        entry = self._get_active_entry()
+        if entry is None:
+            return False
+        if property_name == "parent" and value is not None:
+            entity_data = self._serializable_authoring.find_entity_data_by_id(entity_id)
+            entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+            if not isinstance(entity_name, str) or not self._structural_authoring.validate_parent(
+                entry,
+                entity_name,
+                value,
+            ):
+                return False
+        return self._serializable_authoring.update_entity_property_by_id(
+            entity_id,
+            property_name,
+            value,
+        )
 
     def apply_edit_to_world_by_id(self, entity_id: str, component_name: str, property_name: str, value: Any) -> bool:
         entity_data = self.find_entity_data_by_id(entity_id)
         entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return self.apply_edit_to_world(entity_name, component_name, property_name, value) if isinstance(entity_name, str) else False
+        return (
+            self.apply_edit_to_world(entity_name, component_name, property_name, value)
+            if isinstance(entity_name, str)
+            else False
+        )
 
     def replace_component_data_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        entity_data = self.find_entity_data_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return self.replace_component_data(entity_name, component_name, component_data) if isinstance(entity_name, str) else False
+        return self._serializable_authoring.replace_component_data_by_id(
+            entity_id,
+            component_name,
+            component_data,
+        )
 
     def add_component_to_entity_by_id(
         self,
@@ -777,14 +605,17 @@ class SceneManager:
         component_name: str,
         component_data: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        entity_data = self.find_entity_data_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return self.add_component_to_entity(entity_name, component_name, component_data) if isinstance(entity_name, str) else False
+        return self._serializable_authoring.add_component_to_entity_by_id(
+            entity_id,
+            component_name,
+            component_data,
+        )
 
     def remove_component_from_entity_by_id(self, entity_id: str, component_name: str) -> bool:
-        entity_data = self.find_entity_data_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return self.remove_component_from_entity(entity_name, component_name) if isinstance(entity_name, str) else False
+        return self._serializable_authoring.remove_component_from_entity_by_id(
+            entity_id,
+            component_name,
+        )
 
     def remove_entity_by_id(self, entity_id: str) -> bool:
         entity_data = self.find_entity_data_by_id(entity_id)
@@ -802,47 +633,13 @@ class SceneManager:
             DeprecationWarning,
             stacklevel=2,
         )
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing or entry.edit_world is None:
-            return False
-        if not force and not self._has_pending_legacy_world_sync(entry):
-            return False
-        return self._sync_entry_from_edit_world(entry)
+        return self._edit_sync.sync_from_edit_world(force=force)
 
     def mark_edit_world_dirty(self, reason: str = LEGACY_AUTHORING_SYNC_REASON) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing or entry.edit_world is None:
-            return False
-        # Preview edits (for example gizmo drags in progress) stay in edit_world only
-        # and must not turn the scene into persistible dirty state.
-        if reason == TRANSIENT_PREVIEW_SYNC_REASON:
-            if not self._has_pending_legacy_world_sync(entry):
-                entry.pending_edit_world_sync_reason = TRANSIENT_PREVIEW_SYNC_REASON
-            return True
-        if not self._has_pending_legacy_world_sync(entry):
-            entry.dirty_before_pending_edit_world_sync = entry.dirty
-        entry.dirty = True
-        entry.pending_edit_world_sync_reason = LEGACY_AUTHORING_SYNC_REASON
-        return True
+        return self._edit_sync.mark_edit_world_dirty(reason=reason)
 
     def set_feature_metadata(self, key: str, value: Any) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"feature_metadata:{key}"):
-            return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        entry.scene.set_feature_metadata(key, copy.deepcopy(value))
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=f"feature_metadata:{key}",
-        ):
-            return False
-        entry.dirty = True
-        self._record_scene_change(entry, f"feature_metadata:{key}", before)
-        return True
+        return self._serializable_authoring.set_feature_metadata(key, value)
 
     def apply_transform_state(
         self,
@@ -856,20 +653,20 @@ class SceneManager:
         entry = self._resolve_entry(key_or_path)
         if entry is None:
             return False
-        if self._can_apply_direct_transform_state(entry, entity_name):
-            return self._apply_direct_transform_state(
-                entry,
-                entity_name,
-                transform_state,
-                record_history=record_history,
-                label=label or f"transform:{entity_name}",
-            )
-        return self._apply_authoring_component_state(
+        if self._incremental_authoring.apply_state(
             entry,
             entity_name,
             "Transform",
             transform_state,
-            editable_fields=("x", "y", "rotation", "scale_x", "scale_y"),
+            record_history=record_history,
+            label=label or f"transform:{entity_name}",
+        ):
+            return True
+        return self._serializable_authoring.apply_authoring_component_state(
+            entry,
+            entity_name,
+            "Transform",
+            transform_state,
             record_history=record_history,
             label=label or f"transform:{entity_name}",
         )
@@ -886,40 +683,29 @@ class SceneManager:
         entry = self._resolve_entry(key_or_path)
         if entry is None:
             return False
-        if self._can_apply_direct_component_state(entry, entity_name, "RectTransform"):
-            return self._apply_direct_component_state(
-                entry,
-                entity_name,
-                "RectTransform",
-                rect_state,
-                editable_fields=("anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y"),
-                record_history=record_history,
-                label=label or f"rect_transform:{entity_name}",
-            )
-        return self._apply_authoring_component_state(
+        if self._incremental_authoring.apply_state(
             entry,
             entity_name,
             "RectTransform",
             rect_state,
-            editable_fields=("anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y"),
+            record_history=record_history,
+            label=label or f"rect_transform:{entity_name}",
+        ):
+            return True
+        return self._serializable_authoring.apply_authoring_component_state(
+            entry,
+            entity_name,
+            "RectTransform",
+            rect_state,
             record_history=record_history,
             label=label or f"rect_transform:{entity_name}",
         )
 
     def set_selected_entity(self, entity_name: Optional[str]) -> bool:
         entry = self._get_active_entry()
-        if entry is None or entry.active_world is None:
+        if entry is None:
             return False
-        if entity_name and entry.active_world.get_entity_by_name(entity_name) is None:
-            return False
-        entry.selected_entity_name = entity_name
-        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
-        entry.active_world.selected_entity_name = entity_name
-        if entry.edit_world is not None:
-            entry.edit_world.selected_entity_name = entity_name
-        if entry.runtime_world is not None:
-            entry.runtime_world.selected_entity_name = entity_name
-        return True
+        return self._workspace.select_entity(entry, entity_name=entity_name)
 
     def save_scene_to_file(
         self,
@@ -932,29 +718,24 @@ class SceneManager:
         if entry is None or entry.edit_world is None:
             return False
         try:
-            # Only legacy world-only authoring is flushed back into Scene before save.
-            # Transient previews are intentionally discarded by the rebuild below.
-            if self._has_pending_transient_preview(entry):
-                self._rebuild_edit_world(entry)
-                self._clear_pending_edit_world_sync(entry)
-            elif self._has_pending_legacy_world_sync(entry):
-                if not self._flush_pending_edit_world(entry, failure_context=f"save_scene:{Path(path).name}"):
-                    return False
-            elif entry.edit_world.version != entry.edit_world_version:
-                self._sync_entry_from_edit_world(entry)
-            data = self._validated_scene_payload(entry.scene.to_dict())
+            if not self._edit_sync.prepare_for_save(
+                entry,
+                failure_context=f"save_scene:{Path(path).name}",
+            ):
+                return False
+            data = self._projection.validate_payload(self._flow_policy.prepare_payload(entry.scene.to_dict()))
             saved = self._persistence.save(
                 path,
                 data,
                 compact_save=compact_save,
                 storage=storage,
             )
-            self._install_scene_payload(entry, saved.payload, source_path=path)
-            self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
-            entry.dirty = False
-            self._clear_pending_edit_world_sync(entry)
+            self._workspace.replace_entry_scene(entry, saved.payload, source_path=path)
+            self._workspace.rekey_entry(entry, self._workspace.build_scene_key(path, entry.scene.name))
+            self._workspace.clear_dirty(entry)
+            self._edit_sync.clear_pending(entry)
             if saved.mtime is not None:
-                self._scene_file_mtimes[saved.resolved_path] = saved.mtime
+                self._scene_file_mtimes[self._mtime_key(saved.resolved_path)] = saved.mtime
             self._fire_on_scene_saved(
                 saved.resolved_path,
                 entry.key,
@@ -974,18 +755,27 @@ class SceneManager:
             self._restore_entry_scene(entry, data)
         except ValueError:
             return False
-        entry.dirty = True
+        self._workspace.mark_dirty(entry)
         return True
 
     def set_entity_parent(self, entity_name: str, parent_name: Optional[str]) -> bool:
         """Reparent an entity, preserving its world-space transform."""
         return self._structural_authoring.set_entity_parent(entity_name, parent_name)
 
-    def create_child_entity(self, parent_name: str, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None) -> bool:
+    def create_child_entity(
+        self, parent_name: str, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> bool:
         """Create a new entity as a child. The provided component coords are local (no world-position preservation)."""
         return self._structural_authoring.create_child_entity(parent_name, name, components)
 
-    def instantiate_prefab(self, name: str, prefab_path: str, parent: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None, root_name: Optional[str] = None) -> bool:
+    def instantiate_prefab(
+        self,
+        name: str,
+        prefab_path: str,
+        parent: Optional[str] = None,
+        overrides: Optional[Dict[str, Any]] = None,
+        root_name: Optional[str] = None,
+    ) -> bool:
         return self._structural_authoring.instantiate_prefab(name, prefab_path, parent, overrides, root_name)
 
     def create_prefab(
@@ -1023,11 +813,11 @@ class SceneManager:
     def clear_dirty(self) -> None:
         entry = self._get_active_entry()
         if entry is not None:
-            entry.dirty = False
+            self._workspace.clear_dirty(entry)
 
     def clear_all_dirty(self) -> None:
         for entry in self._entries.values():
-            entry.dirty = False
+            self._workspace.clear_dirty(entry)
 
     def begin_transaction(self, label: str = "transaction", key: Optional[str] = None) -> bool:
         return self._change_history.begin_transaction(label=label, key=key)
@@ -1043,13 +833,7 @@ class SceneManager:
 
     def begin_authoring_transaction(self, label: str, key_or_path: Optional[str] = None) -> bool:
         entry = self._resolve_entry(key_or_path)
-        if entry is None or entry.is_playing or self._authoring_transaction is not None:
-            return False
-        self._authoring_transaction = AuthoringTransactionState(
-            label=str(label or "authoring_transaction"),
-            key=entry.key,
-        )
-        return True
+        return entry is not None and self._incremental_authoring.begin_transaction(entry, label)
 
     def update_authoring_transaction(
         self,
@@ -1058,77 +842,23 @@ class SceneManager:
         component_state: Dict[str, Any],
         key_or_path: Optional[str] = None,
     ) -> bool:
-        if self._authoring_transaction is None:
-            return False
         entry = self._resolve_entry(key_or_path)
-        if entry is None or entry.key != self._authoring_transaction.key:
-            return False
-        if component_name == "Transform":
-            return self.apply_transform_state(entity_name, component_state, entry.key, record_history=True)
-        if component_name == "RectTransform":
-            return self.apply_rect_transform_state(entity_name, component_state, entry.key, record_history=True)
-        return False
+        return entry is not None and self._incremental_authoring.update_transaction(
+            entry,
+            entity_name,
+            component_name,
+            component_state,
+        )
 
     def commit_authoring_transaction(self) -> Optional[Dict[str, Any]]:
-        transaction = self._authoring_transaction
-        if transaction is None:
-            return None
-        self._authoring_transaction = None
-        changes = [
-            copy.deepcopy(delta)
-            for delta in transaction.changes.values()
-            if delta.old_properties != delta.new_properties
-        ]
-        if changes:
-            key = transaction.key
-            undo_changes = copy.deepcopy(changes)
-            redo_changes = copy.deepcopy(changes)
-            self._change_history.record_differential_change(
-                label=transaction.label,
-                undo=lambda key=key, changes=undo_changes: self._apply_authoring_transaction_deltas(
-                    key,
-                    changes,
-                    use_old=True,
-                ),
-                redo=lambda key=key, changes=redo_changes: self._apply_authoring_transaction_deltas(
-                    key,
-                    changes,
-                    use_old=False,
-                ),
-            )
-        return {
-            "label": transaction.label,
-            "scene_key": transaction.key,
-            "changed_component_count": len(changes),
-        }
+        return self._incremental_authoring.commit_transaction()
 
     def cancel_authoring_transaction(self) -> bool:
-        transaction = self._authoring_transaction
-        if transaction is None:
-            return False
-        self._authoring_transaction = None
-        return self._apply_authoring_transaction_deltas(
-            transaction.key,
-            list(transaction.changes.values()),
-            use_old=True,
-        )
+        return self._incremental_authoring.cancel_transaction()
 
     def get_scene_flow(self) -> Dict[str, str]:
         entry = self._get_active_entry()
-        if entry is None:
-            return {}
-        result: Dict[str, str] = {}
-        metadata = entry.scene.feature_metadata.get("scene_flow", {})
-        if isinstance(metadata, dict):
-            result.update({str(key): str(value) for key, value in metadata.items() if str(key).strip() and str(value).strip()})
-        for entity_data in entry.scene.entities_data:
-            scene_link = entity_data.get("components", {}).get("SceneLink")
-            if isinstance(scene_link, dict):
-                flow_key = str(scene_link.get("flow_key", "") or "").strip()
-                target_path = str(scene_link.get("target_path", "") or "").strip()
-                if flow_key and target_path:
-                    result[flow_key] = target_path
-        return result
+        return self._flow_policy.get_effective_flow(entry.scene) if entry is not None else {}
 
     def set_scene_flow_target(self, key: str, target_path: str) -> bool:
         entry = self._get_active_entry()
@@ -1137,28 +867,18 @@ class SceneManager:
         scene_key = str(key).strip()
         if not scene_key:
             return False
-        if not self._flush_pending_edit_world(entry, failure_context=f"scene_flow:{scene_key}"):
+        if not self._edit_sync.flush_pending(entry, failure_context=f"scene_flow:{scene_key}"):
             return False
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        scene_flow = entry.scene.feature_metadata.setdefault("scene_flow", {})
-        if not isinstance(scene_flow, dict):
-            scene_flow = {}
-            entry.scene.feature_metadata["scene_flow"] = scene_flow
-        if target_path:
-            scene_flow[scene_key] = target_path
-        else:
-            scene_flow.pop(scene_key, None)
-            if not scene_flow:
-                entry.scene.feature_metadata.pop("scene_flow", None)
-        self._sync_scene_links_from_feature_metadata(entry)
-        if not self._commit_serializable_scene_mutation(
+        snapshot = self._serializable_mutations.capture_snapshot(entry)
+        before = self._serializable_mutations.snapshot_scene_data(snapshot)
+        self._flow_policy.set_metadata_target(entry.scene, scene_key, target_path)
+        if not self._serializable_mutations.commit_mutation(
             entry,
             snapshot,
             failure_context=f"scene_flow:{scene_key}",
         ):
             return False
-        entry.dirty = True
+        self._workspace.mark_dirty(entry)
         self._record_scene_change(entry, f"scene_flow:{scene_key}", before)
         return True
 
@@ -1187,701 +907,13 @@ class SceneManager:
     def _entry_path_or_key(self, entry: Optional[SceneWorkspaceEntry]) -> str:
         return "" if entry is None else (entry.source_path or entry.key)
 
-    def _create_untitled_scene_key(self, scene_name: str) -> str:
-        _ = scene_name
-        key = f"untitled:{self._untitled_counter}"
-        self._untitled_counter += 1
-        return key
-
-    def _build_scene_key(self, source_path: Optional[str], scene_name: str) -> str:
-        if source_path:
-            return Path(source_path).resolve().as_posix()
-        key = f"untitled:{self._untitled_counter}:{scene_name}"
-        self._untitled_counter += 1
-        return key
-
-    def _validated_scene_payload(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        payload = migrate_scene_data(copy.deepcopy(data))
-        validation_errors = validate_scene_data(payload)
-        if validation_errors:
-            raise ValueError(f"Invalid scene payload: {'; '.join(validation_errors)}")
-        return payload
-
-    def _canonicalize_component_payload(self, component_name: str, component_data: Dict[str, Any]) -> Dict[str, Any]:
-        payload = copy.deepcopy(component_data)
-        rebuilt_component = self._registry.create(component_name, payload)
-        if rebuilt_component is None or not hasattr(rebuilt_component, "to_dict"):
-            return payload
-        rebuilt_payload = rebuilt_component.to_dict()
-        return copy.deepcopy(rebuilt_payload) if isinstance(rebuilt_payload, dict) else payload
-
-    def _build_canonical_scene_payload(
-        self,
-        entry: SceneWorkspaceEntry,
-        world_snapshot: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        edit_world = entry.edit_world
-        if edit_world is None and world_snapshot is None:
-            raise ValueError("Cannot build scene payload without edit world")
-        if world_snapshot is not None:
-            snapshot_source = world_snapshot
-        else:
-            if edit_world is None:
-                raise ValueError("Cannot build scene payload without edit world")
-            snapshot_source = edit_world.serialize()
-        snapshot = copy.deepcopy(snapshot_source)
-        payload = build_canonical_scene_payload(
-            scene_name=entry.scene.name,
-            world_snapshot=snapshot,
-            rules_data=entry.scene.rules_data,
-            feature_metadata=entry.scene.feature_metadata,
-        )
-        return self._validated_scene_payload(payload)
+    @staticmethod
+    def _mtime_key(path: str | Path) -> str:
+        return str(Path(path).resolve())
 
     def _restore_entry_scene(self, entry: SceneWorkspaceEntry, data: Dict[str, Any]) -> None:
-        self._install_scene_payload(entry, data)
-
-    def _install_scene_payload(
-        self,
-        entry: SceneWorkspaceEntry,
-        data: Dict[str, Any],
-        *,
-        source_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        payload = self._validated_scene_payload(data)
-        target_source_path = entry.scene.source_path if source_path is None else source_path
-        entry.scene = Scene(payload.get("name", entry.scene.name), payload, source_path=target_source_path)
-        self._sync_scene_links_from_feature_metadata(entry)
-        self._rebuild_edit_world(entry)
-        self._clear_pending_edit_world_sync(entry)
-        return payload
-
-    def _rebuild_edit_world(self, entry: SceneWorkspaceEntry) -> None:
-        world_selected_name = entry.edit_world.selected_entity_name if entry.edit_world is not None else None
-        selected_id = entry.selected_entity_id or self._entity_id_for_name(entry, entry.selected_entity_name)
-        if selected_id is None:
-            selected_id = self._entity_id_for_name(entry, world_selected_name)
-        selected_name = self._entity_name_for_id(entry, selected_id) or entry.selected_entity_name or world_selected_name
-        entry.edit_world = entry.scene.create_world(self._registry)
-        if selected_name and entry.edit_world.get_entity_by_name(selected_name) is not None:
-            entry.edit_world.selected_entity_name = selected_name
-            entry.selected_entity_name = selected_name
-            entry.selected_entity_id = self._entity_id_for_name(entry, selected_name)
-        else:
-            entry.selected_entity_name = None
-            entry.selected_entity_id = None
-            entry.edit_world.selected_entity_name = None
-        entry.edit_world_version = entry.edit_world.version
-
-    def _add_entity_incrementally(
-        self,
-        entry: SceneWorkspaceEntry,
-        payload: Dict[str, Any],
-        *,
-        failure_context: str,
-    ) -> Optional[Dict[str, Any]]:
-        entity_name = str(payload.get("name", "") or "")
-        if entry.edit_world is None or not entry.scene.add_entity(payload):
-            return None
-        canonical_entity = entry.scene.find_entity(entity_name)
-        if canonical_entity is None:
-            return None
-        try:
-            entry.scene.materialize_entity(entry.edit_world, self._registry, canonical_entity)
-        except Exception as exc:
-            entry.scene.remove_entity_by_id(str(canonical_entity.get("id", "") or ""))
-            log_err(f"SceneManager: rejected incremental entity during {failure_context}: {exc}")
-            return None
-        if self._entity_has_scene_link(canonical_entity):
-            self._sync_feature_metadata_from_scene_links(entry)
-        self._clear_pending_edit_world_sync(entry)
-        entry.edit_world_version = entry.edit_world.version
-        return canonical_entity
-
-    def _record_entity_create_delta(
-        self,
-        entry: SceneWorkspaceEntry,
-        label: str,
-        entity_data: Dict[str, Any],
-    ) -> None:
-        key = entry.key
-        payload = clone_json_value(entity_data)
-        entity_id = str(entity_data.get("id", "") or "")
-        self._change_history.record_differential_change(
-            label=label,
-            undo=lambda key=key, entity_id=entity_id: self._remove_entity_create_delta(key, entity_id),
-            redo=lambda key=key, payload=payload: self._restore_entity_create_delta(key, payload),
-        )
-
-    def _remove_entity_create_delta(self, key: str, entity_id: str) -> bool:
-        entry = self._resolve_entry(key)
-        if entry is None or entry.is_playing or entry.edit_world is None:
-            return False
-        entity_data = entry.scene.find_entity_by_id(entity_id)
-        if entity_data is None:
-            return False
-        entity_name = str(entity_data.get("name", "") or "")
-        had_scene_link = self._entity_has_scene_link(entity_data)
-        if not entry.scene.remove_entity_by_id(entity_id):
-            return False
-        self._remove_world_entity_projection(entry.edit_world, entity_name, entity_id)
-        if had_scene_link:
-            self._sync_feature_metadata_from_scene_links(entry)
-        self._clear_pending_edit_world_sync(entry)
-        entry.edit_world_version = entry.edit_world.version
-        entry.dirty = True
-        return True
-
-    def _restore_entity_create_delta(self, key: str, entity_data: Dict[str, Any]) -> bool:
-        entry = self._resolve_entry(key)
-        if entry is None or entry.is_playing:
-            return False
-        restored = self._add_entity_incrementally(
-            entry,
-            clone_json_value(entity_data),
-            failure_context=f"redo_create_entity:{entity_data.get('name', '')}",
-        )
-        if restored is None:
-            return False
-        entry.dirty = True
-        return True
-
-    @staticmethod
-    def _remove_world_entity_projection(world: "World", entity_name: str, entity_id: str) -> None:
-        from engine.components.transform import Transform
-
-        root = world.get_entity_by_serialized_id(entity_id) or world.get_entity_by_name(entity_name)
-        targets = [
-            entity
-            for entity in world.iter_all_entities()
-            if entity is root or entity.prefab_root_name == entity_name
-        ]
-        for entity in reversed(targets):
-            transform = entity.get_component(Transform)
-            if transform is not None and transform.parent is not None:
-                transform.parent = None
-            world.remove_entity(entity.id)
-
-    def _entity_id_for_name(self, entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
-        if not entity_name:
-            return None
-        entity_data = entry.scene.find_entity(entity_name)
-        entity_id = entity_data.get("id") if isinstance(entity_data, dict) else None
-        return entity_id.strip() if isinstance(entity_id, str) and entity_id.strip() else None
-
-    def _entity_name_for_id(self, entry: SceneWorkspaceEntry, entity_id: Optional[str]) -> Optional[str]:
-        if not entity_id:
-            return None
-        entity_data = entry.scene.find_entity_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return entity_name if isinstance(entity_name, str) and entity_name else None
-
-    def _has_pending_legacy_world_sync(self, entry: SceneWorkspaceEntry) -> bool:
-        return entry.pending_edit_world_sync_reason == LEGACY_AUTHORING_SYNC_REASON
-
-    def _has_pending_transient_preview(self, entry: SceneWorkspaceEntry) -> bool:
-        return entry.pending_edit_world_sync_reason == TRANSIENT_PREVIEW_SYNC_REASON
-
-    def _clear_pending_edit_world_sync(self, entry: SceneWorkspaceEntry) -> None:
-        entry.pending_edit_world_sync_reason = None
-        entry.dirty_before_pending_edit_world_sync = None
-
-    def _reject_invalid_pending_edit_world(
-        self,
-        entry: SceneWorkspaceEntry,
-        *,
-        failure_context: str,
-        error: ValueError,
-    ) -> bool:
-        self._rebuild_edit_world(entry)
-        entry.dirty = (
-            entry.dirty_before_pending_edit_world_sync
-            if entry.dirty_before_pending_edit_world_sync is not None
-            else entry.dirty
-        )
-        self._clear_pending_edit_world_sync(entry)
-        log_err(
-            f"SceneManager: rejected invalid legacy authoring snapshot during {failure_context}: {error}"
-        )
-        return False
-
-    def _flush_pending_edit_world(
-        self,
-        entry: SceneWorkspaceEntry,
-        *,
-        failure_context: str = "legacy_authoring_flush",
-    ) -> bool:
-        if not self._has_pending_legacy_world_sync(entry) or entry.key != self._active_scene_key:
-            return True
-        try:
-            return self.sync_from_edit_world(force=True)
-        except ValueError as exc:
-            return self._reject_invalid_pending_edit_world(
-                entry,
-                failure_context=failure_context,
-                error=exc,
-            )
-
-    def _can_apply_direct_transform_state(self, entry: SceneWorkspaceEntry, entity_name: str) -> bool:
-        return self._can_apply_direct_component_state(entry, entity_name, "Transform")
-
-    def _can_apply_direct_component_state(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str) -> bool:
-        if entry.is_playing:
-            return False
-        entity_data = entry.scene.find_entity(entity_name)
-        if entity_data is None:
-            return False
-        component_data = entity_data.get("components", {}).get(component_name)
-        return isinstance(component_data, dict)
-
-    def _apply_direct_transform_state(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        transform_state: Dict[str, Any],
-        *,
-        record_history: bool,
-        label: str,
-    ) -> bool:
-        old_properties, new_properties = self._apply_transform_properties_to_entry(
-            entry,
-            entity_name,
-            transform_state,
-        )
-        if not new_properties:
-            return True
-        if self._record_authoring_transaction_delta(
-            entry,
-            entity_name,
-            "Transform",
-            old_properties,
-            new_properties,
-        ):
-            return True
-        if record_history:
-            key = entry.key
-            old_snapshot = copy.deepcopy(old_properties)
-            new_snapshot = copy.deepcopy(new_properties)
-            self._change_history.record_differential_change(
-                label=label,
-                undo=lambda key=key, entity_name=entity_name, old=old_snapshot: self._apply_transform_history_delta(
-                    key,
-                    entity_name,
-                    old,
-                ),
-                redo=lambda key=key, entity_name=entity_name, new=new_snapshot: self._apply_transform_history_delta(
-                    key,
-                    entity_name,
-                    new,
-                ),
-            )
-        return True
-
-    def _apply_direct_component_state(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        component_state: Dict[str, Any],
-        *,
-        editable_fields: tuple[str, ...],
-        record_history: bool,
-        label: str,
-    ) -> bool:
-        old_properties, new_properties = self._apply_component_properties_to_entry(
-            entry,
-            entity_name,
-            component_name,
-            component_state,
-            editable_fields=editable_fields,
-        )
-        if not new_properties:
-            return True
-        if self._record_authoring_transaction_delta(
-            entry,
-            entity_name,
-            component_name,
-            old_properties,
-            new_properties,
-        ):
-            return True
-        if record_history:
-            key = entry.key
-            old_snapshot = copy.deepcopy(old_properties)
-            new_snapshot = copy.deepcopy(new_properties)
-            self._change_history.record_differential_change(
-                label=label,
-                undo=lambda key=key, entity_name=entity_name, component_name=component_name, old=old_snapshot: self._apply_component_history_delta(
-                    key,
-                    entity_name,
-                    component_name,
-                    old,
-                ),
-                redo=lambda key=key, entity_name=entity_name, component_name=component_name, new=new_snapshot: self._apply_component_history_delta(
-                    key,
-                    entity_name,
-                    component_name,
-                    new,
-                ),
-            )
-        return True
-
-    def _apply_transform_history_delta(
-        self,
-        key: str,
-        entity_name: str,
-        properties: Dict[str, Any],
-    ) -> bool:
-        entry = self._resolve_entry(key)
-        if entry is None:
-            return False
-        self._apply_transform_properties_to_entry(entry, entity_name, properties)
-        return True
-
-    def _apply_component_history_delta(
-        self,
-        key: str,
-        entity_name: str,
-        component_name: str,
-        properties: Dict[str, Any],
-    ) -> bool:
-        entry = self._resolve_entry(key)
-        if entry is None:
-            return False
-        editable_fields = self._editable_fields_for_authoring_component(component_name)
-        if editable_fields is None:
-            return False
-        self._apply_component_properties_to_entry(
-            entry,
-            entity_name,
-            component_name,
-            properties,
-            editable_fields=editable_fields,
-        )
-        return True
-
-    def _apply_transform_properties_to_entry(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        transform_state: Dict[str, Any],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        entity_data = entry.scene.find_entity(entity_name)
-        if entity_data is None:
-            return {}, {}
-        component_data = entity_data.get("components", {}).get("Transform")
-        if not isinstance(component_data, dict):
-            return {}, {}
-
-        editable_fields = ("x", "y", "rotation", "scale_x", "scale_y")
-        old_properties: Dict[str, Any] = {}
-        new_properties: Dict[str, Any] = {}
-        for field_name in editable_fields:
-            if field_name not in transform_state:
-                continue
-            value = float(transform_state[field_name])
-            previous = component_data.get(field_name)
-            if previous == value:
-                continue
-            old_properties[field_name] = previous
-            new_properties[field_name] = value
-            component_data[field_name] = value
-
-        if not new_properties:
-            return old_properties, new_properties
-
-        entry.selected_entity_name = entity_name
-        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
-        entry.dirty = True
-        self._clear_pending_edit_world_sync(entry)
-        self._apply_transform_properties_to_edit_world(entry, entity_name, component_data)
-        if entry.edit_world is not None:
-            entry.edit_world_version = entry.edit_world.version
-        return old_properties, new_properties
-
-    def _apply_component_properties_to_entry(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        component_state: Dict[str, Any],
-        *,
-        editable_fields: tuple[str, ...],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        entity_data = entry.scene.find_entity(entity_name)
-        if entity_data is None:
-            return {}, {}
-        component_data = entity_data.get("components", {}).get(component_name)
-        if not isinstance(component_data, dict):
-            return {}, {}
-
-        old_properties: Dict[str, Any] = {}
-        new_properties: Dict[str, Any] = {}
-        for field_name in editable_fields:
-            if field_name not in component_state:
-                continue
-            value = float(component_state[field_name])
-            previous = component_data.get(field_name)
-            if previous == value:
-                continue
-            old_properties[field_name] = previous
-            new_properties[field_name] = value
-            component_data[field_name] = value
-
-        if not new_properties:
-            return old_properties, new_properties
-
-        entry.selected_entity_name = entity_name
-        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
-        entry.dirty = True
-        self._clear_pending_edit_world_sync(entry)
-        self._apply_component_properties_to_edit_world(entry, entity_name, component_name, component_data)
-        if entry.edit_world is not None:
-            entry.edit_world_version = entry.edit_world.version
-        return old_properties, new_properties
-
-    def _record_authoring_transaction_delta(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        old_properties: Dict[str, Any],
-        new_properties: Dict[str, Any],
-    ) -> bool:
-        transaction = self._authoring_transaction
-        if transaction is None:
-            return False
-        if transaction.key != entry.key:
-            return False
-        delta_key = (entity_name, component_name)
-        delta = transaction.changes.get(delta_key)
-        if delta is None:
-            delta = AuthoringComponentDelta(entity_name=entity_name, component_name=component_name)
-            transaction.changes[delta_key] = delta
-        for field_name, old_value in old_properties.items():
-            if field_name not in delta.old_properties:
-                delta.old_properties[field_name] = old_value
-            delta.new_properties[field_name] = new_properties[field_name]
-            if delta.new_properties[field_name] == delta.old_properties[field_name]:
-                delta.old_properties.pop(field_name, None)
-                delta.new_properties.pop(field_name, None)
-        if not delta.new_properties:
-            transaction.changes.pop(delta_key, None)
-        return True
-
-    def _apply_authoring_transaction_deltas(
-        self,
-        key: str,
-        changes: list[AuthoringComponentDelta],
-        *,
-        use_old: bool,
-    ) -> bool:
-        entry = self._resolve_entry(key)
-        if entry is None:
-            return False
-        for delta in changes:
-            editable_fields = self._editable_fields_for_authoring_component(delta.component_name)
-            if editable_fields is None:
-                return False
-            properties = delta.old_properties if use_old else delta.new_properties
-            self._apply_component_properties_to_entry(
-                entry,
-                delta.entity_name,
-                delta.component_name,
-                properties,
-                editable_fields=editable_fields,
-            )
-        return True
-
-    def _editable_fields_for_authoring_component(self, component_name: str) -> tuple[str, ...] | None:
-        if component_name == "Transform":
-            return ("x", "y", "rotation", "scale_x", "scale_y")
-        if component_name == "RectTransform":
-            return ("anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y")
-        return None
-
-    def _apply_transform_properties_to_edit_world(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        properties: Dict[str, Any],
-    ) -> None:
-        if entry.edit_world is None:
-            return
-        entity = entry.edit_world.get_entity_by_name(entity_name)
-        if entity is None:
-            return
-        transform = entity.get_component(Transform)
-        if transform is None:
-            return
-        field_to_attribute = {
-            "x": "local_x",
-            "y": "local_y",
-            "rotation": "local_rotation",
-            "scale_x": "local_scale_x",
-            "scale_y": "local_scale_y",
-        }
-        changed = False
-        for field_name, value in properties.items():
-            attribute = field_to_attribute.get(field_name)
-            if attribute is None:
-                continue
-            next_value = float(value)
-            if getattr(transform, attribute) == next_value:
-                continue
-            setattr(transform, attribute, next_value)
-            changed = True
-        if changed:
-            entry.edit_world.touch_transform()
-
-    def _apply_component_properties_to_edit_world(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        properties: Dict[str, Any],
-    ) -> None:
-        if component_name == "Transform":
-            self._apply_transform_properties_to_edit_world(entry, entity_name, properties)
-            return
-        if entry.edit_world is None:
-            return
-        entity = entry.edit_world.get_entity_by_name(entity_name)
-        if entity is None:
-            return
-        component = entity.get_component(RectTransform) if component_name == "RectTransform" else None
-        if component is None:
-            return
-        editable_fields = {"anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y"}
-        changed = False
-        for field_name, value in properties.items():
-            if field_name not in editable_fields or not hasattr(component, field_name):
-                continue
-            next_value = float(value)
-            if getattr(component, field_name) == next_value:
-                continue
-            setattr(component, field_name, next_value)
-            changed = True
-        if changed:
-            entry.edit_world.touch_ui_layout()
-
-    def _sync_entry_from_edit_world(self, entry: SceneWorkspaceEntry) -> bool:
-        if entry.is_playing or entry.edit_world is None:
-            return False
-        entry.selected_entity_name = entry.edit_world.selected_entity_name
-        entry.selected_entity_id = self._entity_id_for_name(entry, entry.selected_entity_name)
-        data = self._build_canonical_scene_payload(entry)
-        self._install_scene_payload(entry, data)
-        self._sync_feature_metadata_from_scene_links(entry)
-        if entry.edit_world is not None:
-            entry.edit_world_version = entry.edit_world.version
-        self._clear_pending_edit_world_sync(entry)
-        return True
-
-    def _commit_serializable_scene_mutation(
-        self,
-        entry: SceneWorkspaceEntry,
-        snapshot: _SerializableMutationSnapshot,
-        *,
-        failure_context: str,
-    ) -> bool:
-        try:
-            self._install_scene_payload(entry, entry.scene.to_dict())
-            return True
-        except ValueError as exc:
-            self._restore_serializable_mutation(entry, snapshot)
-            log_err(f"SceneManager: rejected invalid serializable mutation during {failure_context}: {exc}")
-            return False
-
-    def _capture_serializable_mutation(self, entry: SceneWorkspaceEntry) -> _SerializableMutationSnapshot:
-        return _SerializableMutationSnapshot(
-            scene_data=copy.deepcopy(entry.scene.to_dict()),
-            selected_entity_name=entry.selected_entity_name,
-            selected_entity_id=entry.selected_entity_id,
-            dirty=entry.dirty,
-            pending_edit_world_sync_reason=entry.pending_edit_world_sync_reason,
-        )
-
-    def _restore_serializable_mutation(
-        self,
-        entry: SceneWorkspaceEntry,
-        snapshot: _SerializableMutationSnapshot,
-    ) -> None:
-        self._restore_entry_scene(entry, snapshot.scene_data)
-        entry.selected_entity_name = snapshot.selected_entity_name
-        entry.selected_entity_id = snapshot.selected_entity_id
-        if entry.edit_world is not None:
-            entry.edit_world.selected_entity_name = snapshot.selected_entity_name
-        entry.dirty = snapshot.dirty
-        entry.pending_edit_world_sync_reason = snapshot.pending_edit_world_sync_reason
-
-    def _apply_authoring_component_state(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-        component_state: Dict[str, Any],
-        *,
-        editable_fields: tuple[str, ...],
-        record_history: bool,
-        label: str,
-    ) -> bool:
-        if entry.is_playing:
-            return False
-        current_state = self._load_authoring_component_state(entry, entity_name, component_name)
-        if current_state is None:
-            return False
-        updated_state = copy.deepcopy(current_state)
-        for field_name in editable_fields:
-            if field_name not in component_state:
-                continue
-            updated_state[field_name] = float(component_state[field_name])
-        snapshot = self._capture_serializable_mutation(entry)
-        before = snapshot.scene_data
-        entry.selected_entity_name = entity_name
-        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
-        if not entry.scene.replace_component_data(entity_name, component_name, updated_state):
-            if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, updated_state):
-                return False
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            snapshot,
-            failure_context=label,
-        ):
-            return False
-        entry.dirty = True
-        entry.edit_world_sync_pending = False
-        if record_history and before is not None:
-            self._record_scene_change(entry, label, before)
-        return True
-
-    def _load_authoring_component_state(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_name: str,
-        component_name: str,
-    ) -> Optional[Dict[str, Any]]:
-        entity_data = entry.scene.find_entity(entity_name)
-        if entity_data is not None:
-            component_data = entity_data.get("components", {}).get(component_name)
-            if isinstance(component_data, dict):
-                return copy.deepcopy(component_data)
-        if entry.edit_world is None:
-            return None
-        entity = entry.edit_world.get_entity_by_name(entity_name)
-        if entity is None:
-            return None
-        component: Any
-        if component_name == "Transform":
-            component = entity.get_component(Transform)
-        elif component_name == "RectTransform":
-            component = entity.get_component(RectTransform)
-        else:
-            component = None
-        if component is None or not hasattr(component, "to_dict"):
-            return None
-        component_data = component.to_dict()
-        return copy.deepcopy(component_data) if isinstance(component_data, dict) else None
+        self._workspace.replace_entry_scene(entry, data)
+        self._edit_sync.clear_pending(entry)
 
     def _record_scene_change(self, entry: SceneWorkspaceEntry, label: str, before: Dict[str, Any]) -> None:
         self._change_history.record_scene_change(entry, label, before)
@@ -1903,82 +935,8 @@ class SceneManager:
     def _validate_parent(self, entry: SceneWorkspaceEntry, entity_name: str, parent_name: str) -> bool:
         return self._structural_authoring.validate_parent(entry, entity_name, parent_name)
 
-    def _update_prefab_component_override(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
-        return self._structural_authoring.update_prefab_component_override(entry, entity_name, component_name, property_name, value)
-
-    def _update_prefab_entity_override(self, entry: SceneWorkspaceEntry, entity_name: str, property_name: str, value: Any) -> bool:
-        return self._structural_authoring.update_prefab_entity_override(entry, entity_name, property_name, value)
-
-    def _replace_prefab_component_override(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        return self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, component_data)
-
-    def _remove_prefab_component_override(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str) -> bool:
-        return self._structural_authoring.remove_prefab_component_override(entry, entity_name, component_name)
-
-    def _ensure_prefab_override_ops(self, root_scene_data: Dict[str, Any]) -> Dict[str, Any]:
-        return self._structural_authoring.ensure_prefab_override_ops(root_scene_data)
-
-    def _upsert_prefab_override_operation(
-        self,
-        overrides: Dict[str, Any],
-        operation: Dict[str, Any],
-        *,
-        match_keys: tuple[str, ...],
-    ) -> None:
-        self._structural_authoring.upsert_prefab_override_operation(overrides, operation, match_keys=match_keys)
-
-    def _remove_prefab_override_operations(
-        self,
-        overrides: Dict[str, Any],
-        *,
-        target: str,
-        component: str | None = None,
-    ) -> None:
-        self._structural_authoring.remove_prefab_override_operations(overrides, target=target, component=component)
-
     def _sync_feature_metadata_from_scene_links(self, entry: SceneWorkspaceEntry) -> None:
-        scene_flow = self.get_scene_flow() if entry.key == self._active_scene_key else {}
-        if entry.key != self._active_scene_key:
-            metadata = entry.scene.feature_metadata.get("scene_flow", {})
-            if isinstance(metadata, dict):
-                scene_flow = {str(key): str(value) for key, value in metadata.items() if str(key).strip() and str(value).strip()}
-            for entity_data in entry.scene.entities_data:
-                scene_link = entity_data.get("components", {}).get("SceneLink")
-                if isinstance(scene_link, dict):
-                    flow_key = str(scene_link.get("flow_key", "") or "").strip()
-                    target_path = str(scene_link.get("target_path", "") or "").strip()
-                    if flow_key:
-                        if target_path:
-                            scene_flow[flow_key] = target_path
-                        else:
-                            scene_flow.pop(flow_key, None)
-        if scene_flow:
-            entry.scene.feature_metadata["scene_flow"] = scene_flow
-        else:
-            entry.scene.feature_metadata.pop("scene_flow", None)
-        if entry.edit_world is not None:
-            entry.edit_world.feature_metadata["scene_flow"] = copy.deepcopy(scene_flow)
-
-    def _sync_scene_links_from_feature_metadata(self, entry: SceneWorkspaceEntry) -> None:
-        scene_flow = entry.scene.feature_metadata.get("scene_flow", {})
-        if not isinstance(scene_flow, dict):
-            return
-        for entity_data in entry.scene.entities_data:
-            scene_link = entity_data.get("components", {}).get("SceneLink")
-            if isinstance(scene_link, dict):
-                flow_key = str(scene_link.get("flow_key", "") or "").strip()
-                if flow_key and "target_path" not in scene_link:
-                    scene_link["target_path"] = str(scene_flow.get(flow_key, "") or "")
-
-    def _entry_has_invalid_links(self, entry: SceneWorkspaceEntry) -> bool:
-        for entity_data in entry.scene.entities_data:
-            scene_link = entity_data.get("components", {}).get("SceneLink")
-            if isinstance(scene_link, dict) and not str(scene_link.get("target_path", "") or "").strip():
-                return True
-        return False
-
-    def _entity_has_scene_link(self, entity_data: Dict[str, Any]) -> bool:
-        return "SceneLink" in entity_data.get("components", {})
+        self._workspace.sync_feature_metadata_from_scene_links(entry)
 
     def _unique_entity_name(self, existing_names: set[str], base_name: str) -> str:
         candidate = base_name

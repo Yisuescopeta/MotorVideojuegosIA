@@ -3,15 +3,15 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from engine.core.runtime_logging import log_err, log_info, log_warn
 from engine.scenes.scene import Scene
+from engine.scenes.scene_flow import SceneFlowPolicy
+from engine.scenes.scene_projection import SceneProjectionService
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
-
-LEGACY_EDIT_WORLD_SYNC_REASON = "legacy_authoring"
 
 
 @dataclass
@@ -41,11 +41,11 @@ class SceneWorkspaceEntry:
     def edit_world_sync_pending(self) -> bool:
         return self.pending_edit_world_sync_reason is not None
 
-    @edit_world_sync_pending.setter
-    def edit_world_sync_pending(self, value: bool) -> None:
-        self.pending_edit_world_sync_reason = LEGACY_EDIT_WORLD_SYNC_REASON if value else None
-        if not value:
-            self.dirty_before_pending_edit_world_sync = None
+
+@dataclass(frozen=True)
+class SceneSelectionSnapshot:
+    entity_name: Optional[str]
+    entity_id: Optional[str]
 
 
 class SceneWorkspace:
@@ -54,21 +54,14 @@ class SceneWorkspace:
     def __init__(
         self,
         *,
-        validate_scene_payload: Callable[[dict[str, Any]], dict[str, Any]],
-        build_scene_key: Callable[[Optional[str], str], str],
-        create_untitled_key: Callable[[str], str],
-        rebuild_edit_world: Callable[[SceneWorkspaceEntry], None],
-        sync_scene_links_from_feature_metadata: Callable[[SceneWorkspaceEntry], None],
-        entry_has_invalid_links: Callable[[SceneWorkspaceEntry], bool],
+        projection: SceneProjectionService,
+        flow_policy: SceneFlowPolicy,
     ) -> None:
         self.entries: dict[str, SceneWorkspaceEntry] = {}
         self.active_scene_key: str = ""
-        self._validate_scene_payload = validate_scene_payload
-        self._build_scene_key = build_scene_key
-        self._create_untitled_key = create_untitled_key
-        self._rebuild_edit_world = rebuild_edit_world
-        self._sync_scene_links_from_feature_metadata = sync_scene_links_from_feature_metadata
-        self._entry_has_invalid_links = entry_has_invalid_links
+        self._projection = projection
+        self._flow_policy = flow_policy
+        self._untitled_counter = 1
 
     def get_active_entry(self) -> Optional[SceneWorkspaceEntry]:
         return self.entries.get(self.active_scene_key) if self.active_scene_key else None
@@ -80,14 +73,14 @@ class SceneWorkspace:
             return self.entries[str(key_or_path)]
         key_text = str(key_or_path)
         normalized = (
-            self._normalize_path_reference(key_text)
+            self.normalize_path_reference(key_text)
             if key_text.endswith(".json") or "/" in key_text or "\\" in key_text
             else key_text
         )
         if normalized in self.entries:
             return self.entries[normalized]
         for entry in self.entries.values():
-            if entry.source_path and self._normalize_path_reference(entry.source_path) == normalized:
+            if entry.source_path and self.normalize_path_reference(entry.source_path) == normalized:
                 return entry
         return None
 
@@ -99,7 +92,7 @@ class SceneWorkspace:
                 "path": entry.source_path,
                 "dirty": entry.dirty,
                 "is_active": entry.key == self.active_scene_key,
-                "has_invalid_links": self._entry_has_invalid_links(entry),
+                "has_invalid_links": self._flow_policy.has_invalid_links(entry.scene),
             }
             for entry in self.entries.values()
         ]
@@ -135,7 +128,7 @@ class SceneWorkspace:
             return None
         self.active_scene_key = entry.key
         if entry.edit_world is None:
-            self._rebuild_edit_world(entry)
+            self.rebuild_edit_world(entry)
         return entry.active_world
 
     def close_scene(self, key_or_path: str, discard_changes: bool = False) -> bool:
@@ -161,15 +154,17 @@ class SceneWorkspace:
         source_path: Optional[str] = None,
         activate: bool = True,
     ) -> "World":
-        payload = self._validate_scene_payload(data)
-        normalized_source_path = self._normalize_path_reference(source_path) if source_path else None
-        key = self._build_scene_key(normalized_source_path, payload.get("name", "Untitled"))
+        normalized_source_path = self.normalize_path_reference(source_path) if source_path else None
+        prepared = self._flow_policy.prepare_payload(data)
+        scene = self._projection.create_scene(prepared, source_path=normalized_source_path)
+        key = self.build_scene_key(normalized_source_path, scene.name)
         entry = SceneWorkspaceEntry(
             key=key,
-            scene=Scene.from_dict(copy.deepcopy(payload), source_path=normalized_source_path),
+            scene=scene,
         )
-        self._sync_scene_links_from_feature_metadata(entry)
-        self._rebuild_edit_world(entry)
+        self._flow_policy.sync_links_from_metadata(entry.scene)
+        world = self._projection.create_world(entry.scene)
+        self.install_entry_state(entry, entry.scene, world)
         self.entries[key] = entry
         if activate or not self.active_scene_key:
             self.active_scene_key = key
@@ -177,9 +172,11 @@ class SceneWorkspace:
         return entry.edit_world  # type: ignore[return-value]
 
     def create_new_scene(self, name: str = "New Scene", activate: bool = True) -> "World":
-        key = self._create_untitled_key(name)
-        entry = SceneWorkspaceEntry(key=key, scene=Scene(name))
-        self._rebuild_edit_world(entry)
+        key = self._next_untitled_key()
+        scene = self._projection.create_empty_scene(name)
+        entry = SceneWorkspaceEntry(key=key, scene=scene)
+        world = self._projection.create_world(scene)
+        self.install_entry_state(entry, scene, world)
         self.entries[key] = entry
         if activate or not self.active_scene_key:
             self.active_scene_key = key
@@ -191,20 +188,17 @@ class SceneWorkspace:
         if entry is None or entry.edit_world is None:
             log_warn("SceneManager: no hay world para play")
             return None
-        entry.selected_entity_name = entry.edit_world.selected_entity_name
-        entry.selected_entity_id = self._entity_id_for_name(entry, entry.selected_entity_name) or entry.selected_entity_id
+        selection = self.capture_selection(entry)
         try:
-            entry.runtime_world = entry.edit_world.clone()
+            runtime_world = entry.edit_world.clone()
         except Exception as exc:
             entry.runtime_world = None
             entry.is_playing = False
             log_err(f"SceneManager: no se pudo entrar en PLAY por fallo de clonacion: {exc}")
             return None
-        selected_name = self._entity_name_for_id(entry, entry.selected_entity_id) or entry.selected_entity_name
-        if selected_name and entry.runtime_world.get_entity_by_name(selected_name) is not None:
-            entry.runtime_world.selected_entity_name = selected_name
-            entry.selected_entity_name = selected_name
+        entry.runtime_world = runtime_world
         entry.is_playing = True
+        self.restore_selection(entry, selection)
         return entry.runtime_world
 
     def exit_play(self) -> Optional["World"]:
@@ -212,12 +206,12 @@ class SceneWorkspace:
         if entry is None:
             return None
         if entry.runtime_world is not None:
-            entry.selected_entity_name = entry.runtime_world.selected_entity_name or entry.selected_entity_name
-            entry.selected_entity_id = self._entity_id_for_name(entry, entry.selected_entity_name) or entry.selected_entity_id
+            runtime_name = entry.runtime_world.selected_entity_name
+            if runtime_name:
+                self.select_entity(entry, entity_name=runtime_name)
         entry.runtime_world = None
         entry.is_playing = False
-        entry.edit_world_sync_pending = False
-        self._rebuild_edit_world(entry)
+        self.rebuild_edit_world(entry)
         return entry.edit_world
 
     def restore_world(self, world: "World") -> None:
@@ -233,15 +227,14 @@ class SceneWorkspace:
             return None
         entry.runtime_world = None
         entry.is_playing = False
-        self._rebuild_edit_world(entry)
-        entry.dirty = False
-        entry.edit_world_sync_pending = False
+        self.rebuild_edit_world(entry)
+        self.clear_dirty(entry)
         return entry.edit_world
 
     def rekey_entry(self, entry: SceneWorkspaceEntry, new_key: str) -> None:
         old_key = entry.key
         if entry.source_path:
-            entry.scene.set_source_path(self._normalize_path_reference(entry.source_path))
+            entry.scene.set_source_path(self.normalize_path_reference(entry.source_path))
         if old_key == new_key:
             return
         self.entries.pop(old_key, None)
@@ -250,12 +243,23 @@ class SceneWorkspace:
         if self.active_scene_key == old_key:
             self.active_scene_key = new_key
 
+    def build_scene_key(self, source_path: Optional[str], scene_name: str) -> str:
+        if source_path:
+            return self.normalize_path_reference(source_path)
+        return self._next_untitled_key(scene_name)
+
+    def _next_untitled_key(self, scene_name: Optional[str] = None) -> str:
+        suffix = f":{scene_name}" if scene_name else ""
+        key = f"untitled:{self._untitled_counter}{suffix}"
+        self._untitled_counter += 1
+        return key
+
     @staticmethod
-    def _normalize_path_reference(path: str) -> str:
+    def normalize_path_reference(path: str) -> str:
         return Path(path).resolve().as_posix()
 
     @staticmethod
-    def _entity_id_for_name(entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
+    def entity_id_for_name(entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
         if not entity_name:
             return None
         entity_data = entry.scene.find_entity(entity_name)
@@ -263,12 +267,129 @@ class SceneWorkspace:
         return entity_id.strip() if isinstance(entity_id, str) and entity_id.strip() else None
 
     @staticmethod
-    def _entity_name_for_id(entry: SceneWorkspaceEntry, entity_id: Optional[str]) -> Optional[str]:
+    def entity_name_for_id(entry: SceneWorkspaceEntry, entity_id: Optional[str]) -> Optional[str]:
         if not entity_id:
             return None
         entity_data = entry.scene.find_entity_by_id(entity_id)
         entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
         return entity_name if isinstance(entity_name, str) and entity_name else None
+
+    def capture_selection(self, entry: SceneWorkspaceEntry) -> SceneSelectionSnapshot:
+        world_name = entry.active_world.selected_entity_name if entry.active_world is not None else None
+        if world_name and entry.scene.find_entity(world_name) is not None:
+            return SceneSelectionSnapshot(
+                entity_name=world_name,
+                entity_id=self.entity_id_for_name(entry, world_name),
+            )
+        entity_name = entry.selected_entity_name
+        entity_id = entry.selected_entity_id or self.entity_id_for_name(entry, entity_name)
+        resolved_name = self.entity_name_for_id(entry, entity_id) or entity_name
+        return SceneSelectionSnapshot(entity_name=resolved_name, entity_id=entity_id)
+
+    def select_entity(
+        self,
+        entry: SceneWorkspaceEntry,
+        *,
+        entity_name: Optional[str] = None,
+        entity_id: Optional[str] = None,
+    ) -> bool:
+        if entity_name is None and entity_id is None:
+            self.clear_selection(entry)
+            return True
+        if entity_id:
+            resolved_entity = entry.scene.find_entity_by_id(entity_id)
+        else:
+            resolved_entity = entry.scene.find_entity(entity_name or "")
+        if resolved_entity is None:
+            return False
+        resolved_name = str(resolved_entity.get("name", "") or "")
+        resolved_id = resolved_entity.get("id")
+        entry.selected_entity_name = resolved_name
+        entry.selected_entity_id = resolved_id if isinstance(resolved_id, str) and resolved_id else None
+        for world in (entry.edit_world, entry.runtime_world):
+            if world is not None:
+                world.selected_entity_name = resolved_name
+        return True
+
+    def restore_selection(self, entry: SceneWorkspaceEntry, snapshot: SceneSelectionSnapshot) -> None:
+        if snapshot.entity_id and self.select_entity(entry, entity_id=snapshot.entity_id):
+            return
+        if snapshot.entity_name and self.select_entity(entry, entity_name=snapshot.entity_name):
+            return
+        self.clear_selection(entry)
+
+    @staticmethod
+    def clear_selection(entry: SceneWorkspaceEntry) -> None:
+        entry.selected_entity_name = None
+        entry.selected_entity_id = None
+        for world in (entry.edit_world, entry.runtime_world):
+            if world is not None:
+                world.selected_entity_name = None
+
+    @staticmethod
+    def mark_dirty(entry: SceneWorkspaceEntry) -> None:
+        entry.dirty = True
+
+    @staticmethod
+    def clear_dirty(entry: SceneWorkspaceEntry) -> None:
+        entry.dirty = False
+
+    @staticmethod
+    def restore_dirty(entry: SceneWorkspaceEntry, value: bool) -> None:
+        entry.dirty = bool(value)
+
+    def prepare_scene_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._flow_policy.prepare_payload(payload)
+
+    def sync_scene_links_from_feature_metadata(self, scene: Scene) -> None:
+        self._flow_policy.sync_links_from_metadata(scene)
+
+    def sync_feature_metadata_from_scene_links(self, entry: SceneWorkspaceEntry) -> None:
+        scene_flow = self._flow_policy.sync_metadata_from_links(entry.scene)
+        if entry.edit_world is None:
+            return
+        if scene_flow:
+            entry.edit_world.feature_metadata["scene_flow"] = copy.deepcopy(scene_flow)
+        else:
+            entry.edit_world.feature_metadata.pop("scene_flow", None)
+
+    def replace_entry_scene(
+        self,
+        entry: SceneWorkspaceEntry,
+        data: dict[str, Any],
+        *,
+        source_path: Optional[str] = None,
+    ) -> Scene:
+        selection = self.capture_selection(entry)
+        target_source_path = entry.scene.source_path if source_path is None else source_path
+        prepared = self._flow_policy.prepare_payload(data)
+        scene = self._projection.create_scene(
+            prepared,
+            source_path=target_source_path,
+            fallback_name=entry.scene.name,
+        )
+        self._flow_policy.sync_links_from_metadata(scene)
+        world = self._projection.create_world(scene)
+        self.install_entry_state(entry, scene, world)
+        self.restore_selection(entry, selection)
+        return scene
+
+    @staticmethod
+    def install_entry_state(entry: SceneWorkspaceEntry, scene: Scene, world: "World") -> None:
+        entry.scene = scene
+        entry.edit_world = world
+        entry.edit_world_version = world.version
+
+    def rebuild_edit_world(
+        self,
+        entry: SceneWorkspaceEntry,
+        *,
+        selection: Optional[SceneSelectionSnapshot] = None,
+    ) -> None:
+        preserved_selection = selection or self.capture_selection(entry)
+        edit_world = self._projection.create_world(entry.scene)
+        self.install_entry_state(entry, entry.scene, edit_world)
+        self.restore_selection(entry, preserved_selection)
 
     @staticmethod
     def _entry_path_or_key(entry: Optional[SceneWorkspaceEntry]) -> str:

@@ -907,22 +907,125 @@ Acciones de reglas soportadas por contrato:
 
 ## Workspace y authoring
 
-`SceneManager` coordina carga/guardado, workspace multi-escena, escena activa,
-dirty state, historial, transacciones, `EDIT -> PLAY -> STOP`, operaciones
-estructurales y prefabs.
+`SceneManager` conserva wrappers compatibles y enruta carga/guardado, authoring,
+scene flow, historial, transacciones, operaciones estructurales y prefabs hacia
+la entrada activa o la entrada indicada.
 
 `engine.scenes.scene_persistence.ScenePersistenceService` es la autoridad
-tecnica de resolucion de rutas, storage default o custom, readback, migracion,
-validacion, recuento de entidades y lectura de mtime. Con storage default
+tecnica de resolucion de rutas, storage default o custom, readback, recuento de
+entidades y lectura de mtime. Con storage default
 escribe primero un archivo temporal y lo reemplaza sobre el destino; con storage
 custom delega la escritura en el `SceneStorage` recibido. Ambos caminos
 verifican el contenido mediante readback antes de completar el guardado.
 
-`SceneManager` conserva la instalacion del payload verificado, rekey del
-workspace, dirty y pending state, tracking de mtime y callbacks. `SceneWorkspace`
-queda limitado al estado y ciclo de vida en memoria, sin I/O. Las firmas
-publicas, Scene v2, su schema y la atomicidad vigente de los caminos default y
-custom no cambian.
+`engine.scenes.scene_projection.SceneProjectionService` es la autoridad tecnica
+de migracion, validacion y canonicalizacion en los limites de proyeccion,
+conversion `Scene <-> World` y materializacion incremental. No conoce
+`SceneWorkspaceEntry` ni conserva dirty state, seleccion o decisiones de
+lifecycle. La validacion de readback de `ScenePersistenceService` es una
+postcondicion de I/O, no una segunda autoridad de proyeccion.
+
+`SceneWorkspace` es la autoridad en memoria de entradas abiertas y activa,
+seleccion y dirty state por entrada, claves, normalizacion de rutas, rekey y
+ciclo `EDIT -> PLAY -> STOP`; no realiza I/O. Delega proyeccion tecnica en
+`SceneProjectionService` y scene flow en `SceneFlowPolicy`.
+`SceneWorkspace.install_entry_state()` es el unico punto que instala juntos
+`scene`, `edit_world` y `edit_world_version`. `SceneManager` conecta estos
+servicios con persistencia y authoring, y conserva tracking de mtime, callbacks,
+wrappers y routing; no implementa schema, materializacion ni reconstruccion de
+mundos. Las firmas publicas, Scene v2, su schema y la atomicidad vigente de los
+caminos default y custom no cambian.
+
+`engine.scenes.edit_sync.SceneEditSyncCoordinator` es la autoridad unica sobre
+las razones y el estado de pending sync legacy o preview transitorio. Sus
+dependencias de escena son solo `SceneWorkspace`, al que solicita cambios y
+restauraciones de dirty state, y `SceneProjectionService`, que canonicaliza la
+conversion `World -> Scene`; no posee persistencia, CRUD ni scene flow. Las
+mutaciones serializables y estructurales usan `flush_pending()`. El guardado usa
+`prepare_for_save()` para integrar authoring legacy o descartar el preview
+transitorio antes de persistir. Ante un snapshot legacy invalido, reconstruye
+el mundo editable y restaura mediante el workspace exactamente el dirty
+baseline capturado.
+
+`SceneManager.sync_from_edit_world()` sigue disponible como wrapper deprecado y
+conserva su warning. `SceneManager.mark_edit_world_dirty()` sigue disponible
+como wrapper legacy compatible, sin marcarse deprecado. Ambos delegan en el
+coordinador. No cambian las razones de sync, el momento en que preview afecta
+dirty state ni la semantica publica existente.
+
+`engine.scenes.incremental_authoring.SceneIncrementalAuthoring` es la autoridad
+de edicion directa de `Transform` y `RectTransform` ya existentes. Normaliza los
+campos numericos, actualiza en paralelo el payload de `Scene` y su componente en
+`edit_world`, mantiene los deltas y el estado de transaccion diferencial, y
+registra undo/redo mediante `SceneHistoryPort`. Sus otras dependencias son
+`SceneWorkspace` y `SceneEditSyncCoordinator`: solicita al workspace seleccion y
+dirty state, y limpia pending sync mediante el coordinador. La ruta incremental
+valida no usa rebuild completo y no depende de prefab overrides, persistencia ni
+scene flow.
+
+`engine.scenes.serializable_authoring.SceneSerializableAuthoring` concentra las
+consultas defensivas de authoring y las mutaciones serializables generales que
+no pertenecen a la ruta incremental ni a operaciones estructurales. Recibe ocho
+dependencias explicitas: `SceneWorkspace`, `SceneEditSyncCoordinator`,
+`SerializableMutationCoordinator`, `SceneProjectionService`,
+`SceneHistoryPort`, `PrefabOverridePort`, `SceneFlowPolicy` y
+`ComponentRegistry`. Esta composicion cohesiva es el estado vigente; la decision
+de mantenerla o dividirla corresponde a S7C.
+
+`SceneManager` conserva las firmas publicas como wrappers y el routing. Para
+ediciones de componentes decide entre `SceneIncrementalAuthoring` y
+`SceneSerializableAuthoring`; el resto del authoring serializable general y sus
+consultas defensivas delega directamente en el segundo. La actualizacion de
+`parent` mantiene en el manager la prevalidacion estructural de ciclos antes de
+delegar. No cambia la superficie publica de authoring.
+
+La decision S6 es extraer
+`engine.scenes.prefab_overrides.PrefabOverrideService` como autoridad unica de
+overrides genericos. Su `PrefabOverridePort` expone solo cuatro operaciones:
+`update_component_property()`, `update_entity_property()`,
+`replace_component()` y `remove_component()`. Una misma instancia se conecta al
+`SceneSerializableAuthoring` y a `SceneStructuralAuthoring`; ambos delegan esas
+mutaciones en el port sin depender entre si.
+
+`ScenePrefabAuthoring` permanece dentro de structural authoring y conserva
+`create_prefab()`, `instantiate_prefab()`, `unpack_prefab()` y
+`apply_prefab_overrides()` completos. `PrefabOverrideService` no absorbe esas
+operaciones ni posee schema, persistencia, historial o rebuild.
+
+`engine.scenes.serializable_mutation.SerializableMutationCoordinator` es la
+autoridad de captura, commit y rollback semantico de mutaciones serializables.
+Encapsula `SceneWorkspace`, `SceneProjectionService` y
+`SceneEditSyncCoordinator`. `capture_snapshot()` devuelve un token interno
+opaco; su clase, campos y representacion no son API ni contrato observable.
+
+Para commit o rollback, projection crea las representaciones validadas y el
+workspace instala `Scene` y `World`, restaura seleccion y dirty state, y deriva
+`edit_world_version` de la version del mundo instalado. En rollback, edit sync
+restaura la razon pendiente; tras un commit valido, la limpia mediante la misma
+autoridad. Un fallo de validacion revierte al estado semanticamente equivalente
+sin dejar una instalacion parcial. El coordinador tambien ofrece el commit
+incremental de una entidad: valida el payload, publica conjuntamente `Scene` y
+`World`, o restaura el snapshot semantico ante cualquier fallo.
+
+`SceneSerializableAuthoring` captura, confirma o revierte sus operaciones con el
+token opaco del coordinador y registra historial mediante `SceneHistoryPort`.
+`SceneManager.set_scene_flow_target()` es la unica excepcion que conserva en el
+manager el limite completo de transaccion serializable; su migracion se difiere
+a S7D.
+
+`SceneSerializableEntityPort` define el limite minimo de creacion y actualizacion
+de entidades serializables requerido por structural authoring. Su conexion
+directa se difiere a S7D; mientras tanto `SceneStructuralAuthoringContext`
+conserva callables compatibles que pasan por wrappers de `SceneManager`.
+
+`engine.scenes.scene_flow.SceneFlowPolicy` define sin estado de workspace ni I/O
+la precedencia y sincronizacion entre `SceneLink` y
+`feature_metadata.scene_flow`. Metadata es la base; cada `SceneLink` reemplaza
+su `flow_key` y, para duplicados, gana el ultimo en orden serializado. Un
+`target_path` ausente hereda metadata cuando existe; uno presente pero vacio
+elimina la clave efectiva y deja el link invalido. Metadata sin link se
+conserva. `SceneManager` aplica esta politica sobre la entrada destinataria, por
+lo que escenas activas e inactivas mantienen la misma semantica.
 
 El guardado de prefabs usa logging de proyecto (`ProjectLog`) para registrar
 fallos de escritura. La instanciacion de prefabs emplea nombrado atomico con
@@ -930,7 +1033,8 @@ lock para evitar nombres duplicados concurrentes: antes de asignar un nombre
 generado, verifica y reserva bajo lock que no exista ya en la escena activa.
 
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
-`EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
+`EngineAPI`. `sync_from_edit_world()` queda deprecado como compatibilidad legacy
+y conserva su warning.
 
 La creacion normal de una entidad canonicaliza y valida solo el payload nuevo
 contra los indices de nombre, id, padre y `SceneEntryPoint`. Despues materializa
@@ -995,7 +1099,10 @@ Base tecnica interna compartida:
 
 - `engine/scenes/contracts.py` separa `SceneRuntimePort`,
   `SceneAuthoringPort` y `SceneWorkspacePort` como puertos internos sobre
-  `SceneManager`.
+  `SceneManager`, y expone el `SceneHistoryPort` minimo consumido por authoring
+  incremental y serializable, el `PrefabOverridePort` de cuatro operaciones
+  compartido por authoring serializable y structural, y
+  `SceneSerializableEntityPort` como limite pendiente de wiring directo en S7D.
 - `engine/core/runtime_contracts.py` encapsula el wiring requerido por
   `RuntimeController` en `RuntimeControllerContext`.
 - `engine/api/_contracts.py` tipa el bundle interno que `EngineAPI` expone a

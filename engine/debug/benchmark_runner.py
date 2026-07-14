@@ -16,7 +16,9 @@ from engine.components.transform import Transform
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
 from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_ENTITY_THRESHOLD, SceneManager
 
-BENCHMARK_REPORT_VERSION = 3
+BENCHMARK_REPORT_VERSION = 4
+MIN_OPERATION_WARMUP = 1
+MIN_OPERATION_REPEATS = 7
 
 
 def _resolve_scene_path(scene_path: str, project_root: Path) -> Path:
@@ -44,6 +46,22 @@ def _percentile(values: list[float], percentile: float) -> float:
     return ordered[index]
 
 
+def _repeated_measurement(samples: list[float], *, warmup: int) -> dict[str, Any]:
+    median_ms = statistics.median(samples)
+    mad_ms = statistics.median(abs(sample - median_ms) for sample in samples)
+    timer_resolution_ms = time.get_clock_info("perf_counter").resolution * 1000.0
+    return {
+        "ms": median_ms,
+        "median_ms": median_ms,
+        "mad_ms": mad_ms,
+        "noise_floor_ms": max(mad_ms, timer_resolution_ms),
+        "p95_ms": _percentile(samples, 0.95),
+        "samples_ms": samples,
+        "classification": "repeated_gate",
+        "warmup": warmup,
+    }
+
+
 def _measure_repeated(callback: Any, *, warmup: int, repeats: int) -> dict[str, Any]:
     for _ in range(max(0, int(warmup))):
         callback()
@@ -52,12 +70,34 @@ def _measure_repeated(callback: Any, *, warmup: int, repeats: int) -> dict[str, 
         started = time.perf_counter()
         callback()
         samples.append(_elapsed_ms(started))
-    return {
-        "ms": statistics.median(samples),
-        "median_ms": statistics.median(samples),
-        "p95_ms": _percentile(samples, 0.95),
-        "samples_ms": samples,
-    }
+    return _repeated_measurement(samples, warmup=max(0, int(warmup)))
+
+
+def _measure_play_transitions(
+    api: EngineAPI,
+    *,
+    warmup: int,
+    repeats: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    for _ in range(max(0, int(warmup))):
+        api.play()
+        api.stop()
+
+    edit_to_play_samples: list[float] = []
+    play_to_edit_samples: list[float] = []
+    for _ in range(max(1, int(repeats))):
+        started = time.perf_counter()
+        api.play()
+        edit_to_play_samples.append(_elapsed_ms(started))
+
+        started = time.perf_counter()
+        api.stop()
+        play_to_edit_samples.append(_elapsed_ms(started))
+
+    return (
+        _repeated_measurement(edit_to_play_samples, warmup=max(0, int(warmup))),
+        _repeated_measurement(play_to_edit_samples, warmup=max(0, int(warmup))),
+    )
 
 
 def _system_metric(report: dict[str, Any], name: str, field: str) -> float:
@@ -138,6 +178,10 @@ def run_benchmark(
 
     frame_count = max(1, int(frames))
     delta_time = float(dt)
+    requested_operation_warmup = max(0, int(operation_warmup))
+    requested_operation_repeats = max(1, int(operation_repeats))
+    effective_operation_warmup = max(MIN_OPERATION_WARMUP, requested_operation_warmup)
+    effective_operation_repeats = max(MIN_OPERATION_REPEATS, requested_operation_repeats)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_root = Path(temp_dir)
@@ -184,7 +228,10 @@ def run_benchmark(
             gc.collect()
             load_start = time.perf_counter()
             api.load_level(resolved_scene_path.as_posix())
-            operations["load_level"] = {"ms": _elapsed_ms(load_start)}
+            operations["load_level"] = {
+                "ms": _elapsed_ms(load_start),
+                "classification": "one_shot_diagnostic",
+            }
             if api.game is None:
                 raise RuntimeError("Engine game is not initialized")
             game = api.game
@@ -194,13 +241,13 @@ def run_benchmark(
             if edit_world is not None:
                 operations["world_clone"] = _measure_repeated(
                     edit_world.clone,
-                    warmup=operation_warmup,
-                    repeats=operation_repeats,
+                    warmup=effective_operation_warmup,
+                    repeats=effective_operation_repeats,
                 )
                 operations["world_serialize"] = _measure_repeated(
                     edit_world.serialize,
-                    warmup=operation_warmup,
-                    repeats=operation_repeats,
+                    warmup=effective_operation_warmup,
+                    repeats=effective_operation_repeats,
                 )
 
                 def query_ecs() -> None:
@@ -210,14 +257,14 @@ def run_benchmark(
 
                 operations["ecs_queries"] = _measure_repeated(
                     query_ecs,
-                    warmup=operation_warmup,
-                    repeats=operation_repeats,
+                    warmup=effective_operation_warmup,
+                    repeats=effective_operation_repeats,
                 )
             if current_scene is not None:
                 operations["scene_create_world"] = _measure_repeated(
                     lambda: current_scene.create_world(api._registry),
-                    warmup=operation_warmup,
-                    repeats=operation_repeats,
+                    warmup=effective_operation_warmup,
+                    repeats=effective_operation_repeats,
                 )
                 probe_index = len(current_scene.entities_data)
                 operations["scene_add_entity_canonicalization"] = _measure_repeated(
@@ -236,8 +283,8 @@ def run_benchmark(
                             },
                         }
                     ),
-                    warmup=operation_warmup,
-                    repeats=operation_repeats,
+                    warmup=effective_operation_warmup,
+                    repeats=effective_operation_repeats,
                 )
                 scene_entity_count = len(current_scene.entities_data)
                 if scene_manager is not None and scene_entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD:
@@ -254,8 +301,8 @@ def run_benchmark(
 
                     operations["scene_save"] = _measure_repeated(
                         save_scene,
-                        warmup=operation_warmup,
-                        repeats=operation_repeats,
+                        warmup=effective_operation_warmup,
+                        repeats=effective_operation_repeats,
                     )
                     if scene_manager.active_scene_key != workspace_key_before_save:
                         raise RuntimeError("Scene save benchmark mutated the primary workspace")
@@ -284,19 +331,66 @@ def run_benchmark(
                     target_component = str(parameters.get("target_component") or "Transform")
                     target_property = str(parameters.get("target_property") or "x")
                     target_value = parameters.get("target_value", 123456.0)
-                    edit_start = time.perf_counter()
-                    edit_result = api.edit_component(target_entity, target_component, target_property, target_value)
-                    operations["transform_edit"] = {
-                        "ms": _elapsed_ms(edit_start),
-                        "success": bool(edit_result.get("success", False)),
+                    target_entity_data = current_scene.find_entity(target_entity) if current_scene is not None else None
+                    component_data = (
+                        target_entity_data.get("components", {}).get(target_component, {})
+                        if isinstance(target_entity_data, dict)
+                        else {}
+                    )
+                    original_value = component_data.get(target_property, 0.0)
+                    if original_value == target_value:
+                        alternate_value = float(target_value) + 1.0 if isinstance(target_value, (int, float)) else ""
+                    else:
+                        alternate_value = original_value
+                    next_value = target_value
+
+                    def edit_transform() -> None:
+                        nonlocal next_value
+                        edit_result = api.edit_component(
+                            target_entity,
+                            target_component,
+                            target_property,
+                            next_value,
+                        )
+                        if not bool(edit_result.get("success", False)):
+                            raise RuntimeError("Transform edit benchmark failed")
+                        next_value = alternate_value if next_value == target_value else target_value
+
+                    operations["transform_edit"] = _measure_repeated(
+                        edit_transform,
+                        warmup=effective_operation_warmup,
+                        repeats=effective_operation_repeats,
+                    )
+                    final_edit_result = api.edit_component(
+                        target_entity,
+                        target_component,
+                        target_property,
+                        target_value,
+                    )
+                    final_scene = scene_manager.current_scene if scene_manager is not None else None
+                    final_entity_data = final_scene.find_entity(target_entity) if final_scene is not None else None
+                    final_component_data = (
+                        final_entity_data.get("components", {}).get(target_component, {})
+                        if isinstance(final_entity_data, dict)
+                        else {}
+                    )
+                    operations["transform_edit"].update({
+                        "success": bool(final_edit_result.get("success", False)),
                         "target_entity": target_entity,
                         "field": f"{target_component}.{target_property}",
-                    }
+                        "final_value": target_value,
+                        "final_observed_value": final_component_data.get(target_property),
+                    })
 
                 if normalized_mode == "play":
-                    play_start = time.perf_counter()
+                    edit_to_play, play_to_edit = _measure_play_transitions(
+                        api,
+                        warmup=effective_operation_warmup,
+                        repeats=effective_operation_repeats,
+                    )
+                    operations["edit_to_play"] = edit_to_play
+                    operations["play_to_edit"] = play_to_edit
                     api.play()
-                    operations["edit_to_play"] = {"ms": _elapsed_ms(play_start)}
 
                 render_system = getattr(game, "render_system", None)
                 active_world = game.world
@@ -308,6 +402,7 @@ def run_benchmark(
                     )
                     operations["render_preparation"] = {
                         "ms": _elapsed_ms(render_prep_start),
+                        "classification": "one_shot_diagnostic",
                         "stats": render_stats,
                         "visible_entities": int(render_stats.get("spatial_visible_entities", render_stats.get("render_entities", 0))),
                         "total_entities": int(render_stats.get("spatial_total_entities", render_stats.get("render_entities", 0))),
@@ -341,13 +436,13 @@ def run_benchmark(
                     else str(backend)
                 )
                 if normalized_mode == "play":
-                    stop_start = time.perf_counter()
                     api.stop()
-                    operations["play_to_edit"] = {"ms": _elapsed_ms(stop_start)}
+                    operations["play_to_edit"]["final_mode"] = "edit" if game.is_edit_mode else "play"
                 if physics_metric_samples:
                     cold = physics_metric_samples[0]
                     hot = physics_metric_samples[-1]
                     operations["physics_cache_metrics"] = {
+                        "classification": "one_shot_diagnostic",
                         "cold_frame": cold,
                         "hot_frame": hot,
                         "aabb_build_reduction": cold.get("aabb_builds", 0.0)
@@ -382,8 +477,12 @@ def run_benchmark(
             "platform": platform.platform(),
         },
         "measurement": {
-            "warmup": max(0, int(operation_warmup)),
-            "repeats": max(1, int(operation_repeats)),
+            "warmup": effective_operation_warmup,
+            "repeats": effective_operation_repeats,
+            "requested_warmup": requested_operation_warmup,
+            "requested_repeats": requested_operation_repeats,
+            "minimum_warmup": MIN_OPERATION_WARMUP,
+            "minimum_repeats": MIN_OPERATION_REPEATS,
         },
         "parameters": parameters,
         "operations": operations,

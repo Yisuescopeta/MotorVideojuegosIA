@@ -16,6 +16,7 @@ from engine.scenes.scene_persistence import (
     SceneStorageReadError,
 )
 from engine.scenes.storage import SceneStorage
+from engine.scenes.workspace_lifecycle import SceneWorkspace
 
 
 def _scene_payload() -> dict:
@@ -340,8 +341,8 @@ class ScenePersistenceContractTests(unittest.TestCase):
                         else:
                             stack.enter_context(
                                 patch.object(
-                                    manager,
-                                    "_install_scene_payload",
+                                    SceneWorkspace,
+                                    "install_entry_state",
                                     side_effect=ValueError("install failed"),
                                 )
                             )

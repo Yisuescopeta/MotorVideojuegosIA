@@ -7,7 +7,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from engine.debug.benchmark_runner import BENCHMARK_REPORT_VERSION, run_benchmark
+from engine.debug.benchmark_runner import (
+    BENCHMARK_REPORT_VERSION,
+    MIN_OPERATION_REPEATS,
+    MIN_OPERATION_WARMUP,
+    run_benchmark,
+)
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
 from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_ENTITY_THRESHOLD, SceneManager
 
@@ -100,9 +105,14 @@ class BenchmarkRunTests(unittest.TestCase):
         self.assertIn("world_clone", report["operations"])
         self.assertIn("world_serialize", report["operations"])
         self.assertIn("scene_create_world", report["operations"])
-        self.assertEqual(report["measurement"]["repeats"], 3)
+        self.assertEqual(report["measurement"]["warmup"], MIN_OPERATION_WARMUP)
+        self.assertEqual(report["measurement"]["repeats"], MIN_OPERATION_REPEATS)
+        self.assertEqual(report["measurement"]["requested_repeats"], 3)
         self.assertIn("median_ms", report["operations"]["world_clone"])
+        self.assertIn("mad_ms", report["operations"]["world_clone"])
+        self.assertIn("noise_floor_ms", report["operations"]["world_clone"])
         self.assertIn("p95_ms", report["operations"]["world_clone"])
+        self.assertEqual(report["operations"]["world_clone"]["classification"], "repeated_gate")
         self.assertEqual(
             set(report["summary"].keys()),
             {
@@ -152,8 +162,11 @@ class BenchmarkRunTests(unittest.TestCase):
         )
 
         measurement = report["operations"]["scene_create_world"]
-        self.assertEqual(len(measurement["samples_ms"]), 3)
+        self.assertEqual(len(measurement["samples_ms"]), MIN_OPERATION_REPEATS)
+        self.assertEqual(measurement["warmup"], MIN_OPERATION_WARMUP)
         self.assertGreaterEqual(measurement["median_ms"], 0.0)
+        self.assertGreaterEqual(measurement["mad_ms"], 0.0)
+        self.assertGreaterEqual(measurement["noise_floor_ms"], measurement["mad_ms"])
         self.assertGreaterEqual(measurement["p95_ms"], measurement["median_ms"])
 
     def test_scene_save_microbenchmark_reports_compact_save_distribution(self) -> None:
@@ -187,13 +200,13 @@ class BenchmarkRunTests(unittest.TestCase):
             )
 
         measurement = report["operations"]["scene_save"]
-        self.assertEqual(len(measurement["samples_ms"]), 3)
+        self.assertEqual(len(measurement["samples_ms"]), MIN_OPERATION_REPEATS)
         self.assertEqual(measurement["entity_count"], entity_count)
         self.assertEqual(measurement["compact_threshold"], COMPACT_SCENE_SAVE_ENTITY_THRESHOLD)
         self.assertTrue(measurement["workspace_isolated"])
         self.assertGreaterEqual(measurement["median_ms"], 0.0)
         self.assertTrue(primary_workspace_managers)
-        self.assertEqual(len(save_managers), 3)
+        self.assertEqual(len(save_managers), MIN_OPERATION_WARMUP + MIN_OPERATION_REPEATS)
         self.assertTrue(all(manager is not primary_workspace_managers[0] for manager in save_managers))
         self.assertTrue(all(manager is save_managers[0] for manager in save_managers))
         self.assertEqual(report["operations"]["render_preparation"]["total_entities"], entity_count)
@@ -230,12 +243,18 @@ class BenchmarkRunTests(unittest.TestCase):
             entity_count=8,
             columns=4,
             spacing=12.0,
+            operation_warmup=0,
+            operation_repeats=3,
         )
 
         operation = report["operations"]["transform_edit"]
         self.assertTrue(operation["success"])
         self.assertEqual(operation["target_entity"], "Entity_7")
         self.assertEqual(operation["field"], "Transform.x")
+        self.assertEqual(operation["classification"], "repeated_gate")
+        self.assertEqual(len(operation["samples_ms"]), MIN_OPERATION_REPEATS)
+        self.assertEqual(operation["warmup"], MIN_OPERATION_WARMUP)
+        self.assertEqual(operation["final_observed_value"], operation["final_value"])
         self.assertGreaterEqual(operation["ms"], 0.0)
 
     def test_play_mode_clone_stress_reports_play_transitions(self) -> None:
@@ -247,12 +266,20 @@ class BenchmarkRunTests(unittest.TestCase):
             entity_count=8,
             columns=4,
             spacing=12.0,
+            operation_warmup=0,
+            operation_repeats=3,
         )
 
         self.assertIn("edit_to_play", report["operations"])
         self.assertIn("play_to_edit", report["operations"])
-        self.assertGreaterEqual(report["operations"]["edit_to_play"]["ms"], 0.0)
-        self.assertGreaterEqual(report["operations"]["play_to_edit"]["ms"], 0.0)
+        for operation_name in ("edit_to_play", "play_to_edit"):
+            operation = report["operations"][operation_name]
+            self.assertEqual(operation["classification"], "repeated_gate")
+            self.assertEqual(len(operation["samples_ms"]), MIN_OPERATION_REPEATS)
+            self.assertEqual(operation["warmup"], MIN_OPERATION_WARMUP)
+            self.assertGreaterEqual(operation["ms"], 0.0)
+        self.assertEqual(report["operations"]["play_to_edit"]["final_mode"], "edit")
+        self.assertEqual(report["profiler_frames_recorded"], 1)
 
     def test_sprite_benchmark_reports_headless_render_preparation(self) -> None:
         report = run_benchmark(

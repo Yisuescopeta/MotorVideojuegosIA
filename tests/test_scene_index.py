@@ -112,6 +112,96 @@ class SceneIndexTests(unittest.TestCase):
         self.assertFalse(added)
         self.assertEqual(len(scene.entities_data), 3)
 
+    def test_update_component_properties_preserves_existing_payload(self) -> None:
+        scene = Scene(
+            data={
+                "name": "BatchUpdate",
+                "entities": [
+                    {
+                        "name": "Actor",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 1.0,
+                                "y": 2.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                                "editor_data": {"locked": True},
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        component = scene.find_entity("Actor")["components"]["Transform"]
+
+        updated = scene.update_component_properties(
+            "Actor",
+            "Transform",
+            {"x": 9.0, "rotation": 45.0},
+        )
+
+        self.assertTrue(updated)
+        stored = scene.find_entity("Actor")["components"]["Transform"]
+        self.assertIs(stored, component)
+        self.assertEqual(stored["x"], 9.0)
+        self.assertEqual(stored["rotation"], 45.0)
+        self.assertEqual(stored["y"], 2.0)
+        self.assertEqual(stored["editor_data"], {"locked": True})
+        self.assertFalse(scene.update_component_properties("Missing", "Transform", {"x": 1.0}))
+        self.assertFalse(scene.update_component_properties("Actor", "Missing", {"x": 1.0}))
+
+    def test_update_component_properties_reindexes_scene_entry_point(self) -> None:
+        scene = Scene(
+            data={
+                "name": "EntryIndex",
+                "entities": [
+                    {
+                        "name": "Gate",
+                        "components": {
+                            "SceneEntryPoint": {
+                                "enabled": True,
+                                "entry_id": "arrival",
+                                "label": "Arrival",
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        self.assertTrue(
+            scene.update_component_properties(
+                "Gate",
+                "SceneEntryPoint",
+                {"entry_id": "north_gate", "label": "North Gate"},
+            )
+        )
+        self.assertTrue(
+            scene.add_entity(
+                {
+                    "name": "OldArrival",
+                    "components": {"SceneEntryPoint": {"entry_id": "arrival"}},
+                }
+            )
+        )
+        self.assertFalse(
+            scene.add_entity(
+                {
+                    "name": "DuplicateNorth",
+                    "components": {"SceneEntryPoint": {"entry_id": "north_gate"}},
+                }
+            )
+        )
+        entry_point = scene.find_entity("Gate")["components"]["SceneEntryPoint"]
+        self.assertTrue(entry_point["enabled"])
+        self.assertEqual(entry_point["label"], "North Gate")
+
 
 if __name__ == "__main__":
     unittest.main()

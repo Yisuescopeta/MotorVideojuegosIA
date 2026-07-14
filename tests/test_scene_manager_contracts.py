@@ -1,11 +1,17 @@
 import copy
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import engine.scenes.scene_manager as scene_manager_module
 from engine.levels.component_registry import create_default_registry
+from engine.scenes.edit_sync import LEGACY_AUTHORING_SYNC_REASON, TRANSIENT_PREVIEW_SYNC_REASON
+from engine.scenes.prefab_overrides import PrefabOverrideService
 from engine.scenes.scene_manager import SceneManager
+from engine.scenes.structural_authoring import ScenePrefabAuthoring, SceneStructuralAuthoring
+from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 
 
 class SceneManagerContractsTests(unittest.TestCase):
@@ -35,6 +41,80 @@ class SceneManagerContractsTests(unittest.TestCase):
                 "rules": [],
                 "feature_metadata": {},
             }
+        )
+
+    def test_projection_algorithms_are_not_implemented_by_manager(self) -> None:
+        source = inspect.getsource(scene_manager_module)
+
+        self.assertNotIn("engine.serialization.schema", source)
+        self.assertNotIn("self._registry.create(", source)
+        self.assertFalse(hasattr(self.manager, "_install_scene_payload"))
+        self.assertFalse(hasattr(self.manager, "_rebuild_edit_world"))
+        self.assertFalse(hasattr(self.manager, "_build_canonical_scene_payload"))
+
+    def test_prefab_override_authority_is_extracted_and_shared(self) -> None:
+        manager_source = inspect.getsource(SceneManager)
+        serializable_source = inspect.getsource(self.manager._serializable_authoring.__class__)
+        prefab_authoring_source = inspect.getsource(ScenePrefabAuthoring)
+        structural_source = inspect.getsource(SceneStructuralAuthoring)
+
+        self.assertIsInstance(self.manager._prefab_overrides, PrefabOverrideService)
+        self.assertIs(
+            self.manager._structural_authoring._prefab_overrides,
+            self.manager._prefab_overrides,
+        )
+        self.assertIs(
+            self.manager._serializable_authoring._prefab_overrides,
+            self.manager._prefab_overrides,
+        )
+        for direct_call in (
+            "self._prefab_overrides.update_component_property(",
+            "self._prefab_overrides.update_entity_property(",
+            "self._prefab_overrides.replace_component(",
+            "self._prefab_overrides.remove_component(",
+        ):
+            self.assertNotIn(direct_call, manager_source)
+            self.assertIn(direct_call, serializable_source)
+            self.assertIn(direct_call, structural_source)
+        for removed_name in (
+            "_update_prefab_component_override",
+            "_update_prefab_entity_override",
+            "_replace_prefab_component_override",
+            "_remove_prefab_component_override",
+            "_ensure_prefab_override_ops",
+            "_upsert_prefab_override_operation",
+            "_remove_prefab_override_operations",
+        ):
+            self.assertFalse(hasattr(self.manager, removed_name))
+        for moved_algorithm in (
+            "ensure_prefab_override_ops",
+            "upsert_prefab_override_operation",
+            "remove_prefab_override_operations",
+            "_resolve_prefab_override_target",
+        ):
+            self.assertNotIn(moved_algorithm, prefab_authoring_source)
+            self.assertNotIn(moved_algorithm, structural_source)
+
+    def test_pending_edit_sync_policy_is_not_implemented_by_manager(self) -> None:
+        source = inspect.getsource(scene_manager_module)
+        manager_source = inspect.getsource(SceneManager)
+        entry_source = inspect.getsource(SceneWorkspaceEntry)
+
+        self.assertIn("pending_edit_world_sync_reason: Optional[str]", entry_source)
+        self.assertNotIn("entry.pending_edit_world_sync_reason", manager_source)
+        self.assertNotIn("dirty_before_pending_edit_world_sync", source)
+        self.assertFalse(hasattr(self.manager, "_flush_pending_edit_world"))
+        self.assertFalse(hasattr(self.manager, "_clear_pending_edit_world_sync"))
+        self.assertFalse(hasattr(self.manager, "_sync_entry_from_edit_world"))
+
+    def test_legacy_sync_reason_constants_remain_reexported_by_manager_module(self) -> None:
+        self.assertEqual(
+            scene_manager_module.LEGACY_AUTHORING_SYNC_REASON,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        self.assertEqual(
+            scene_manager_module.TRANSIENT_PREVIEW_SYNC_REASON,
+            TRANSIENT_PREVIEW_SYNC_REASON,
         )
 
     def test_runtime_port_is_memoized_and_preserves_play_stop_semantics(self) -> None:
@@ -174,7 +254,8 @@ class SceneManagerContractsTests(unittest.TestCase):
         self.assertEqual(entry.key, canonical_path.as_posix())
         self.assertEqual(entry.source_path, canonical_path.as_posix())
 
-    def test_serializable_rollback_restores_only_characterized_entry_fields(self) -> None:
+    def test_serializable_rollback_restores_full_pending_sync_state(self) -> None:
+        primary_key = self.manager.active_scene_key
         with tempfile.TemporaryDirectory() as temp_dir:
             secondary_path = Path(temp_dir) / "secondary.json"
             self.manager.load_scene(
@@ -202,15 +283,16 @@ class SceneManagerContractsTests(unittest.TestCase):
             entry.selected_entity_name = "SecondaryPlayer"
             entry.selected_entity_id = player_id
             entry.edit_world.selected_entity_name = "SecondaryPlayer"
-            entry.dirty = False
-            entry.pending_edit_world_sync_reason = "contract_pending"
-            entry.dirty_before_pending_edit_world_sync = True
+            self.assertIsNotNone(self.manager.activate_scene(entry.key))
+            self.assertTrue(self.manager.mark_edit_world_dirty())
+            self.manager.clear_dirty()
+            self.assertIsNotNone(self.manager.activate_scene(primary_key))
             entry.edit_world_version = 777
             scene_before = copy.deepcopy(entry.scene.to_dict())
-            original_install = self.manager._install_scene_payload
+            original_install = SceneWorkspace.install_entry_state
             install_calls = 0
 
-            def fail_first_install(*args, **kwargs):
+            def fail_first_install(_workspace, *args, **kwargs):
                 nonlocal install_calls
                 install_calls += 1
                 if install_calls == 1:
@@ -218,9 +300,9 @@ class SceneManagerContractsTests(unittest.TestCase):
                 return original_install(*args, **kwargs)
 
             with patch.object(
-                self.manager,
-                "_install_scene_payload",
-                side_effect=fail_first_install,
+                SceneWorkspace,
+                "install_entry_state",
+                new=fail_first_install,
             ):
                 changed = self.manager.upsert_component_for_scene(
                     entry.key,
@@ -235,8 +317,8 @@ class SceneManagerContractsTests(unittest.TestCase):
         self.assertEqual(entry.selected_entity_id, player_id)
         self.assertEqual(entry.edit_world.selected_entity_name, "SecondaryPlayer")
         self.assertFalse(entry.dirty)
-        self.assertEqual(entry.pending_edit_world_sync_reason, "contract_pending")
-        self.assertIsNone(entry.dirty_before_pending_edit_world_sync)
+        self.assertEqual(entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
+        self.assertFalse(entry.dirty_before_pending_edit_world_sync)
         self.assertNotEqual(entry.edit_world_version, 777)
         self.assertEqual(entry.edit_world_version, entry.edit_world.version)
 

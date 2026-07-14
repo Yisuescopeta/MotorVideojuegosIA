@@ -9,6 +9,7 @@ from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene import Scene
 from engine.scenes.scene_manager import SceneManager
+from engine.scenes.scene_projection import SceneProjectionService
 
 
 def _transform(x: float = 0.0, y: float = 0.0) -> dict[str, object]:
@@ -46,7 +47,11 @@ class SceneIncrementalCreationTests(unittest.TestCase):
         world = manager.get_edit_world()
         first_entity_data = scene.entities_data[0]
 
-        with patch("engine.scenes.scene.migrate_scene_data", side_effect=AssertionError("full migration")):
+        with patch.object(
+            SceneProjectionService,
+            "create_world",
+            side_effect=AssertionError("full rebuild"),
+        ):
             self.assertTrue(manager.create_entity("Added", components={"Transform": _transform()}))
 
         self.assertIs(manager.get_edit_world(), world)
