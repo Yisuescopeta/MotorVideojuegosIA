@@ -282,6 +282,56 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
             "runtime_failure: runtime projection failure"
         )
 
+    def test_persistent_projection_failure_restores_without_reusing_projection(self) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        self.workspace.mark_dirty(self.entry)
+        self.edit_sync.restore_pending_reason(
+            self.entry,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        token = self.coordinator.capture_snapshot(self.entry)
+        scene_before = copy.deepcopy(self.entry.scene.to_dict())
+        world_before = self.entry.edit_world
+        assert world_before is not None
+        world_payload_before = copy.deepcopy(world_before.serialize())
+
+        self.assertTrue(self.entry.scene.update_entity_property("Hero", "tag", "Mutated"))
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Other"))
+        self.workspace.clear_dirty(self.entry)
+        self.edit_sync.clear_pending(self.entry)
+        self.entry.edit_world_version = 777
+
+        with patch.object(
+            self.projection,
+            "create_world",
+            side_effect=RuntimeError("persistent projection failure"),
+        ) as create_world:
+            self.assertFalse(
+                self.coordinator.commit_mutation(
+                    self.entry,
+                    token,
+                    failure_context="persistent_projection_failure",
+                )
+            )
+
+        create_world.assert_called_once()
+        self.assertEqual(self.entry.scene.to_dict(), scene_before)
+        self.assertIs(self.entry.edit_world, world_before)
+        self.assertEqual(self.entry.edit_world.serialize(), world_payload_before)
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertEqual(
+            self.entry.selected_entity_id,
+            self.entry.scene.find_entity("Hero")["id"],
+        )
+        self.assertEqual(self.entry.edit_world.selected_entity_name, "Hero")
+        self.assertTrue(self.entry.dirty)
+        self.assertEqual(
+            self.entry.pending_edit_world_sync_reason,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        self.assertIsNone(self.entry.dirty_before_pending_edit_world_sync)
+        self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
+
     def test_snapshot_scene_data_is_defensive_and_cannot_poison_rollback(self) -> None:
         token = self.coordinator.capture_snapshot(self.entry)
         exposed = self.coordinator.snapshot_scene_data(token)
@@ -348,6 +398,51 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.entry.edit_world.serialize(), world_before)
         self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
 
+    def test_restore_scene_data_uses_workspace_and_sync_authorities(self) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        self.edit_sync.restore_pending_reason(self.entry, LEGACY_AUTHORING_SYNC_REASON)
+        payload = copy.deepcopy(self.entry.scene.to_dict())
+        payload["entities"][0]["tag"] = "Restored"
+
+        with patch.object(
+            self.workspace,
+            "replace_entry_scene",
+            wraps=self.workspace.replace_entry_scene,
+        ) as replace_scene, patch.object(
+            self.edit_sync,
+            "clear_pending",
+            wraps=self.edit_sync.clear_pending,
+        ) as clear_pending, patch.object(
+            self.workspace,
+            "mark_dirty",
+            wraps=self.workspace.mark_dirty,
+        ) as mark_dirty:
+            self.assertTrue(self.coordinator.restore_scene_data(self.entry.key, payload))
+
+        payload["entities"][0]["tag"] = "Poisoned"
+        self.assertEqual(self.entry.scene.find_entity("Hero")["tag"], "Restored")
+        self.assertEqual(self.entry.edit_world.get_entity_by_name("Hero").tag, "Restored")
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertIsNone(self.entry.pending_edit_world_sync_reason)
+        self.assertTrue(self.entry.dirty)
+        self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
+        replace_scene.assert_called_once()
+        clear_pending.assert_called_once_with(self.entry)
+        mark_dirty.assert_called_once_with(self.entry)
+
+        self.assertTrue(self.coordinator.restore_scene_data(self.entry.key, self.entry.scene.to_dict()))
+        self.assertEqual(self.entry.scene.find_entity("Hero")["tag"], "Restored")
+
+    def test_restore_scene_data_rejects_missing_play_and_invalid_payload(self) -> None:
+        payload = copy.deepcopy(self.entry.scene.to_dict())
+        self.assertFalse(self.coordinator.restore_scene_data("missing", payload))
+        self.entry.is_playing = True
+        self.assertFalse(self.coordinator.restore_scene_data(self.entry.key, payload))
+        self.entry.is_playing = False
+        invalid = copy.deepcopy(payload)
+        invalid["entities"] = "invalid"
+        self.assertFalse(self.coordinator.restore_scene_data(self.entry.key, invalid))
+
     def test_manager_does_not_define_or_name_snapshot_implementation(self) -> None:
         manager_source = inspect.getsource(scene_manager_module)
         manager_class_source = inspect.getsource(scene_manager_module.SceneManager)
@@ -360,24 +455,21 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
         ):
             self.assertNotIn(f"def {removed_helper}", manager_class_source)
 
-    def test_manager_delegates_history_snapshots_to_mutation_coordinator(self) -> None:
+    def test_manager_prepares_transaction_snapshot_via_mutation_coordinator(self) -> None:
         manager = scene_manager_module.SceneManager(create_default_registry())
         manager.load_scene(_scene_payload())
         entry = manager.resolve_entry(manager.active_scene_key)
-        callback = manager._change_history._context.snapshot_scene
+        assert entry is not None
 
-        self.assertIs(callback.__self__, manager._serializable_mutations)
-        self.assertEqual(
-            callback.__func__,
-            SerializableMutationCoordinator.snapshot_entry_scene_data,
-        )
-        exposed = callback(entry)
-        exposed["entities"][0]["tag"] = "Poisoned"
-        self.assertEqual(entry.scene.find_entity("Hero")["tag"], "Untagged")
-        self.assertNotIn(
-            "snapshot_scene=lambda",
-            inspect.getsource(scene_manager_module.SceneManager),
-        )
+        with patch.object(
+            manager._serializable_mutations,
+            "snapshot_entry_scene_data",
+            wraps=manager._serializable_mutations.snapshot_entry_scene_data,
+        ) as snapshot:
+            self.assertTrue(manager.begin_transaction("probe"))
+
+        snapshot.assert_called_once_with(entry)
+        self.assertFalse(hasattr(manager._change_history, "_context"))
 
 
 if __name__ == "__main__":

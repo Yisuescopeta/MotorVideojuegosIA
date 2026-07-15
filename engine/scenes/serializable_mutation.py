@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from engine.core.runtime_logging import log_err
 from engine.scenes.edit_sync import SceneEditSyncCoordinator, SceneEditSyncSnapshot
@@ -12,17 +12,23 @@ from engine.scenes.workspace_lifecycle import (
     SceneWorkspaceEntry,
 )
 
+if TYPE_CHECKING:
+    from engine.ecs.world import World
+    from engine.scenes.scene import Scene
+
 
 class _MutationState:
     def __init__(
         self,
         *,
-        scene_data: dict[str, Any],
+        scene: Scene,
+        world: World,
         selection: SceneSelectionSnapshot,
         dirty: bool,
         edit_sync_snapshot: SceneEditSyncSnapshot,
     ) -> None:
-        self.scene_data = scene_data
+        self.scene = scene
+        self.world = world
         self.selection = selection
         self.dirty = dirty
         self.edit_sync_snapshot = edit_sync_snapshot
@@ -41,20 +47,50 @@ class SerializableMutationCoordinator:
         self._projection = projection
         self._edit_sync = edit_sync
 
-    def capture_snapshot(self, entry: SceneWorkspaceEntry) -> object:
+    def capture_snapshot(
+        self,
+        entry: SceneWorkspaceEntry,
+        *,
+        clone_world: bool = False,
+    ) -> object:
+        if entry.edit_world is None:
+            raise ValueError("serializable mutation requires an edit world")
+        source_path = entry.scene.source_path
+        fallback_name = entry.scene.name
+        prepared = self._workspace.prepare_scene_payload(entry.scene.to_dict())
+        scene = self._projection.create_scene(
+            prepared,
+            source_path=source_path,
+            fallback_name=fallback_name,
+        )
+        self._workspace.sync_scene_links_from_feature_metadata(scene)
         return _MutationState(
-            scene_data=copy.deepcopy(entry.scene.to_dict()),
+            scene=scene,
+            world=entry.edit_world.clone() if clone_world else entry.edit_world,
             selection=self._workspace.capture_selection(entry),
             dirty=entry.dirty,
             edit_sync_snapshot=self._edit_sync.capture_snapshot(entry),
         )
 
     def snapshot_scene_data(self, snapshot: object) -> dict[str, Any]:
-        return copy.deepcopy(self._state(snapshot).scene_data)
+        return copy.deepcopy(self._state(snapshot).scene.to_dict())
 
     def snapshot_entry_scene_data(self, entry: SceneWorkspaceEntry) -> dict[str, Any]:
         """Return a defensive scene snapshot for history boundaries."""
         return copy.deepcopy(entry.scene.to_dict())
+
+    def restore_scene_data(self, scene_key: str, data: dict[str, Any]) -> bool:
+        """Restore one edit scene through workspace and pending-sync authorities."""
+        entry = self._workspace.resolve_entry(scene_key)
+        if entry is None or entry.is_playing:
+            return False
+        try:
+            self._workspace.replace_entry_scene(entry, copy.deepcopy(data))
+        except ValueError:
+            return False
+        self._edit_sync.clear_pending(entry)
+        self._workspace.mark_dirty(entry)
+        return True
 
     def restore_snapshot(
         self,
@@ -62,11 +98,8 @@ class SerializableMutationCoordinator:
         snapshot: object,
     ) -> None:
         state = self._state(snapshot)
-        self._install_payload(
-            entry,
-            state.scene_data,
-            selection=state.selection,
-        )
+        self._workspace.install_entry_state(entry, state.scene, state.world)
+        self._workspace.restore_selection(entry, state.selection)
         self._workspace.restore_dirty(entry, state.dirty)
         self._edit_sync.restore_snapshot(entry, state.edit_sync_snapshot)
 

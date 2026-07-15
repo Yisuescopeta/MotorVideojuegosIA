@@ -691,4 +691,4 @@ class SceneComponentAuthoring:
         component_name: str,
     ) -> None:
         if component_name == "SceneLink":
-            self._workspace.sync_feature_metadata_from_scene_links(entry)
+            self._flow_policy.sync_metadata_from_links(entry.scene)

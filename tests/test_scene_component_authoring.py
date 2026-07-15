@@ -6,7 +6,10 @@ from unittest.mock import patch
 import engine.scenes.component_authoring as component_module
 from engine.components.transform import Transform
 from engine.scenes.component_authoring import SceneComponentAuthoring
-from engine.scenes.edit_sync import LEGACY_AUTHORING_SYNC_REASON
+from engine.scenes.edit_sync import (
+    LEGACY_AUTHORING_SYNC_REASON,
+    TRANSIENT_PREVIEW_SYNC_REASON,
+)
 from tests.test_scene_serializable_authoring import (
     _payload,
     _SerializableOwnerTestSupport,
@@ -321,6 +324,91 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
             self.authoring.get_feature_metadata()["scene_flow"],
             {"exit": "levels/next.json"},
         )
+        self.assertEqual(
+            self.entry.edit_world.feature_metadata["scene_flow"],
+            {"exit": "levels/next.json"},
+        )
+
+    def test_scene_link_persistent_projection_failure_restores_all_state(self) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        self.edit_sync.restore_pending_reason(
+            self.entry,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        scene_before = copy.deepcopy(self.entry.scene.to_dict())
+        world_reference = self.entry.edit_world
+        world_before = copy.deepcopy(world_reference.serialize())
+        prior_history = ("previous",)
+        self.history.scene_changes.append(prior_history)
+
+        with patch.object(
+            self.projection,
+            "create_world",
+            side_effect=RuntimeError("persistent projection failure"),
+        ) as create_world:
+            self.assertFalse(
+                self.authoring.add_component_to_entity(
+                    "Hero",
+                    "SceneLink",
+                    {"flow_key": "exit", "target_path": "levels/next.json"},
+                )
+            )
+
+        create_world.assert_called_once()
+        self.assertEqual(self.entry.scene.to_dict(), scene_before)
+        self.assertIs(self.entry.edit_world, world_reference)
+        self.assertEqual(self.entry.edit_world.serialize(), world_before)
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertEqual(self.entry.selected_entity_id, "hero-id")
+        self.assertEqual(self.entry.edit_world.selected_entity_name, "Hero")
+        self.assertFalse(self.entry.dirty)
+        self.assertEqual(
+            self.entry.pending_edit_world_sync_reason,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        self.assertIsNone(self.entry.dirty_before_pending_edit_world_sync)
+        self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
+        self.assertEqual(self.history.scene_changes, [prior_history])
+
+    def test_scene_link_history_failure_restores_all_state(self) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        self.edit_sync.restore_pending_reason(
+            self.entry,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        scene_before = copy.deepcopy(self.entry.scene.to_dict())
+        world_reference = self.entry.edit_world
+        world_before = copy.deepcopy(world_reference.serialize())
+        prior_history = ("previous",)
+        self.history.scene_changes.append(prior_history)
+
+        with patch.object(
+            self.history,
+            "record_snapshot_change",
+            side_effect=RuntimeError("history unavailable"),
+        ):
+            self.assertFalse(
+                self.authoring.add_component_to_entity(
+                    "Hero",
+                    "SceneLink",
+                    {"flow_key": "exit", "target_path": "levels/next.json"},
+                )
+            )
+
+        self.assertEqual(self.entry.scene.to_dict(), scene_before)
+        self.assertIs(self.entry.edit_world, world_reference)
+        self.assertEqual(self.entry.edit_world.serialize(), world_before)
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertEqual(self.entry.selected_entity_id, "hero-id")
+        self.assertEqual(self.entry.edit_world.selected_entity_name, "Hero")
+        self.assertFalse(self.entry.dirty)
+        self.assertEqual(
+            self.entry.pending_edit_world_sync_reason,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        self.assertIsNone(self.entry.dirty_before_pending_edit_world_sync)
+        self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
+        self.assertEqual(self.history.scene_changes, [prior_history])
 
     def test_metadata_query_returns_defensive_copy(self) -> None:
         metadata = {"nested": {"values": [1]}}
@@ -499,7 +587,7 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
             events,
             ["flush", "capture", "mutate", "commit", "dirty", "history"],
         )
-        self.assertEqual(self.history.scene_changes[-1][1], "scene_flow:next")
+        self.assertEqual(self.history.scene_changes[-1][0], "scene_flow:next")
         self.assertEqual(
             self.entry.scene.feature_metadata["scene_flow"],
             {"next": "levels/next.json"},
@@ -581,7 +669,7 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
                 )
             )
 
-        self.assertEqual(calls, 2)
+        self.assertEqual(calls, 1)
         self.assertEqual(self.entry.scene.to_dict(), before)
         self.assertFalse(self.entry.dirty)
         self.assertEqual(self.history.scene_changes, [])
@@ -611,6 +699,67 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
             {"next": "levels/next.json"},
         )
         self.assertIsNone(self.entry.pending_edit_world_sync_reason)
+
+    def _assert_pending_projection_exception_is_atomic(
+        self,
+        error_type: type[Exception],
+        expected_calls: int,
+    ) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        hero = self.entry.edit_world.get_entity_by_name("Hero")
+        hero.get_component(Transform).x = 42.0
+        self.assertTrue(
+            self.edit_sync.mark_edit_world_dirty(
+                reason=LEGACY_AUTHORING_SYNC_REASON,
+            )
+        )
+        scene_before = copy.deepcopy(self.entry.scene.to_dict())
+        world_reference = self.entry.edit_world
+        world_before = copy.deepcopy(world_reference.serialize())
+        world_version_before = world_reference.version
+        prior_history = ("previous",)
+        self.history.scene_changes.append(prior_history)
+        calls = 0
+
+        def fail_projection(scene):
+            nonlocal calls
+            calls += 1
+            raise error_type("persistent pending projection failure")
+
+        with patch.object(
+            self.projection,
+            "create_world",
+            side_effect=fail_projection,
+        ):
+            self.assertFalse(
+                self.authoring.set_scene_flow_target(
+                    "next",
+                    "levels/next.json",
+                )
+            )
+
+        self.assertEqual(calls, expected_calls)
+        self.assertEqual(self.entry.scene.to_dict(), scene_before)
+        self.assertIs(self.entry.edit_world, world_reference)
+        self.assertEqual(self.entry.edit_world.serialize(), world_before)
+        self.assertEqual(self.entry.edit_world.version, world_version_before)
+        self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertEqual(self.entry.selected_entity_id, "hero-id")
+        self.assertEqual(self.entry.edit_world.selected_entity_name, "Hero")
+        self.assertTrue(self.entry.dirty)
+        self.assertEqual(
+            self.entry.pending_edit_world_sync_reason,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        self.assertFalse(self.entry.dirty_before_pending_edit_world_sync)
+        self.assertEqual(self.history.scene_changes, [prior_history])
+
+    def test_pending_runtime_projection_exception_restores_guard(self) -> None:
+        self._assert_pending_projection_exception_is_atomic(RuntimeError, 1)
+
+    def test_pending_value_projection_exception_restores_guard(self) -> None:
+        self._assert_pending_projection_exception_is_atomic(ValueError, 2)
 
 
 if __name__ == "__main__":

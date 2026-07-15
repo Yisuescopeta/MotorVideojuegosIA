@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import copy
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from engine.authoring.changes import Change
 from engine.core.runtime_logging import log_err
-from engine.scenes.change_history import SceneChangeCoordinator, SceneChangeCoordinatorContext
+from engine.scenes.change_history import SceneChangeCoordinator
 from engine.scenes.contracts import (
     SceneAuthoringPort,
     SceneManagerAuthoringAdapter,
@@ -67,21 +68,7 @@ class SceneManager:
             self._edit_sync,
         )
         self._persistence = ScenePersistenceService()
-        self._change_history = SceneChangeCoordinator(
-            SceneChangeCoordinatorContext(
-                resolve_entry=self._resolve_entry,
-                restore_entry_scene=self._restore_entry_scene,
-                snapshot_scene=self._serializable_mutations.snapshot_entry_scene_data,
-                edit_component=self.apply_edit_to_world,
-                set_entity_property=self.update_entity_property,
-                add_component=lambda entity, component, data: self.add_component_to_entity(
-                    entity, component, component_data=data
-                ),
-                remove_component=self.remove_component_from_entity,
-                create_entity=self.create_entity,
-                delete_entity=self.remove_entity,
-            )
-        )
+        self._change_history = SceneChangeCoordinator()
         self._incremental_authoring = SceneIncrementalAuthoring(
             self._workspace,
             self._edit_sync,
@@ -104,7 +91,7 @@ class SceneManager:
                 resolve_entry=self._resolve_entry,
                 flush_pending_edit_world=self._edit_sync.flush_pending,
                 rebuild_edit_world=self._workspace.rebuild_edit_world,
-                record_scene_change=self._record_scene_change,
+                record_scene_change=self._record_structural_snapshot_change,
                 sync_scene_links_from_feature_metadata=self._sync_feature_metadata_from_scene_links,
                 unique_entity_name=self._unique_entity_name,
             ),
@@ -745,15 +732,10 @@ class SceneManager:
             return False
 
     def restore_scene_data(self, data: Dict[str, Any]) -> bool:
-        entry = self._get_active_entry()
-        if entry is None or entry.is_playing:
-            return False
-        try:
-            self._restore_entry_scene(entry, data)
-        except ValueError:
-            return False
-        self._workspace.mark_dirty(entry)
-        return True
+        return self._serializable_mutations.restore_scene_data(
+            self._workspace.active_scene_key,
+            data,
+        )
 
     def set_entity_parent(self, entity_name: str, parent_name: Optional[str]) -> bool:
         """Reparent an entity, preserving its world-space transform."""
@@ -817,16 +799,75 @@ class SceneManager:
             self._workspace.clear_dirty(entry)
 
     def begin_transaction(self, label: str = "transaction", key: Optional[str] = None) -> bool:
-        return self._change_history.begin_transaction(label=label, key=key)
+        if self._change_history.has_active_transaction:
+            return False
+        entry = self._resolve_entry(key)
+        if entry is None or entry.is_playing:
+            return False
+        before = self._serializable_mutations.snapshot_entry_scene_data(entry)
+        return self._change_history.begin_transaction(
+            label=label,
+            scene_key=entry.key,
+            before=before,
+        )
 
     def apply_change(self, change: Change | dict[str, Any], key: Optional[str] = None) -> bool:
-        return self._change_history.apply_change(change, key=key)
+        _ = key
+        payload = change if isinstance(change, Change) else Change.from_dict(change)
+        metadata = copy.deepcopy(payload.to_dict())
+        if payload.kind == "edit_component":
+            success = self.apply_edit_to_world(
+                payload.entity,
+                payload.component,
+                payload.field,
+                payload.value,
+            )
+        elif payload.kind == "set_entity_property":
+            success = self.update_entity_property(
+                payload.entity,
+                payload.field,
+                payload.value,
+            )
+        elif payload.kind == "add_component":
+            success = self.add_component_to_entity(
+                payload.entity,
+                payload.component,
+                component_data=payload.data,
+            )
+        elif payload.kind == "remove_component":
+            success = self.remove_component_from_entity(
+                payload.entity,
+                payload.component,
+            )
+        elif payload.kind == "create_entity":
+            components = payload.data.get("components") if isinstance(payload.data, dict) else None
+            success = self.create_entity(payload.entity, components)
+        elif payload.kind == "delete_entity":
+            success = self.remove_entity(payload.entity)
+        else:
+            return False
+        if success and self._change_history.has_active_transaction:
+            self._change_history.append_transaction_change(metadata)
+        return success
 
     def commit_transaction(self) -> Optional[Dict[str, Any]]:
-        return self._change_history.commit_transaction()
+        key = self._change_history.active_transaction_scene_key
+        if key is None:
+            return None
+        entry = self._resolve_entry(key)
+        if entry is None:
+            self._change_history.discard_transaction()
+            return None
+        after = self._serializable_mutations.snapshot_entry_scene_data(entry)
+        return self._change_history.commit_transaction(
+            after,
+            self._serializable_mutations.restore_scene_data,
+        )
 
     def rollback_transaction(self) -> bool:
-        return self._change_history.rollback_transaction()
+        return self._change_history.rollback_transaction(
+            self._serializable_mutations.restore_scene_data,
+        )
 
     def begin_authoring_transaction(self, label: str, key_or_path: Optional[str] = None) -> bool:
         entry = self._resolve_entry(key_or_path)
@@ -889,15 +930,28 @@ class SceneManager:
     def _mtime_key(path: str | Path) -> str:
         return str(Path(path).resolve())
 
-    def _restore_entry_scene(self, entry: SceneWorkspaceEntry, data: Dict[str, Any]) -> None:
-        self._workspace.replace_entry_scene(entry, data)
-        self._edit_sync.clear_pending(entry)
-
-    def _record_scene_change(self, entry: SceneWorkspaceEntry, label: str, before: Dict[str, Any]) -> None:
-        self._change_history.record_scene_change(entry, label, before)
-
-    def _restore_scene_data_for_key(self, key: str, data: Dict[str, Any]) -> bool:
-        return self._change_history.restore_scene_data_for_key(key, data)
+    def _record_structural_snapshot_change(
+        self,
+        entry: SceneWorkspaceEntry,
+        label: str,
+        before: Dict[str, Any],
+    ) -> None:
+        before_snapshot = copy.deepcopy(before)
+        after_snapshot = self._serializable_mutations.snapshot_entry_scene_data(entry)
+        if before_snapshot == after_snapshot:
+            return
+        key = entry.key
+        self._change_history.record_snapshot_change(
+            label=label,
+            undo=lambda: self._serializable_mutations.restore_scene_data(
+                key,
+                copy.deepcopy(before_snapshot),
+            ),
+            redo=lambda: self._serializable_mutations.restore_scene_data(
+                key,
+                copy.deepcopy(after_snapshot),
+            ),
+        )
 
     def _remove_entity_subtree(self, entry: SceneWorkspaceEntry, entity_name: str) -> bool:
         return self._structural_authoring.remove_entity_subtree(entry, entity_name)

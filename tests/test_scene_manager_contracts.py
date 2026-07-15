@@ -142,6 +142,97 @@ class SceneManagerContractsTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, source)
 
+    def test_change_history_is_passive_and_manager_owns_six_kind_routing(self) -> None:
+        manager_source = inspect.getsource(SceneManager)
+        history_source = inspect.getsource(self.manager._change_history.__class__)
+
+        self.assertFalse(hasattr(scene_manager_module, "SceneChangeCoordinatorContext"))
+        self.assertFalse(hasattr(self.manager._change_history, "_dispatch"))
+        self.assertNotIn("def apply_change", history_source)
+        apply_source = inspect.getsource(SceneManager.apply_change)
+        for kind in (
+            "edit_component",
+            "set_entity_property",
+            "add_component",
+            "remove_component",
+            "create_entity",
+            "delete_entity",
+        ):
+            self.assertEqual(apply_source.count(f'payload.kind == "{kind}"'), 1)
+        self.assertNotIn("SceneChangeCoordinatorContext", manager_source)
+
+    def test_apply_change_copies_metadata_before_handler_and_appends_only_on_success(self) -> None:
+        self.assertTrue(self.manager.begin_transaction("metadata"))
+        change = {
+            "kind": "add_component",
+            "entity": "Player",
+            "component": "Camera2D",
+            "data": {"nested": {"value": 1}},
+        }
+
+        def mutate_handler(_entity, _component, *, component_data):
+            component_data["nested"]["value"] = 99
+            return True
+
+        with patch.object(
+            self.manager,
+            "add_component_to_entity",
+            side_effect=mutate_handler,
+        ), patch.object(
+            self.manager._change_history,
+            "append_transaction_change",
+            wraps=self.manager._change_history.append_transaction_change,
+        ) as append:
+            self.assertTrue(self.manager.apply_change(change, key="ignored-scene"))
+
+        append.assert_called_once_with(
+            {
+                "kind": "add_component",
+                "entity": "Player",
+                "component": "Camera2D",
+                "data": {"nested": {"value": 1}},
+            }
+        )
+        with patch.object(self.manager, "remove_entity", return_value=False), patch.object(
+            self.manager._change_history,
+            "append_transaction_change",
+            wraps=self.manager._change_history.append_transaction_change,
+        ) as append_failed:
+            self.assertFalse(
+                self.manager.apply_change({"kind": "delete_entity", "entity": "Player"})
+            )
+            self.assertFalse(self.manager.apply_change({"kind": "unknown", "entity": "Player"}))
+        append_failed.assert_not_called()
+
+    def test_nested_begin_rejects_before_resolve_or_snapshot(self) -> None:
+        self.assertTrue(self.manager.begin_transaction("first"))
+
+        with patch.object(
+            self.manager,
+            "_resolve_entry",
+            side_effect=AssertionError("must reject before resolve"),
+        ), patch.object(
+            self.manager._serializable_mutations,
+            "snapshot_entry_scene_data",
+            side_effect=AssertionError("must reject before snapshot"),
+        ):
+            self.assertFalse(self.manager.begin_transaction("nested", key="ignored"))
+
+    def test_commit_snapshot_exception_leaves_transaction_rollbackable(self) -> None:
+        self.assertTrue(self.manager.begin_transaction("probe"))
+
+        with patch.object(
+            self.manager._serializable_mutations,
+            "snapshot_entry_scene_data",
+            side_effect=RuntimeError("snapshot unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "snapshot unavailable"):
+                self.manager.commit_transaction()
+
+        self.assertTrue(self.manager._change_history.has_active_transaction)
+        self.assertTrue(self.manager.rollback_transaction())
+        self.assertFalse(self.manager._change_history.has_active_transaction)
+
     def test_legacy_sync_reason_constants_remain_reexported_by_manager_module(self) -> None:
         self.assertEqual(
             scene_manager_module.LEGACY_AUTHORING_SYNC_REASON,
@@ -289,7 +380,7 @@ class SceneManagerContractsTests(unittest.TestCase):
         self.assertEqual(entry.key, canonical_path.as_posix())
         self.assertEqual(entry.source_path, canonical_path.as_posix())
 
-    def test_serializable_rollback_restores_full_pending_sync_state(self) -> None:
+    def test_inactive_legacy_pending_rejects_before_install_and_preserves_state(self) -> None:
         primary_key = self.manager.active_scene_key
         with tempfile.TemporaryDirectory() as temp_dir:
             secondary_path = Path(temp_dir) / "secondary.json"
@@ -354,8 +445,9 @@ class SceneManagerContractsTests(unittest.TestCase):
         self.assertFalse(entry.dirty)
         self.assertEqual(entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
         self.assertFalse(entry.dirty_before_pending_edit_world_sync)
-        self.assertNotEqual(entry.edit_world_version, 777)
-        self.assertEqual(entry.edit_world_version, entry.edit_world.version)
+        self.assertEqual(install_calls, 0)
+        self.assertEqual(entry.edit_world_version, 777)
+        self.assertNotEqual(entry.edit_world_version, entry.edit_world.version)
 
 
 if __name__ == "__main__":

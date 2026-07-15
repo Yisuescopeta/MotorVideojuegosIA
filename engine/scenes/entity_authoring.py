@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.core.runtime_logging import log_err
 from engine.scenes.contracts import (
@@ -259,7 +259,11 @@ class SceneEntityAuthoring:
         entry = self._workspace.get_active_entry()
         if entry is None or entry.is_playing or entry.edit_world is None:
             return False
-        transaction = self._pipeline.begin(entry, failure_context=label)
+        transaction = self._pipeline.begin(
+            entry,
+            failure_context=label,
+            clone_world=True,
+        )
         if transaction is None:
             return False
         token, _before = transaction
@@ -285,7 +289,12 @@ class SceneEntityAuthoring:
             self._pipeline.rollback(entry, token)
             log_err(f"SceneEntityAuthoring: rejected incremental entity during {label}: {exc}")
             return False
-        self._record_entity_create_delta(entry, label, canonical_entity)
+        try:
+            self._record_entity_create_delta(entry, label, canonical_entity)
+        except Exception as exc:
+            self._pipeline.rollback(entry, token)
+            log_err(f"SceneEntityAuthoring: failed to record {label}: {exc}")
+            return False
         return True
 
     def _record_entity_create_delta(
@@ -297,16 +306,19 @@ class SceneEntityAuthoring:
         key = entry.key
         payload = clone_json_value(entity_data)
         entity_id = str(entity_data.get("id", "") or "")
+
+        def undo() -> bool:
+            return self._remove_entity_create_delta(key, entity_id)
+
+        def redo() -> bool:
+            return self._restore_entity_create_delta(key, payload)
+
+        undo_action: Callable[[], bool] = undo
+        redo_action: Callable[[], bool] = redo
         self._history.record_differential_change(
             label=label,
-            undo=lambda key=key, entity_id=entity_id: self._remove_entity_create_delta(
-                key,
-                entity_id,
-            ),
-            redo=lambda key=key, payload=payload: self._restore_entity_create_delta(
-                key,
-                payload,
-            ),
+            undo=undo_action,
+            redo=redo_action,
         )
 
     def _remove_entity_create_delta(self, key: str, entity_id: str) -> bool:
@@ -326,6 +338,7 @@ class SceneEntityAuthoring:
         transaction = self._pipeline.begin(
             entry,
             failure_context=f"undo_create_entity:{entity_name}",
+            clone_world=True,
         )
         if transaction is None:
             return False
@@ -359,7 +372,11 @@ class SceneEntityAuthoring:
         if entry is None or entry.is_playing or entry.edit_world is None:
             return False
         label = f"redo_create_entity:{entity_data.get('name', '')}"
-        transaction = self._pipeline.begin(entry, failure_context=label)
+        transaction = self._pipeline.begin(
+            entry,
+            failure_context=label,
+            clone_world=True,
+        )
         if transaction is None:
             return False
         token, _before = transaction

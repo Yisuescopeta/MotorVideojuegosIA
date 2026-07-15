@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from engine.scenes.scene_projection import SceneProjectionService
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
+
+if TYPE_CHECKING:
+    from engine.ecs.world import World
 
 LEGACY_AUTHORING_SYNC_REASON = "legacy_authoring"
 TRANSIENT_PREVIEW_SYNC_REASON = "transient_preview"
@@ -106,6 +110,11 @@ class SceneEditSyncCoordinator:
         *,
         failure_context: str = "scene_save",
     ) -> bool:
+        if (
+            self.has_pending_legacy(entry)
+            and entry.key != self._workspace.active_scene_key
+        ):
+            return False
         if entry.edit_world is None:
             return False
         if self.has_pending_transient(entry):
@@ -143,9 +152,11 @@ class SceneEditSyncCoordinator:
             entry,
             entity_name=entry.edit_world.selected_entity_name,
         )
+        world_snapshot = entry.edit_world.serialize()
+        self._inject_serialized_entity_ids(entry.edit_world, world_snapshot)
         payload = self._projection.build_canonical_payload(
             entry.scene,
-            entry.edit_world.serialize(),
+            world_snapshot,
         )
         data = self._projection.validate_payload(
             self._workspace.prepare_scene_payload(payload)
@@ -154,6 +165,46 @@ class SceneEditSyncCoordinator:
         self._workspace.sync_feature_metadata_from_scene_links(entry)
         self.clear_pending(entry)
         return True
+
+    @staticmethod
+    def _inject_serialized_entity_ids(
+        world: "World",
+        world_snapshot: dict[str, Any],
+    ) -> None:
+        entities = world_snapshot.get("entities")
+        if not isinstance(entities, list):
+            raise ValueError("World snapshot entities must be a list")
+        for index, entity_payload in enumerate(entities):
+            if not isinstance(entity_payload, dict):
+                raise ValueError(f"World snapshot entity {index} must be an object")
+            entity_name = entity_payload.get("name")
+            if not isinstance(entity_name, str) or not entity_name.strip():
+                raise ValueError(f"World snapshot entity {index} has an invalid name")
+            entity = world.get_entity_by_name(entity_name)
+            if entity is None:
+                raise ValueError(
+                    f"World snapshot entity '{entity_name}' is missing from its source World"
+                )
+            raw_serialized_id = entity.serialized_id
+            if raw_serialized_id is not None and not isinstance(raw_serialized_id, str):
+                raise ValueError(
+                    f"World entity '{entity_name}' has an invalid serialized_id"
+                )
+            serialized_id = str(raw_serialized_id or "").strip()
+            raw_snapshot_id = entity_payload.get("id")
+            if raw_snapshot_id is not None and not isinstance(raw_snapshot_id, str):
+                raise ValueError(
+                    f"World snapshot entity '{entity_name}' has an invalid id"
+                )
+            snapshot_id = str(raw_snapshot_id or "").strip()
+            if snapshot_id and snapshot_id != serialized_id:
+                raise ValueError(
+                    f"World snapshot entity '{entity_name}' id does not match its source World"
+                )
+            if serialized_id:
+                entity_payload["id"] = serialized_id
+            else:
+                entity_payload.pop("id", None)
 
     def _reject_invalid_pending_edit_world(
         self,

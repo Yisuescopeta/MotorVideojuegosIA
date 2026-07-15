@@ -141,8 +141,10 @@ La persistencia tecnica queda separada por responsabilidades:
   canonicalizar la proyeccion; no posee persistencia, CRUD ni scene flow.
 - `SerializableMutationCoordinator` es la autoridad de captura, commit y
   rollback semantico de una mutacion serializable. Depende de `SceneWorkspace`,
-  `SceneProjectionService` y `SceneEditSyncCoordinator`. Su token interno es
-  opaco: su tipo y sus campos no forman parte de ningun contrato.
+  `SceneProjectionService` y `SceneEditSyncCoordinator`. Antes de mutar, su token
+  prepara una `Scene` semanticamente valida y, solo en las rutas incrementales
+  que tambien mutan `World`, conserva un clon del mundo. El token es opaco: su
+  tipo y sus campos no forman parte de ningun contrato.
 - `SceneIncrementalAuthoring` es la autoridad de edicion directa de componentes
   `Transform` y `RectTransform` ya presentes en `Scene` y `edit_world`. Posee la
   normalizacion numerica, los deltas, el estado de transaccion diferencial y su
@@ -161,7 +163,17 @@ La persistencia tecnica queda separada por responsabilidades:
 - `SceneSerializableAuthoringPipeline` es el unico limite transaccional compartido
   por ambos propietarios. Encapsula flush, captura, rollback o commit, dirty state
   e historial mediante `SceneWorkspace`, `SceneEditSyncCoordinator`,
-  `SerializableMutationCoordinator` y `SceneHistoryPort`.
+  `SerializableMutationCoordinator` y `SceneHistoryPort`. El port de historial
+  es failure-atomic: si el registro falla, no deja historia observable y el
+  pipeline revierte la transaccion completa. `SceneChangeCoordinator` hace
+  efectiva esa garantia mediante el checkpoint opaco de captura/restauracion
+  cuando el backend lo ofrece, preservando undo/redo sin inspeccionar sus stacks;
+  un backend sin checkpoint debe proporcionar un `push` failure-atomic.
+- `SceneChangeCoordinator` es un coordinador pasivo de almacenamiento,
+  agrupacion y restauracion de historial. No recibe un contexto de callbacks, no
+  mantiene dispatch de operaciones de authoring, no conoce CRUD ni servicios de
+  authoring y no escribe dirty state. Recibe closures estrechos de undo/redo o
+  una capacidad de restauracion solo al cerrar o revertir una transaccion.
 - `PrefabOverrideService` es la autoridad unica de overrides genericos de una
   instancia expandida. Implementa las cuatro operaciones de `PrefabOverridePort`:
   actualizar propiedades de componente o entidad, reemplazar componentes y
@@ -190,6 +202,32 @@ exactamente el dirty baseline capturado. El metodo deprecado
 warning. `SceneManager.mark_edit_world_dirty()` permanece como wrapper legacy
 compatible, sin marcarse deprecado.
 
+El contrato de bajo nivel de `flush_pending()` conserva la compatibilidad S4:
+un pending legacy de una entrada inactiva retorna `True` como no-op y no consume
+ni modifica su estado. Los limites que necesitan una `Scene` fresca son mas
+estrictos. `SceneSerializableAuthoringPipeline` rechaza ese caso con `False`
+antes de consultas o mutaciones; las APIs publicas conservan sus sentinels
+(`None`, coleccion vacia o `False`) sin capturar estado ni registrar historial.
+`prepare_for_save()` tambien retorna `False` antes de sincronizar o persistir una
+entrada inactiva con pending legacy, sin modificar workspace ni storage. El
+tratamiento del preview transitorio no cambia: se descarta al reconstruir la
+proyeccion y no se incorpora al payload persistido.
+
+En un sync activo `SceneEditSyncCoordinator` serializa `World` una sola vez y
+enriquece solo ese snapshot separado con los IDs serializados vivos, resueltos
+por el nombre actual, antes de canonicalizar y validar. Asi conserva identidad a
+traves de rename y del root compacto de prefab. Un ID ausente queda a cargo de
+la generacion canonica; un ID invalido, conflictivo o duplicado rechaza el sync
+en lugar de reasignar identidad. Al reactivar la entrada, el flush normal puede
+integrar el pending y la operacion serializable y su undo/redo conservan los IDs
+y datos sincronizados.
+
+Cuando existe pending legacy activo, el pipeline serializable prepara un guard
+tecnico previo al flush para contener fallos de proyeccion y restaurar el estado
+sin reproyectarlo. Ese guard no es el snapshot de authoring: tras un flush
+exitoso se captura uno fresco, por lo que el orden contractual sigue siendo
+flush -> capture. Sin pending no se crea el guard.
+
 Los wrappers publicos de Transform, RectTransform y transacciones diferenciales
 delegan en `SceneIncrementalAuthoring`. La ruta valida actualiza `Scene` y
 `edit_world` sin rebuild; seleccion y dirty state se solicitan a
@@ -214,11 +252,13 @@ contiene callbacks CRUD para `create_entity`, `create_entity_from_data` ni
 `SceneStructuralAuthoring -> SceneSerializableEntityPort`; authoring serializable
 no depende de structural authoring y no se introduce un ciclo.
 
-En una restauracion serializable, projection reconstruye `Scene` y `World`, y
-`SceneWorkspace` instala ambos, restaura seleccion y dirty state y recalcula
-`edit_world_version` desde el `World` instalado. Pending sync se restaura
-mediante `SceneEditSyncCoordinator`. El coordinador tambien valida y publica el
-commit incremental de una entidad, con el mismo rollback semantico ante fallo.
+En commit, projection valida y canonicaliza las representaciones que
+`SceneWorkspace` publica. En rollback, el token instala mediante el workspace la
+`Scene` semantica preparada antes de mutar y el `World` capturado, sin reutilizar
+la proyeccion que pudo fallar; despues restaura seleccion y dirty state, y pending
+sync mediante `SceneEditSyncCoordinator`. Solo las rutas incrementales que mutan
+el mundo capturan un clon. El coordinador tambien valida y publica el commit
+incremental de una entidad, con el mismo rollback semantico ante fallo.
 `SceneSerializableAuthoringPipeline` maneja el token opaco y el historial de las
 operaciones serializables. `SceneComponentAuthoring.set_scene_flow_target()`
 posee el limite completo de esa transaccion; el wrapper homonimo de
@@ -227,14 +267,33 @@ delega.
 
 La ruta serializable rechaza PLAY antes de capturar estado y ejecuta, en orden,
 flush de pending, captura, mutacion encapsulada de `Scene`, commit o rollback,
-dirty state e historial. Una excepcion durante commit restaura el snapshot y no
-publica historial; las consultas devuelven copias defensivas.
+dirty state e historial. Una excepcion durante commit o registro de historial
+restaura el snapshot, retorna `False` y no deja historia observable; las consultas
+devuelven copias defensivas.
 
-Este cierre de S7 no anticipa S8 ni S9. `SceneChangeCoordinator` conserva aun el
-dispatch de authoring que debe retirarse en S8A. `SceneStructuralAuthoring`
-conserva contexto y mutaciones internas de `Scene` que deben encapsularse en
-S8B. La consolidacion final de `SceneManager` como fachada fina corresponde a
-S9.
+`SceneManager.apply_change()` conserva el routing de alto nivel de `Change`.
+Parsea y enruta los seis kinds compatibles hacia las autoridades publicas de
+authoring y solo agrega metadata defensiva a la transaccion general cuando la
+operacion termina con exito. `begin_transaction()`, `commit_transaction()` y
+`rollback_transaction()` mantienen sus firmas publicas: el manager resuelve la
+entrada y captura los extremos serializables, mientras
+`SceneChangeCoordinator` agrupa metadata y registra closures sin despachar CRUD.
+
+`SerializableMutationCoordinator.restore_scene_data()` es la capacidad estrecha
+de restauracion por key. Reinstala una copia mediante `SceneWorkspace`, conserva
+la seleccion vigente a traves de esa autoridad, limpia pending mediante
+`SceneEditSyncCoordinator` y solicita al workspace marcar dirty. History no
+conoce entries, projection ni esas autoridades.
+
+Los cambios serializables por snapshot construyen sus closures en
+`SceneSerializableAuthoringPipeline`. Mientras S8B sigue pendiente, el callback
+estructural de historial termina temporalmente en
+`SceneManager._record_structural_snapshot_change()`, que tambien construye
+closures estrechos sobre la misma capacidad de restauracion. No es una ruta de
+dispatch de history. `SceneStructuralAuthoring` aun conserva su contexto,
+escrituras directas de dirty y mutaciones internas de `Scene`; S8B debe
+reemplazarlas por dependencias y primitivas encapsuladas. La consolidacion final
+de `SceneManager` como fachada fina corresponde a S9.
 
 En scene flow, metadata aporta el mapa base. Un `SceneLink` con el mismo
 `flow_key` lo reemplaza; si hay duplicados gana el ultimo en orden serializado.

@@ -9,21 +9,29 @@ if TYPE_CHECKING:
     from engine.scenes.scene_manager import SceneManager
     from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 
+SceneSnapshotRestore = Callable[[str, Dict[str, Any]], bool]
+
 
 class SceneHistoryPort(Protocol):
-    def record_scene_change(
+    """Failure-atomic history sink.
+
+    If a record operation raises, it leaves no observable history record.
+    """
+
+    def record_snapshot_change(
         self,
-        entry: "SceneWorkspaceEntry",
+        *,
         label: str,
-        before: Dict[str, Any],
+        undo: Callable[[], bool],
+        redo: Callable[[], bool],
     ) -> None: ...
 
     def record_differential_change(
         self,
         *,
         label: str,
-        undo: Callable[..., bool],
-        redo: Callable[..., bool],
+        undo: Callable[[], bool],
+        redo: Callable[[], bool],
     ) -> None: ...
 
 
@@ -61,6 +69,7 @@ class SceneSerializableTransactionPort(Protocol):
         entry: "SceneWorkspaceEntry",
         *,
         failure_context: str,
+        clone_world: bool = False,
     ) -> Optional[tuple[object, Dict[str, Any]]]: ...
 
     def rollback(

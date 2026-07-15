@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
@@ -118,20 +118,29 @@ class SceneIncrementalAuthoring:
             key = entry.key
             old_snapshot = copy.deepcopy(old_properties)
             new_snapshot = copy.deepcopy(new_properties)
+
+            def undo() -> bool:
+                return self._apply_history_delta(
+                    key,
+                    entity_name,
+                    component_name,
+                    old_snapshot,
+                )
+
+            def redo() -> bool:
+                return self._apply_history_delta(
+                    key,
+                    entity_name,
+                    component_name,
+                    new_snapshot,
+                )
+
+            undo_action: Callable[[], bool] = undo
+            redo_action: Callable[[], bool] = redo
             self._history.record_differential_change(
                 label=label,
-                undo=lambda key=key, entity=entity_name, component=component_name, old=old_snapshot: self._apply_history_delta(
-                    key,
-                    entity,
-                    component,
-                    old,
-                ),
-                redo=lambda key=key, entity=entity_name, component=component_name, new=new_snapshot: self._apply_history_delta(
-                    key,
-                    entity,
-                    component,
-                    new,
-                ),
+                undo=undo_action,
+                redo=redo_action,
             )
         return True
 
@@ -177,18 +186,27 @@ class SceneIncrementalAuthoring:
             key = transaction.key
             undo_changes = copy.deepcopy(changes)
             redo_changes = copy.deepcopy(changes)
+
+            def undo() -> bool:
+                return self._apply_transaction_deltas(
+                    key,
+                    undo_changes,
+                    use_old=True,
+                )
+
+            def redo() -> bool:
+                return self._apply_transaction_deltas(
+                    key,
+                    redo_changes,
+                    use_old=False,
+                )
+
+            undo_action: Callable[[], bool] = undo
+            redo_action: Callable[[], bool] = redo
             self._history.record_differential_change(
                 label=transaction.label,
-                undo=lambda key=key, deltas=undo_changes: self._apply_transaction_deltas(
-                    key,
-                    deltas,
-                    use_old=True,
-                ),
-                redo=lambda key=key, deltas=redo_changes: self._apply_transaction_deltas(
-                    key,
-                    deltas,
-                    use_old=False,
-                ),
+                undo=undo_action,
+                redo=redo_action,
             )
         return {
             "label": transaction.label,

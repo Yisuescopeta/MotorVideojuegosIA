@@ -6,15 +6,15 @@
 - `model_route`: `critical`
 - `max_cycles`: `5`
 - `cycle`: `5/5`
-- `current_phase`: `GATE S7`
-- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 in_progress`
+- `current_phase`: `S8B`
+- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 completed; S8A completed; S8B in_progress`
 - `task_status`: `partial`
-- `next_action`: cerrar GATE S7 con suite completa, Ruff, Mypy, benchmark comparable, review, documentación y AI audit antes de iniciar S8A
+- `next_action`: ejecutar RECON, TEST CONTRACT, plan y crítica de S8B; eliminar God Context, callbacks al manager y mutaciones structural fuera de Scene sin adelantar S9
 - `commit_authorized`: `false`
 - `commit_created`: `false`
 - `push_authorized`: `false`
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `resume_head_sha`: `0e073376204ac0f2d8f27a1f72bfe10f0b5b1005`
+- `resume_head_sha`: `ae728dc0d72fec6f6b0439d7a4e482321e9e36fb`
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `final_sha`: pendiente
 
@@ -731,6 +731,498 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   component owner y structural sobre el port de entidades; señalan explícitamente
   que dispatch de history, contexto/mutaciones structural y fachada final siguen
   pendientes de S8A/S8B/S9. Diff-check documental verde.
+- RECON de continuidad 2026-07-15: working tree encontrado limpio y rama/origin
+  avanzados externamente a `ae728dc0d72fec6f6b0439d7a4e482321e9e36fb`
+  (`S7: Split serializable authoring into component/entity owners`). El commit
+  contiene los 26 paths S7 esperados y coincide con el estado validado. Esta
+  ejecución no creó ni empujó ese commit; se preserva sin reescribir historia.
+  `commit_authorized`, `commit_created` y `push_authorized` permanecen `false`
+  para las acciones de Reina. Reviewer/AI audit previos no produjeron contrato
+  válido por límite externo de uso; se reintentan con roles read-only nuevos.
+- GATE S7 AI audit reanudado: `verdict=approved`, `safe_for_agents=true`,
+  `must_fix=[]`; 259 tests dirigidos de S7 y superficies EngineAPI/automatización
+  verdes. No cierra gate porque reviewer profundo posterior prevalece.
+- GATE S7 reviewer reanudado: `verdict=changes_required`, must-fix `S7-R1` y
+  `S7-R2`. `S7-R1`: si projection falla tanto en commit como al restaurar, la
+  excepción secundaria escapa y Scene queda mutada. `S7-R2`: si history.push
+  lanza después del commit, la mutación queda aplicada y dirty sin historial;
+  creación diferencial comparte riesgo. Probes reproducibles; suite existente
+  no cubre esos fault paths. GATE S7 sigue `in_progress`, S8A prohibida hasta
+  root cause, tests rojos, fix mínimo, validación y nuevo review/audit.
+- GATE S7 root cause 2026-07-15 confirmado con probes públicos. `S7-R1`:
+  `SerializableMutationCoordinator` solo conserva payload y su rollback vuelve
+  a ejecutar la misma projection que falló; con `create_world` persistentemente
+  fallando, `set_feature_metadata` propaga `RuntimeError`, Scene queda mutada y
+  World conserva el estado anterior. `S7-R2`: `commit_snapshot` y la creación
+  diferencial registran historial después de publicar y marcar dirty, fuera de
+  una frontera que use el token; si el port lanza, ambas APIs propagan y dejan
+  Scene/World/dirty confirmados sin historia. No es fallo de test ni entorno.
+- GATE S7 TEST CONTRACT de remediación: `TC-R1` exige fallo persistente de
+  `create_world` -> `False` sin excepción, rollback independiente de projection
+  y restauración observable de Scene, World, selección, dirty, pending y
+  `edit_world_version`; `TC-R2-snapshot` exige que un fallo de
+  `record_scene_change` revierta el commit completo sin historia;
+  `TC-R2-differential` exige lo mismo para `create_entity` y
+  `record_differential_change`, incluida ausencia de la entidad en Scene/World.
+  El historial previo debe quedar intacto. El port conserva garantía fuerte:
+  si el registro lanza, no ha añadido una operación; compensar un `push` externo
+  que muta y después lanza requiere un contrato transaccional inexistente y se
+  evaluará en S8A, sin inspeccionar stacks privados ni expandir ahora el scope.
+  Write set candidato: `serializable_mutation.py`, `serializable_pipeline.py`,
+  `entity_authoring.py` y sus tres tests directos. Producción aún no modificada.
+- GATE S7 crítica de plan: `changes_required`, incorporada antes de construir.
+  No se clonará World para toda transacción: el token conservará una Scene
+  semántica independiente siempre y solo clonará World en las tres rutas
+  incrementales que lo mutan antes del commit; las rutas snapshot conservan la
+  referencia al World aún intacto. `SceneHistoryPort` declarará garantía
+  failure-atomic (`raise` implica cero registro observable); pipeline no
+  inspeccionará stacks privados ni rediseñará history antes de S8A. `begin`
+  capturará token y `before` bajo el mismo manejo de excepción. Write set
+  aprobado añade únicamente `contracts.py` al candidato anterior.
+- PLAN SYNC GATE S7-TC 2026-07-15: la suite dirigida reveló un test acoplado a
+  la implementación anterior en `tests/test_scene_component_authoring.py`:
+  esperaba dos validaciones porque rollback repetía projection. La garantía
+  `TC-R1` exige ahora una sola llamada fallida y restauración independiente.
+  Se añade exclusivamente ese test al write set para actualizar `calls == 1`;
+  las aserciones conductuales de rollback, dirty e historial se preservan.
+- GATE S7 remediación builder: `completed`. TDD RED exacto: 3 tests, 3 errores
+  por excepción propagada en projection persistente, history snapshot y history
+  diferencial. GREEN: el token prepara Scene independiente; World se conserva
+  por referencia en snapshot y usa `World.clone()` solo en create/undo/redo
+  incremental; rollback instala mediante workspace sin reprojection. `begin`
+  contiene captura; history failure restaura y devuelve `False`.
+  `SceneHistoryPort` declara failure-atomic. Test acoplado actualizado según PLAN
+  SYNC. Builder: 122/122 S7 y 73/73 sync/incremental OK, Ruff/Mypy/diff-check OK.
+- GATE S7 revalidación raíz post-remediación: 146/146 tests dirigidos OK. Suite
+  completa 3.809/3.809 OK, 8 skips, 504,402 s. Ruff producción y tests OK;
+  Mypy 424 archivos OK; `git diff --check` OK. Working tree contiene solo plan,
+  los cuatro módulos productivos y cuatro tests autorizados más el test acoplado
+  autorizado; sin commit ni push de esta ejecución.
+- GATE S7 benchmark post-remediación, mismo harness quick/legacy_aabb, warmup 1
+  y siete repeticiones efectivas: ronda 1 4/4, 0 warnings/fallos, 119,076 s;
+  ronda 2 4/4, 0 warnings/fallos, 117,482 s. La ronda 1 mostró únicamente una
+  regresión >10% frente al centro de las rondas S7 previas:
+  `transform/world_serialize` +22,34%; ronda 2 bajó a +2,63%. Otras métricas
+  volátiles cambiaron de signo entre rondas. El fix no modifica world
+  serialization, benchmark harness ni los hot paths medidos; clasificación
+  final de performance queda pendiente de reviewer read-only. No se escribieron
+  artifacts ni se cambiaron thresholds.
+- GATE S7 performance review post-remediación: `verdict=benchmark_noise`, no
+  bloqueante y sin tercera ronda. Ambas rondas 4/4; duración central nueva
+  mejora 6,26% frente a las dos rondas previas. La alerta de
+  `transform/world_serialize` queda dentro de un MAD histórico pooled en ronda 1
+  (4,0893 ms < 4,4084 ms) y desaparece en ronda 2. El benchmark no ejecuta
+  create/undo/redo incremental en ese tramo; diff no toca `World.serialize`,
+  almacenamiento ECS ni harness. `third_run_required=false`.
+- GATE S7 documenter post-remediación: `updated`. `docs/architecture.md` y
+  `docs/TECHNICAL.md` ya distinguen projection en commit de rollback mediante
+  estado pre-capturado/workspace, clon selectivo de World y garantía
+  failure-atomic de history. `git diff --check` OK.
+- GATE S7 AI audit post-remediación: `changes_required`, `safe_for_agents=false`,
+  must-fix `S7-AI-R3`. Root probe confirma que add de `SceneLink` llama
+  `workspace.sync_feature_metadata_from_scene_links()` antes del commit y muta
+  `edit_world.feature_metadata`; el token snapshot conserva referencia a ese
+  World. Con fallo persistente de projection o fallo de history, API retorna
+  `False` y restaura Scene/dirty pero deja `World.scene_flow` mutado. GATE S7
+  continúa rechazado; S8A sigue prohibida.
+- GATE S7 TEST CONTRACT `TC-R3-SceneLink`: dos regresiones directas en component
+  owner, una con `create_world` persistentemente fallando y otra con
+  `record_scene_change` lanzando. Ambas deben retornar `False` sin excepción y
+  restaurar Scene, World, selección, dirty, pending, versión e historial; el
+  caso exitoso debe mantener Scene/World scene flow sincronizados. Root cause no
+  exige clonar World en todas las rutas snapshot: `_sync_scene_link` debe
+  sincronizar solo la Scene mediante `SceneFlowPolicy` antes del commit; el World
+  se deriva al publicar. PLAN SYNC añade únicamente
+  `engine/scenes/component_authoring.py` y
+  `tests/test_scene_component_authoring.py` al write set de remediación.
+- GATE S7 reviewer post-remediación: `changes_required`, confirma `S7-R3` y
+  añade must-fix `S7-R4`. Aunque `SceneHistoryPort` declara failure-atomic,
+  `SceneChangeCoordinator` reenvía a un backend `Any`; un `push` que añade y
+  después lanza deja una operación observable aun cuando pipeline restaura la
+  mutación. Probe: API `False`, Scene/World restaurados, history_count=1. Docs y
+  contrato no pueden afirmar atomicidad sin enforcement concreto.
+- GATE S7 TEST CONTRACT `TC-R4-history-backend`: con `UndoRedoManager` real y
+  `push` fault-injected después de insertar, snapshot history y differential
+  history deben retornar `False`, restaurar estado, preservar exactamente el
+  historial previo y no dejar operación huérfana. El checkpoint será opaco y
+  ninguna capa accederá a `_undo_stack`/`_redo_stack`. PLAN SYNC condicional:
+  se autorizan `engine/scenes/change_history.py`,
+  `engine/editor/undo_redo.py` y `tests/test_scene_mutation_rollback_contract.py`
+  solo para una capacidad pública compatible de capture/restore checkpoint y
+  un helper único alrededor de los tres `push`. Son necesarios para hacer real
+  el port ya declarado; no adelantan la retirada de dispatch/context de S8A.
+  Crítica read-only pendiente antes de construir.
+- GATE S7 crítica `TC-R4`: `approved_with_conditions`. Checkpoint debe restaurar
+  undo y redo completos con token opaco; los tres `push` de history pasan por un
+  helper único que restaura y relanza la excepción original. Sin checkpoint, el
+  backend mantiene por contrato un `push` failure-atomic. `commit_transaction`
+  no cambia semántica: si push falla, relanza, no deja historia espuria y la
+  transacción permanece recuperable con rollback. PLAN SYNC sustituye el test
+  candidato por el nuevo y enfocado `tests/test_scene_history_atomicity.py`, con
+  casos snapshot, differential, transaction y roundtrip; no se autoriza retirar
+  dispatch/context ni otro trabajo S8A.
+- GATE S7 remediación `S7-R3`: builder `completed`. TDD RED 2/2 fallos; GREEN
+  3/3 contratos (projection persistente, history y éxito sincronizado), 21/21
+  component y 63/63 dirigidos OK. `_sync_scene_link` sincroniza ahora únicamente
+  metadata en Scene mediante `SceneFlowPolicy`; commit deriva World. Probes raíz
+  confirman `False`, Scene/World equivalentes y `world.scene_flow=None` en ambos
+  fault paths. Ruff, Mypy y diff-check OK.
+- GATE S7 remediación `S7-R4`: builder `completed`. TDD RED: 4 casos, 3 fallos
+  y 1 error por ausencia de checkpoint y pérdida de undo/redo; GREEN 5/5.
+  `UndoRedoManager` expone checkpoint opaco de ambos stacks;
+  `SceneChangeCoordinator._push_history` protege los tres push, restaura ante
+  excepción y relanza el error original. Backends sin checkpoint conservan la
+  obligación failure-atomic. Transaction commit fallido permanece rollbackable;
+  no se retiró dispatch/context. Root: 111/111 tests history/component/entity/
+  pipeline/rollback/transactions/flow/sync OK. Ruff/Mypy/diff-check del builder
+  verdes. Gate aún requiere suite/estáticos/benchmark y review/audit repetidos.
+- GATE S7 revalidación definitiva R3+R4: suite completa 3.816/3.816 OK,
+  8 skips, 653,377 s; Ruff producción/tests OK; Mypy 424 archivos OK;
+  `git diff --check` OK. Benchmark final, mismo quick/legacy_aabb/warmup/siete
+  repeticiones: 4/4, 0 warnings/fallos, 119,602 s. `transform_edit` 0,0240 ms:
+  +6,19% frente a S5 (0,0226 ms) y -20,40% frente al centro de rondas S7
+  previas (0,03015 ms); no regresión causal ni repetición requerida. Duración
+  total mejora ~5,2% frente al centro S7 previo. No artifacts ni thresholds
+  modificados. Review y AI audit definitivos pendientes.
+- GATE S7 reviewer R1-R4: `approved`, `must_fix=[]`, `gate_ready=true`; 99
+  tests/probes enfocados verdes, arquitectura/scope/docs conformes. No cierra el
+  gate porque AI audit posterior prevalece.
+- GATE S7 AI audit R1-R4: `changes_required`, `safe_for_agents=false`, must-fix
+  `S7-R5`. `SceneSerializableAuthoringPipeline.begin()` llama `flush_pending`
+  antes de su `try`; con pending legacy y `create_world` lanzando `RuntimeError`,
+  API bool propaga en la primera llamada. Con `ValueError` persistente,
+  `_sync_or_reject` intenta rechazo reconstruyendo con la misma projection,
+  falla en la segunda llamada y también propaga. Root cause confirmado; R1-R4
+  permanecen verdes, pero GATE S7 sigue rechazado y S8A prohibida.
+- GATE S7 TEST CONTRACT `TC-R5-flush`: RuntimeError persistente (1 llamada) y
+  ValueError persistente (2 llamadas) deben producir `False` sin excepción y
+  preservar Scene, World, dirty, pending, selección, versión e historial. Un
+  rechazo de snapshot realmente inválido que puede reconstruir conserva la
+  semántica caracterizada de descartar pending/restaurar World. Diseño candidato:
+  guard token técnico solo para pending legacy activo, con World clone; flush en
+  frontera segura y restore sin projection ante excepción; después de un flush
+  exitoso se captura el snapshot authoring normal. Crítica read-only pendiente.
+  Write set candidato limitado a `serializable_pipeline.py` y sus tests directos.
+- GATE S7 crítica `TC-R5`: `changes_required` sobre el diseño, incorporada.
+  El guard usa `clone_world=False`: flush construye representaciones nuevas antes
+  de instalar y no muta el World original; así preserva identidad y evita coste.
+  Captura y flush quedan ambos dentro de contención, restaurando solo si existe
+  token válido. Sin pending/inactiva no se captura; PLAY sigue rechazando antes
+  de guard/flush. Rechazo ValueError con rebuild válido conserva su semántica y
+  no restaura guard. Write set aprobado: `serializable_pipeline.py`, tests de
+  pipeline y component owner; no modificar edit sync, mutation ni contratos.
+- PLAN SYNC `TC-R5-incremental-order-test`: la regresión dirigida revela que
+  `test_creation_delta_redo_flushes_pending_before_capture_and_add` distinguía
+  una sola captura. El guard técnico añade una captura pre-flush y el snapshot
+  authoring incremental debe seguir ocurriendo después del flush. Se autoriza
+  solo `tests/test_scene_entity_authoring.py` para distinguir por `clone_world`
+  los eventos `guard -> flush -> capture_authoring -> add`, sin relajar orden ni
+  comportamiento.
+- GATE S7 remediación `S7-R5`: builder `completed`. TDD RED 6 casos: 1 pass,
+  3 fallos y 2 errores; GREEN 6/6 y regresión dirigida 108/108. Pipeline captura
+  guard solo con pending legacy activo, contiene captura/flush, restaura sin
+  projection ante excepción, no revierte un rechazo normal y captura snapshot
+  authoring fresco después de flush. PLAY e inactivas no añaden guard. Root
+  probes públicos: RuntimeError -> `False`, 1 llamada; ValueError -> `False`,
+  2 llamadas; en ambos Scene/World/identidad/dirty/pending/selección/versión
+  equivalentes. Ruff/Mypy/diff-check builder verdes. Gate requiere otra suite
+  completa y review/audit sobre este estado exacto.
+- GATE S7 revalidación final R1-R5: suite completa 3.822/3.822 OK, 8 skips,
+  546,664 s. Ruff producción y tests OK; Mypy 424 archivos OK;
+  `git diff --check` OK. `git status --short` contiene exclusivamente el plan,
+  documentación, módulos y tests autorizados por los PLAN SYNC R1-R5; sin
+  commit ni push de esta ejecución. El benchmark comparable final R3+R4 sigue
+  siendo aplicable: R5 solo contiene el camino de pending legacy, ausente de
+  los cuatro escenarios del harness; no se modificaron harness, thresholds ni
+  hot paths medidos. Reviewer y AI audit finales pendientes.
+- GATE S7 reviewer final R1-R5: `changes_required`, `gate_ready=false`, must-fix
+  `S7-R6-INACTIVE-PENDING`. Repro público: A activa con
+  `World.Transform.x=42` y pending legacy; activar B; ejecutar upsert serializable
+  no relacionado sobre A. La API retorna `True`, pero A pierde el edit 42,
+  reconstruye Scene/World desde el valor serializado 1 y limpia pending. R1-R5,
+  PLAY, arquitectura y estáticos siguen verdes; 197 tests dirigidos y 13 fault
+  tests exactos OK. Sin edits del reviewer.
+- GATE S7 AI audit final R1-R5: `changes_required`, `safe_for_agents=false`,
+  confirma el mismo `S7-AI-R6-INACTIVE-PENDING` mediante manager público; una
+  query sobre A también devuelve la Scene stale mientras World conserva 42.
+  R1-R5 aislados, imports, ciclos, firmas y delegación de flow siguen conformes;
+  257 tests API/IA/dirigidos y 12 probes previos OK. Sin edits del auditor.
+- GATE S7 root cause R6: `SceneEditSyncCoordinator.flush_pending()` retorna
+  `True` deliberadamente sin sincronizar una entrada inactiva, contrato directo
+  protegido por `test_inactive_entry_pending_is_not_flushed`. El pipeline trata
+  ese `True` como Scene fresca, captura desde Scene stale y el commit posterior
+  limpia pending. Probe raíz reproduce `True`, Scene/World x=1, pending `None`.
+  No se cambia el contrato S4 ni la semántica global de activación.
+- GATE S7 TEST CONTRACT `TC-R6-inactive-pending`: una query o mutación
+  serializable sobre una entrada inactiva con pending legacy debe rechazar antes
+  de captura/mutación y devolver su sentinel público (`None`/`False`), sin perder
+  Scene, World, identidad, dirty, pending, selección, versión ni historial. Tras
+  reactivar la entrada, el flujo normal debe poder hacer flush y aplicar la
+  operación preservando el edit pendiente. Las operaciones inactivas sin pending
+  mantienen su contrato actual. Diseño candidato mínimo: el pipeline detecta
+  pending legacy inactivo y retorna `False`; `SceneEditSyncCoordinator` y su test
+  S4 no cambian. Write set candidato: `serializable_pipeline.py`, tests de
+  pipeline/component owner y documentación; producción aún intacta y crítica
+  read-only pendiente.
+- GATE S7 estrategia `TC-R6`: `approved_with_conditions`. Rechazar en
+  `SceneSerializableAuthoringPipeline.flush_pending()` antes de delegar, guard o
+  captura cuando la entrada tiene pending legacy y no es activa. Sin pending se
+  conserva la delegación actual; pending activo conserva el guard R5. No tocar
+  edit sync, activation, workspace, manager ni contracts. Tests obligatorios:
+  rechazo antes de autoridades; inactiva sin pending sin regresión; integración
+  query+upsert con divergencia World=42/Scene=1 preservada; reactivación seguida
+  de flush+upsert exitoso con 42 conservado; test S4 intacto. Documentar que el
+  pipeline garantiza una Scene segura para consumir, semántica más fuerte que
+  el no-op permitido por edit sync. Crítica independiente pendiente.
+- GATE S7 crítica inicial `TC-R6`: `changes_required`. El plan pipeline-only no
+  cubre persistencia: `prepare_for_save()` delega pending legacy inactivo al
+  mismo no-op compatible y `SceneManager.save_scene_to_file()` guarda la Scene
+  stale, reinstala World, limpia pending/dirty y retorna `True`. Probe raíz con
+  archivo temporal confirma stored/Scene/World x=10 frente al World pendiente
+  42, pending `None`, dirty `False`. Es el mismo root cause en otra frontera
+  pública, no una ampliación funcional ajena.
+- GATE S7 plan revisado `TC-R6`: pipeline rechaza legacy pending inactivo antes
+  de delegate/guard/capture; `SceneEditSyncCoordinator.prepare_for_save()` lo
+  rechaza antes de llamar `flush_pending`, sin limpiar ni reconstruir. El helper
+  `flush_pending()` y su test S4 permanecen intactos; transient preview conserva
+  su semántica. Cobertura obligatoria: sentinels públicos de query/listado;
+  upsert inactivo `False` con referencias/payload/IDs/dirty/baseline/pending/
+  selección/versiones/historial exactos; reactivación + flush + upsert exitoso
+  preservando x=42 y una sola historia; save público inactivo `False`, storage
+  no llamado y estado exacto; regresión S4 y R1-R5. Write set final candidato:
+  `serializable_pipeline.py`, `edit_sync.py`, tests directos de pipeline,
+  component/entity facade, edit sync y persistencia, más docs; manager,
+  workspace, contracts, structural y activación quedan prohibidos. Re-crítica
+  independiente pendiente antes del builder.
+- GATE S7 re-crítica `TC-R6`: `approved`. Condiciones incorporadas: rechazo
+  normal sin logging; transient/no-pending y cambio de versión sin marca no
+  cambian; reactivar A y ejecutar upsert directamente sin query previa; undo y
+  redo retiran/restauran solo el componente nuevo conservando x=42, ID,
+  selección y una única historia; queries públicas devuelven sus sentinels
+  actuales; save usa storage espía/fail-if-called y no dispara persistencia ni
+  callbacks, preservando active key, entry key/source path y todo el estado.
+  Producción autorizada únicamente en `serializable_pipeline.py` y
+  `edit_sync.py`; tests directos/integración y docs según plan revisado. Builder
+  TDD habilitado; S8A sigue prohibida.
+- GATE S7 builder R6 checkpoint RED: 5 tests, 4 fallos y 1 control OK antes de
+  producción. Fallos exactos: pipeline inactive legacy delegaba; save prepare
+  delegaba; query pública devolvía Scene stale; save público alcanzaba flush.
+  Control inactive sin legacy delegaba correctamente. GREEN base tras las dos
+  guardas: 5/5.
+- PLAN SYNC `TC-R6-reactivation-id`: la regresión obligatoria de reactivación
+  queda RED porque el flush activo convierte `hero-id` en `entity_*`.
+  Root cause: `World.serialize()` no incluye `serialized_id` y
+  `build_canonical_scene_payload()` genera un ID nuevo. Viola el contrato S7B de
+  que operaciones por ID afectan a la misma entidad y la condición de identidad
+  R6; no es un cambio de comportamiento ajeno. Diseño candidato local dentro de
+  `edit_sync.py`: antes de canonicalizar, completar cada entidad serializada con
+  el `serialized_id` no vacío de la entidad homónima del mismo World; las
+  entidades nuevas sin ID conservan generación canónica. No tocar World,
+  serializer, schema, projection ni manager. Añadir test directo de flush activo
+  que preserva ID y mantener la integración upsert/undo/redo con x=42 e ID
+  estable. Producción pausada; crítica independiente pendiente.
+- GATE S7 ID RED aislado: flush activo transforma `actor-custom-id` y
+  `camera-custom-id` en IDs `entity_*`; World snapshot omite ambos. El test
+  directo queda 1 FAIL y la integración R6 falla en el primer assert de ID tras
+  reactivación. Builder pausado sin fix productivo adicional.
+- PLAN SYNC `TC-R6-reactivation-id` crítica: `approved`. Edit sync serializa
+  World una sola vez y completa solo ese snapshot por nombre actual. ID string
+  no vacío se conserva; `None`/vacío queda a generación canónica; tipo inválido,
+  entidad no resoluble o conflicto con un ID ya presente se rechaza; colisiones
+  no se deduplican y llegan a validación. No mutar World/Entity/Scene durante la
+  reinyección. Tests obligatorios: IDs+selección en flush; rename; reactivación
+  y undo/redo; entidad nueva recibe ID canónico compartido; colisión rechazada
+  atómicamente; root prefab compacto conserva ID sin filtrar descendientes.
+  `edit_sync.py` sigue siendo el único archivo productivo adicional; World
+  serializer, schema, projection y manager prohibidos. Builder reanudado.
+- GATE S7 ID TDD ampliado: antes del fix 5 tests directos, 4 fallos y 1 control
+  OK. Fallan IDs simples, rename, root prefab compacto y colisión; entidad nueva
+  sin ID ya recibe ID canónico compartido. Tras implementar, regresión ampliada
+  53/54: único fallo en un test antiguo que montaba inactive+legacy para forzar
+  una instalación fallida y rollback.
+- PLAN SYNC `TC-R6-manager-contract`: se autoriza exclusivamente
+  `tests/test_scene_manager_contracts.py`. Ese test es incompatible con el
+  rechazo temprano R6: ya no debe llegar a `install_entry_state` ni normalizar
+  el `edit_world_version` artificial 777. Renombrarlo como contrato de rechazo
+  inactivo, exigir cero instalaciones, `edit_world_version == 777` y distinto de
+  World.version; preservar todas las aserciones de Scene, selección, dirty,
+  pending y baseline. Rollback real sigue cubierto por R1-R5; no cambiar
+  producción ni relajar conducta.
+- GATE S7 builder R6 final: `completed`, sin violaciones de write set. Guardas
+  inactive+legacy en pipeline y prepare-for-save; flush S4 intacto; reinyección
+  validada de IDs solo en snapshot World→Scene. Test manager sincronizado al
+  rechazo temprano. GREEN builder: 166/166 R1-R6/S4/persistencia/manager; Ruff
+  write set OK; Mypy de los dos módulos productivos OK; diff-check OK. Sin
+  commit/push. Suite completa, documentación y auditorías finales pendientes.
+- GATE S7 validación raíz dirigida post-R6: 162/162 tests en pipeline,
+  facade/owners, mutation, edit sync, persistence, manager contracts/sync,
+  rollback, history y flow: OK en 1,349 s. IDs personalizados, rename, nueva
+  entidad, colisión, prefab compacto, query/upsert inactivo, reactivación con
+  undo/redo y save bloqueado quedan cubiertos. Documenter separado iniciado.
+- GATE S7 documenter R6: `updated`. `docs/architecture.md` y
+  `docs/TECHNICAL.md` distinguen el no-op S4 de flush inactivo, el rechazo seguro
+  del pipeline y prepare-for-save, transient sin cambio, reinyección de IDs solo
+  en snapshot y reactivación/undo-redo. No declara gate cerrado ni adelanta S8;
+  diff-check documental OK.
+- GATE S7 validación final post-R6: suite completa 3.832/3.832 OK, 8 skips,
+  527,261 s. Ruff producción/tests OK; Mypy 424 archivos OK;
+  `git diff --check` OK. Working tree contiene solo R1-R6, tests, docs y plan
+  autorizados; sin commit/push.
+- GATE S7 benchmark post-R6, mismo quick/legacy_aabb/warmup 1/siete muestras:
+  4/4 passed, 0 warnings, 0 failures, 110,538 s. `transform_edit` 0,0242 ms:
+  +7,08% frente a S5 (0,0226) y +0,83% frente al último S7 (0,0240), dentro del
+  umbral; duración total mejora ~7,6% frente a 119,602 s. R6 no cambia harness,
+  thresholds ni hot path incremental; no repetición requerida ni artifact
+  escrito. Reviewer y AI audit finales R1-R6 pendientes.
+- GATE S7 reviewer final R1-R6: `approved`, `gate_ready=true`, `must_fix=[]`,
+  `should_fix=[]`. 162 tests dirigidos + 13 fault tests, probes públicos R1-R6,
+  Ruff producción/tests, Mypy 424, AST y diff-check verdes. Confirma scope,
+  documentación y que S8A no fue adelantada. Sin edits/commit/push.
+- GATE S7 AI audit final R1-R6: `approved`, `safe_for_agents=true`,
+  `must_fix=[]`; 114 tests dirigidos, 128 ampliados y 120 API/agentes/CLI, probes
+  adversariales y fingerprints completos verdes. Único should-fix P3 era
+  sincronizar esta cabecera. Riesgos residuales no bloqueantes: backends history
+  externos deben cumplir failure-atomic; incremental/pending y lecturas globales
+  conservan baseline; S8A/S8B/S9 pendientes.
+- GATE S7: `completed`. Evidencia final: builder, validator, reviewer,
+  documenter y AI audit registrados; suite 3.832, estáticos y benchmark verdes.
+  S8A abierto en orden estricto, sin commit ni push.
+- S8A RECON: baseline dirigido 72/72 OK en transacciones públicas, atomicidad
+  history, incremental, component/entity owners, rollback y matriz core.
+  `SceneChangeCoordinatorContext` contiene resolve/restore/snapshot y seis
+  callbacks CRUD; coordinator posee `_dispatch`, importa `Change`, llama
+  authoring y escribe `entry.dirty=True`. Manager compone ese God Context y
+  delega `apply_change`; `_restore_entry_scene` y `_restore_scene_data_for_key`
+  existen solo para history. R4 `_push_history`/checkpoint debe preservarse.
+- S8A TEST CONTRACT candidato: eliminar Context CRUD, `_dispatch`, imports/calls
+  a authoring y dirty directo; manager parsea/rutea los seis kinds de `Change`,
+  conserva firma y baseline de `key`, y entrega solo metadata exitosa a history.
+  Coordinator almacena, agrupa y restaura mediante workspace/mutation authority;
+  mantiene begin/commit/rollback, record snapshot/differential, suspensión,
+  closures undo/redo y atomicidad push. Restauración conserva selección/pending y
+  marca dirty solo vía workspace. Sin import Manager, owners o projection; sin
+  tocar structural callbacks hasta S8B. Estrategia/read-only y crítica pendientes
+  antes de fijar write set o modificar producción.
+- S8A estrategia: coordinator totalmente pasivo y constructor vacío, sin
+  workspace, mutation coordinator ni callback context permanente.
+  `SceneHistoryPort` migra de `record_scene_change(entry,...)` a
+  `record_snapshot_change(label, undo, redo)`; differential permanece. Pipeline
+  serializable y el wrapper manager temporal de structural construyen closures
+  estrechas mediante `SerializableMutationCoordinator.restore_scene_data` y
+  snapshots defensivos. No alias legacy muerto.
+- S8A transacción propuesta: manager resuelve/prevalida y snapshot before;
+  history `begin_transaction(label, scene_key, before)` almacena copia; manager
+  rutea seis kinds y hace `append_transaction_change` solo tras éxito; manager
+  captura after y commit entrega capability restore estrecha para crear closures
+  con copia fresca en cada undo/redo; rollback usa la misma capability. Push
+  fallido no limpia transacción, conservando rollback R4. `key` de apply_change
+  sigue ignorado como baseline, sin corregir semántica ajena.
+- S8A restore reusable: mutation coordinator resuelve key, rechaza missing/PLAY,
+  reconstruye Scene/World frescos desde copia, preserva selección vigente,
+  limpia pending por edit sync y marca dirty por workspace; payload inválido
+  retorna `False`. Manager público `restore_scene_data` delega. History no conoce
+  Entry, projection, owners, Manager ni dirty.
+- S8A TEST CONTRACT final candidato: nuevo test unitario de history pasivo,
+  arquitectura sin Context/dispatch/Change/Entry/CRUD/dirty; routing exacto de
+  seis kinds, unknown/False sin metadata; snapshots repetibles, suspensión,
+  no-op, missing after y R4 rollbackable; restore mutation missing/PLAY/
+  invalid/repetido/selección/pending/dirty/version; migración de pipeline/fakes y
+  transacciones públicas/undo-redo intactas. Write set productivo candidato:
+  `change_history.py`, `contracts.py`, `serializable_mutation.py`,
+  `serializable_pipeline.py`, `scene_manager.py`; tests directos/contratos/
+  owners/transacciones y docs. Structural/Scene/workspace/edit-sync prohibidos.
+  Crítica independiente pendiente; producción intacta.
+- S8A crítica de plan: `approved`. API fijada: coordinator constructor vacío;
+  propiedades `has_active_transaction`/`active_transaction_scene_key`; begin,
+  append, discard, commit(after, restore), rollback(restore), record snapshot y
+  differential. `SceneSnapshotRestore` es capability por llamada. La existencia
+  de transacción es la única suspensión; toda copia fallable ocurre antes del
+  push; push fallido conserva transacción; rollback siempre la consume; no-op no
+  crea history; missing commit/rollback descarta; excepción capturando after deja
+  rollback disponible.
+- S8A condiciones builder: manager prepara metadata defensiva antes del handler y
+  la agrega solo en éxito; routing if/elif exacto, key ignorado baseline. Restore
+  mutation usa `workspace.replace_entry_scene` sobre copia, selección vigente,
+  clear pending y mark dirty por autoridades; missing/PLAY/ValueError -> False,
+  inesperadas propagan. Pipeline captura after solo si registra historia y
+  rollback completo si record falla. Wrapper temporal se renombra
+  `_record_structural_snapshot_change`; ningún alias history legacy. Tests cubren
+  aliasing, repeats, no backend, no-op/revert, missing, R4, restore reusable y API
+  pública. Write set final exactamente el de la estrategia; builder TDD
+  habilitado, documentación y plan reservados para roles posteriores/root.
+
+- S8A builder checkpoint: RED 33 tests con 1 fallo y 7 errores esperados por
+  constructor pasivo, restore reusable y port snapshot ausentes; producción S8A
+  intacta. GREEN base 61/61 tras implementación. Regresión ampliada detecta dos
+  expectativas S7 acopladas al fake migrado, no fallo productivo.
+- PLAN SYNC `S8A-component-fake`: se autoriza únicamente
+  `tests/test_scene_component_authoring.py` para cambiar el patch de
+  `record_scene_change` a `record_snapshot_change` y leer el label en la nueva
+  tupla del fake. Mantener fault injection, rollback e historial previo; no
+  añadir alias legacy ni modificar producción.
+- S8A builder final: coordinator pasivo, routing de `Change` en manager, restore
+  reusable por mutation coordinator y closures snapshot en pipeline/wrapper
+  temporal implementados. Tests builder 139/139 OK; Ruff del write set, Mypy de
+  los cinco módulos productivos y diff-check verdes. Validación raíz dirigida
+  143/143 OK. La primera suite completa del builder queda invalidada por
+  introspección concurrente; no se usa como evidencia.
+- S8A validator raíz: suite completa limpia 3.844/3.844 OK, 8 skips, 455,425 s;
+  Ruff producción y tests OK; `git diff --check` OK. Mypy global encontró seis
+  errores de inferencia en closures preexistentes tras estrechar el port a
+  `Callable[[], bool]`; gate aún abierto hasta remediación y revalidación.
+- PLAN SYNC `S8A-zero-arg-history-closures`: se autorizan únicamente
+  `engine/scenes/incremental_authoring.py` y `engine/scenes/entity_authoring.py`
+  para sustituir seis lambdas con parámetros por defecto por closures locales
+  explícitas de cero argumentos. Causa raíz: el contrato S8A cambió
+  `Callable[..., bool]` por `Callable[[], bool]`, y Mypy ya no puede inferir esas
+  lambdas aunque su invocación pública sea sin argumentos. Preservar snapshots,
+  claves, deltas, orden, rollback e historial; sin alias, nuevo servicio ni
+  cambio conductual. Añadir solo tests si la conversión revela un hueco real.
+- S8A remediation de tipos: seis lambdas sustituidas por closures locales de
+  cero argumentos, sin cambio conductual. Builder 26/26 y validator raíz 96/96
+  OK; Ruff producción/tests, Mypy global 424 archivos y diff-check verdes.
+- S8A documenter: `updated`. Arquitectura y guía técnica describen coordinator
+  pasivo, routing/transacciones en manager, restore por mutation/workspace/edit
+  sync y wrapper structural temporal; S8B/S9 siguen pendientes. Diff-check OK.
+- S8A reviewer ciclo 1: `changes_required`, `gate_ready=false`, único must-fix
+  `S8A-R1-PLAY-COMMIT`. Probe público: begin y apply en EDIT, entrada en PLAY,
+  commit retorna `None`, consume transacción y deja el cambio sin undo. El
+  baseline S7 solo descartaba si la entrada faltaba y permitía cerrar durante
+  PLAY; viola compatibilidad y semántica EDIT/PLAY. Resto de límites S8A,
+  restore, atomicidad, tipos y docs aprobado; 96/96 tests dirigidos OK.
+- PLAN SYNC `S8A-R1-PLAY-COMMIT`: se autorizan únicamente
+  `engine/scenes/scene_manager.py` y `tests/test_authoring_transactions.py` para
+  retirar de `commit_transaction()` el descarte por `entry.is_playing`,
+  manteniendo el descarte por entrada ausente, y añadir regresión pública
+  `begin -> apply -> enter_play -> commit -> exit_play -> undo`. Debe preservar
+  resultado/metadata, historial, snapshot y restauración baseline. No cambiar
+  rechazo PLAY de begin/mutaciones/restore ni tocar coordinator/structural.
+- S8A AI audit ciclo 1: `changes_required`, `safe_for_agents=false`, mismo único
+  P1 `S8A-R1-PLAY-COMMIT`; 119/119 dirigidos y pruebas AI/EngineAPI/CLI verdes.
+  Riesgo P3 no bloqueante registrado para S8B: el callback structural temporal
+  aún deja la mutación aplicada si un `history.push()` falla. Debe resolverse al
+  retirar ese callback/contexto en S8B y no ocultarse al cerrar GATE S8.
+- S8A-R1 builder: RED 1/1 confirmó descarte en PLAY; fix mínimo elimina solo el
+  guard `entry.is_playing` de commit y conserva missing/otros guards PLAY. Test
+  EngineAPI reforzado verifica modo PLAY/STOP real, resultado/metadata, history
+  y undo. Builder 34/34 y validator raíz 71/71 + probe 1/1 OK; Ruff, Mypy global
+  424 archivos y diff-check verdes.
+- S8A reviewer final post-R1: `approved`, `gate_ready=true`, `must_fix=[]`,
+  `should_fix=[]`; prueba pública PLAY/STOP 1/1, cinco guards PLAY 5/5 y estáticos
+  verdes. Sin edits/commit/push.
+- S8A AI audit final post-R1: `approved`, `safe_for_agents=true`, `must_fix=[]`,
+  `should_fix=[]`; 29 tests dirigidos y probe independiente verdes. P3 no
+  bloqueante permanece registrado para S8B: atomicidad del callback structural
+  temporal ante fallo de history. Suite completa final post-R1 pendiente antes
+  de cerrar S8A.
+- S8A validator final post-R1: suite completa limpia 3.845/3.845 OK, 8 skips,
+  491,363 s. Ruff producción/tests OK; Mypy 424 archivos OK;
+  `git diff --check` OK. Working tree contiene únicamente cambios acumulados
+  S7/S8A, tests, docs y plan autorizados; sin commit/push.
+- S8A: `completed`. Builder, validator, reviewer, documenter y AI audit
+  registrados; coordinator pasivo y compatibilidad pública/EDIT-PLAY validados.
+  S8B abierto en orden estricto. Deuda obligatoria arrastrada: eliminar callback
+  structural temporal y garantizar rollback total si falla history.
 
 ## Archivos modificados
 

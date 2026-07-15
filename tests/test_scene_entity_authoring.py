@@ -279,7 +279,11 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
                 self.mutations,
                 "capture_snapshot",
                 side_effect=lambda *args, **kwargs: (
-                    events.append("capture"),
+                    events.append(
+                        "capture_authoring"
+                        if kwargs.get("clone_world") is True
+                        else "capture_guard"
+                    ),
                     capture(*args, **kwargs),
                 )[1],
             ),
@@ -294,7 +298,10 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
         ):
             self.assertTrue(change["redo"]())
 
-        self.assertEqual(events[:3], ["flush", "capture", "add"])
+        self.assertEqual(
+            events,
+            ["capture_guard", "flush", "capture_authoring", "add"],
+        )
         self.assertEqual(
             self.entry.scene.find_entity("Hero")["components"]["Transform"]["x"],
             42.0,
@@ -389,6 +396,38 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
         self.assertFalse(self.entry.dirty)
         self.assertEqual(self.history.differential_changes, [])
 
+    def test_creation_history_failure_rolls_back_scene_world_and_prior_history(self) -> None:
+        self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
+        self.edit_sync.restore_pending_reason(
+            self.entry,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        scene_before = copy.deepcopy(self.entry.scene.to_dict())
+        world_before = copy.deepcopy(self.entry.edit_world.serialize())
+        prior_change = {"label": "previous", "undo": lambda: True, "redo": lambda: True}
+        self.history.differential_changes.append(prior_change)
+
+        with patch.object(
+            self.history,
+            "record_differential_change",
+            side_effect=RuntimeError("history unavailable"),
+        ):
+            self.assertFalse(self.authoring.create_entity("RejectedByHistory"))
+
+        self.assertEqual(self.entry.scene.to_dict(), scene_before)
+        self.assertEqual(self.entry.edit_world.serialize(), world_before)
+        self.assertIsNone(self.entry.scene.find_entity("RejectedByHistory"))
+        self.assertIsNone(self.entry.edit_world.get_entity_by_name("RejectedByHistory"))
+        self.assertEqual(self.entry.selected_entity_name, "Hero")
+        self.assertEqual(self.entry.edit_world.selected_entity_name, "Hero")
+        self.assertFalse(self.entry.dirty)
+        self.assertEqual(
+            self.entry.pending_edit_world_sync_reason,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
+        self.assertEqual(self.history.differential_changes, [prior_change])
+
     def test_creation_validation_failure_restores_through_coordinator(self) -> None:
         before = copy.deepcopy(self.entry.scene.to_dict())
         validate = self.projection.validate_payload
@@ -408,7 +447,7 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
         ):
             self.assertFalse(self.authoring.create_entity("Rejected"))
 
-        self.assertEqual(calls, 2)
+        self.assertEqual(calls, 1)
         self.assertEqual(self.entry.scene.to_dict(), before)
         self.assertIsNone(self.entry.edit_world.get_entity_by_name("Rejected"))
         self.assertFalse(self.entry.dirty)
