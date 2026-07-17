@@ -157,7 +157,7 @@ class SceneIndexTests(unittest.TestCase):
 
         self.assertEqual(scene.to_dict(), before)
 
-    def test_prefab_empty_override_preservation_only_applies_to_explicit_empty_map(self) -> None:
+    def test_scene_load_keeps_canonical_empty_override_shape_without_private_markers(self) -> None:
         scene = Scene(
             data={
                 "name": "OverrideShapes",
@@ -188,12 +188,13 @@ class SceneIndexTests(unittest.TestCase):
 
         self.assertEqual(
             scene.find_entity("ExplicitEmpty")["prefab_instance"]["overrides"],
-            {},
+            {"operations": []},
         )
         self.assertEqual(
             scene.find_entity("CanonicalEmpty")["prefab_instance"]["overrides"],
             {"operations": []},
         )
+        self.assertNotIn("_preserve_empty_overrides", scene.to_dict())
 
     def test_add_entity_rejects_duplicate_name_using_index(self) -> None:
         scene = self._scene()

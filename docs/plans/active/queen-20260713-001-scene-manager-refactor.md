@@ -9,12 +9,12 @@
 - `current_phase`: `S8B`
 - `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 completed; S8A completed; S8B in_progress`
 - `task_status`: `partial`
-- `next_action`: remediar review S8B: ejecutar `begin()` antes de lecturas dependientes, reforzar regresiones pending y repetir validator/review
+- `next_action`: builder deep S8B: demostrar re-resolución post-`begin()`, cubrir pending unpack/apply y estrechar overrides vacíos; después repetir Gate S8
 - `commit_authorized`: `false`
 - `commit_created`: `false`
 - `push_authorized`: `false`
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `resume_head_sha`: `d319dd09896360d11962dd4d6e3ac9a78fee3904`
+- `resume_head_sha`: `a5266785896316c3880f2f919011dc431c6bfdb7`
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `final_sha`: pendiente
 
@@ -1521,6 +1521,48 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   patrón en duplicate/paste/prefab. Retirar o estrechar
   `_preserve_empty_prefab_overrides` sin relajar contratos. Write set funcional y
   tests S8B existente; gobernanza protegida, commit y push siguen prohibidos.
+- RECON diferencial 2026-07-17: tras `git fetch origin --prune`, rama
+  `feat/SceneManagerRefactor`, HEAD y upstream son
+  `a5266785896316c3880f2f919011dc431c6bfdb7`, divergencia `+0/-0`; merge-base
+  con upstream es HEAD y merge-base con `origin/main` sigue siendo
+  `fded3556ed9509d5f0e06221f1655ba0f4053687`. Working tree limpio antes de
+  actualizar este plan. El commit preexistente `a526678` incluye gobernanza,
+  tooling y el build inicial S8B; esta continuación no lo creó ni lo empujó.
+- RECON S8B actual: las siete rutas ya invocan `begin()` antes de sus lecturas
+  principales, y existen regresiones pending para reparent, remove, duplicate,
+  paste y create-prefab replace. Siguen sin demostrarse re-resolución robusta
+  para `unpack_prefab` y `apply_prefab_overrides`; apply consume World pero usa
+  `clone_world=False`. `_PRESERVE_EMPTY_PREFAB_OVERRIDES` se consume globalmente
+  en `Scene.__init__` y canonicalización sin productor real fuera de `scene.py`.
+  S9 sigue pendiente: existe `_active_scene_key` con setter y falta
+  `tests/test_scene_architecture.py`.
+- TEST CONTRACT SYNC `S8B-S9` 2026-07-17: `verdict=sufficient`. Protege las
+  cuatro dependencias structural, pipeline compartido, semántica de fallos,
+  labels, posición global, payloads post-flush, rollback completo, atomicidad de
+  history, siete versiones de World, compatibilidad pública y ausencia de doble
+  autoridad. TDD obligatorio pendiente: reemplazo real de Scene/World durante
+  begin; pending unpack/apply; create-prefab sin replace sin transacción;
+  frontera propietaria de overrides vacíos que no cambie entidades ajenas; y el
+  test AST final de S9. No relajar contratos existentes.
+- Baseline raíz actual: el comando requerido con `py -3.11` no pudo iniciarse
+  porque el sandbox no detecta Python instalado y la ejecución externa fue
+  rechazada por límite de aprobación del entorno. Con el runtime incluido
+  Python 3.12.13 y HOME aislado fuera del repositorio, el baseline S8B ejecutó
+  163/163 tests OK. Esto permite TDD, pero no autoriza cerrar Gate S8/S9 sin
+  registrar la validación exacta 3.11 como no ejecutada o disponer de ese runtime.
+- PLAN SYNC raíz `S8B-remediation-current-head`: el plan aprobado y el prompt
+  vigente siguen siendo suficientes; un intento adicional de `planner_deep`
+  nativo fue interrumpido tras no entregar envelope incluso después de una
+  reformulación sin herramientas y no se usa como evidencia. Builder serial
+  autorizado solo en `engine/scenes/structural_authoring.py`,
+  `engine/scenes/scene.py`, `tests/test_scene_structural_authoring.py`,
+  `tests/test_hierarchy_operations.py`, `tests/test_prefab_overrides.py`,
+  `tests/test_scene_history_atomicity.py` y `tests/test_scene_index.py`.
+  `serializable_mutation.py`, `world_clone.py` y sus tests quedan condicionales
+  a una regresión nueva demostrada. Plan, gobernanza, EngineAPI, schema, ECS
+  restante, workspace y demás paths están prohibidos al builder. Aplicar las
+  cuatro fases de debugging: reproducir, comparar patrón, confirmar una hipótesis
+  y solo entonces hacer el fix mínimo con TDD.
 
 ## Archivos modificados
 

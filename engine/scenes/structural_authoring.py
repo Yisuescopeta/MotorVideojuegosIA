@@ -524,7 +524,11 @@ class ScenePrefabAuthoring:
         if entry is None or entry.is_playing or entry.edit_world is None:
             return False
         label = f"apply_prefab_overrides:{entity_name}"
-        transaction = self.pipeline.begin(entry, failure_context=label)
+        transaction = self.pipeline.begin(
+            entry,
+            failure_context=label,
+            clone_world=True,
+        )
         if transaction is None:
             return False
         token, before = transaction
