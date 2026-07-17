@@ -114,6 +114,44 @@ class ECSCloneTests(unittest.TestCase):
         self.assertEqual(original_child.get_component(Camera2D).profile_overrides["combat"]["zoom"], 1.5)
         self.assertEqual(original_child.get_component(ScriptBehaviour).public_data["inventory"][0]["id"], "key")
 
+    def test_world_clone_preserves_seven_versions_and_then_advances_independently(self) -> None:
+        original = self._build_world()
+        expected = {
+            "_version": 41,
+            "_structure_version": 43,
+            "_transform_version": 47,
+            "_render_version": 53,
+            "_physics_version": 59,
+            "_ui_layout_version": 61,
+            "_selection_version": 67,
+        }
+        for attribute, value in expected.items():
+            setattr(original, attribute, value)
+
+        cloned = original.clone()
+
+        self.assertEqual(
+            {attribute: getattr(cloned, attribute) for attribute in expected},
+            expected,
+        )
+        cloned.create_entity("Independent")
+        cloned.touch_transform()
+        cloned.touch_render()
+        cloned.touch_physics()
+        cloned.touch_ui_layout()
+        cloned.selected_entity_name = "Parent"
+        self.assertEqual(
+            {attribute: getattr(original, attribute) for attribute in expected},
+            expected,
+        )
+        self.assertEqual(cloned._version, expected["_version"] + 5)
+        self.assertEqual(cloned._structure_version, expected["_structure_version"] + 1)
+        self.assertEqual(cloned._transform_version, expected["_transform_version"] + 1)
+        self.assertEqual(cloned._render_version, expected["_render_version"] + 1)
+        self.assertEqual(cloned._physics_version, expected["_physics_version"] + 1)
+        self.assertEqual(cloned._ui_layout_version, expected["_ui_layout_version"] + 1)
+        self.assertEqual(cloned._selection_version, expected["_selection_version"] + 1)
+
     def test_world_subclass_clone_uses_world_factory_contract(self) -> None:
         class DerivedWorld(World):
             pass

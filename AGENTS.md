@@ -370,6 +370,16 @@ Este archivo solo establece que:
 - si la skill no existe o no puede cargarse, el agente debe indicarlo en lugar
   de improvisar una implementación equivalente.
 
+Bootstrap minimo si el catalogo de skills esta obsoleto pero
+`.agents/skills/queen/SKILL.md` existe: Reina usa politica native first; si la
+tool nativa falta o desconoce el `agent_type`, debe intentar automaticamente el
+fallback OpenCode mapeado antes de `missing_required_agent`. Un rol cuenta como
+disponible si existe backend nativo o fallback OpenCode usable. Solo bloquear
+con `missing_required_agent` cuando ningun backend pueda crear el rol; los
+errores del fallback conservan su razon precisa y no se reescriben como agente
+nativo ausente. Esta prohibido reportar `No ejecuto fallback` si habia fallback
+mapeado y no se intento, aunque el catalogo de skills este obsoleto.
+
 La configuración de Reina para OpenCode permanece en sus archivos canónicos:
 
 ```text

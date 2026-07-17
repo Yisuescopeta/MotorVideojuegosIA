@@ -269,3 +269,25 @@ Al terminar, reporto:
 - Componente registrado (si aplica)
 - EngineAPI expuesta (si aplica)
 - Riesgos o limitaciones
+
+## Output Contract
+
+Return exactly one JSON object:
+
+```json
+{
+  "adapter_id": "godot-adapter-<task_id>",
+  "status": "completed|partial|blocked|failed",
+  "phase_status": "completed|blocked|failed",
+  "feature": "Godot feature implemented",
+  "mapping": {"godot": "Feature", "motor": "explicit mapping"},
+  "files_changed": [],
+  "tests_added_or_modified": [],
+  "commands_run": [],
+  "write_scope_violations": [],
+  "risks": []
+}
+```
+
+`completed` requiere `phase_status: completed`; `partial|blocked` requieren
+`phase_status: blocked`; `failed` requiere `phase_status: failed`.

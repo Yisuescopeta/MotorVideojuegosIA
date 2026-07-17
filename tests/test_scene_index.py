@@ -104,6 +104,97 @@ class SceneIndexTests(unittest.TestCase):
         self.assertIsNone(scene.find_entity("Hero"))
         self.assertEqual([entity["name"] for entity in scene.entities_data], ["Enemy", "Pickup"])
 
+    def test_remove_entity_subtree_is_transitive_ordered_and_reindexes_all_keys(self) -> None:
+        scene = Scene(
+            data={
+                "name": "SubtreeIndex",
+                "entities": [
+                    {"id": "leaf-id", "name": "Leaf", "parent": "Branch", "components": {}},
+                    {"id": "keep-a-id", "name": "KeepA", "components": {}},
+                    {
+                        "id": "root-id",
+                        "name": "Root",
+                        "components": {"SceneEntryPoint": {"entry_id": "root-entry"}},
+                    },
+                    {"id": "keep-b-id", "name": "KeepB", "components": {}},
+                    {
+                        "id": "branch-id",
+                        "name": "Branch",
+                        "parent": "Root",
+                        "components": {"SceneEntryPoint": {"entry_id": "branch-entry"}},
+                    },
+                    {"id": "deep-id", "name": "Deep", "parent": "Leaf", "components": {}},
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        self.assertTrue(scene.remove_entity_subtree("Root"))
+
+        self.assertEqual(
+            [entity["name"] for entity in scene.entities_data],
+            ["KeepA", "KeepB"],
+        )
+        for name in ("Root", "Branch", "Leaf", "Deep"):
+            self.assertIsNone(scene.find_entity(name))
+        for entity_id in ("root-id", "branch-id", "leaf-id", "deep-id"):
+            self.assertIsNone(scene.find_entity_by_id(entity_id))
+        self.assertTrue(
+            scene.add_entity(
+                {
+                    "name": "ReplacementEntry",
+                    "components": {"SceneEntryPoint": {"entry_id": "branch-entry"}},
+                }
+            )
+        )
+
+    def test_remove_entity_subtree_missing_is_exact_noop(self) -> None:
+        scene = self._scene()
+        before = scene.to_dict()
+
+        self.assertFalse(scene.remove_entity_subtree("Missing"))
+
+        self.assertEqual(scene.to_dict(), before)
+
+    def test_prefab_empty_override_preservation_only_applies_to_explicit_empty_map(self) -> None:
+        scene = Scene(
+            data={
+                "name": "OverrideShapes",
+                "entities": [
+                    {
+                        "name": "ExplicitEmpty",
+                        "prefab_instance": {
+                            "prefab_path": "empty.prefab",
+                            "root_name": "Root",
+                            "overrides": {},
+                        },
+                        "components": {},
+                    },
+                    {
+                        "name": "CanonicalEmpty",
+                        "prefab_instance": {
+                            "prefab_path": "canonical.prefab",
+                            "root_name": "Root",
+                            "overrides": {"operations": []},
+                        },
+                        "components": {},
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        self.assertEqual(
+            scene.find_entity("ExplicitEmpty")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            scene.find_entity("CanonicalEmpty")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+
     def test_add_entity_rejects_duplicate_name_using_index(self) -> None:
         scene = self._scene()
 

@@ -117,12 +117,82 @@ class CodexQueenContractTests(unittest.TestCase):
         for name in fast:
             self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6-terra", "low"))
         for name in standard:
-            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6", "high"))
+            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6-sol", "high"))
         for name in deep:
-            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6", "xhigh"))
+            self.assertEqual((self.agent_configs[name]["model"], self.agent_configs[name]["model_reasoning_effort"]), ("gpt-5.6-sol", "xhigh"))
         for name, config in self.agent_configs.items():
             self.assertNotIn("openai/", config["model"], name)
             self.assertNotRegex(config["model"], r"gpt-5\.[45](?:-mini)?$")
+            if config["model"] != "gpt-5.6-terra":
+                self.assertNotEqual(config["model"], "gpt-5.6", name)
+
+    def test_opencode_dispatcher_and_fallback_runner_contract(self) -> None:
+        root_config = json.loads((ROOT / "opencode.json").read_text(encoding="utf-8"))
+        dispatcher = root_config["agent"]["queen-codex-dispatch"]
+        self.assertEqual(dispatcher["mode"], "primary")
+        self.assertEqual(dispatcher["model"], "openai/gpt-5.4-mini")
+        permissions = dispatcher["permission"]
+        for permission in (
+            "read",
+            "glob",
+            "grep",
+            "edit",
+            "write",
+            "bash",
+            "webfetch",
+            "websearch",
+            "todowrite",
+            "question",
+            "skill",
+        ):
+            self.assertEqual(permissions[permission], "deny")
+        self.assertEqual(permissions["task"]["*"], "deny")
+        allowed = {name for name, value in permissions["task"].items() if value == "allow"}
+        self.assertEqual(allowed, {entry["opencode"] for entry in self.mapping["agents"].values()})
+
+        prompt = (ROOT / ".opencode" / "agents" / "queen-codex-dispatch.md").read_text(encoding="utf-8")
+        for phrase in ("exactly one `task`", "No retries", "verbatim", "edit: deny", "write: deny"):
+            self.assertIn(phrase, prompt)
+
+        runner = SKILL / "scripts" / "run_opencode_subagent.py"
+        text = runner.read_text(encoding="utf-8")
+        for phrase in (
+            "opencode",
+            "queen-codex-dispatch",
+            "--format",
+            "json",
+            "shell=False",
+            "EXIT_TIMEOUT = 3",
+            "EXIT_PROCESS = 4",
+            "EXIT_RESULT = 5",
+            "EXIT_CONTRACT = 6",
+            "should_use_fallback",
+        ):
+            self.assertIn(phrase, text)
+
+    def test_missing_required_agent_is_after_eligible_fallback_attempt(self) -> None:
+        skill_text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+        fallback_index = skill_text.index("intentar automaticamente el fallback")
+        missing_index = skill_text.index("missing_required_agent")
+        self.assertLess(fallback_index, missing_index)
+        for phrase in (
+            "Un rol cuenta como disponible si existe backend nativo o fallback OpenCode mapeado y usable",
+            "Bloquear con `missing_required_agent` solo si ningun backend puede crear el rol",
+            "No reescribir errores del fallback como agente nativo ausente",
+            "Prohibido reportar `No ejecuto fallback`",
+        ):
+            self.assertIn(phrase, skill_text)
+
+        workflow_text = (SKILL / "references" / "workflow.md").read_text(encoding="utf-8")
+        self.assertLess(workflow_text.index("intentar automaticamente el fallback"), workflow_text.index("missing_required_agent"))
+        self.assertIn("native OR mapped OpenCode fallback", workflow_text)
+
+    def test_agents_bootstrap_contains_minimal_queen_fallback_rule(self) -> None:
+        agents_text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        fallback_index = agents_text.index("fallback OpenCode")
+        missing_index = agents_text.index("missing_required_agent")
+        self.assertLess(fallback_index, missing_index)
+        self.assertIn("aunque el catalogo de skills este obsoleto", agents_text)
 
     def test_router_has_all_four_routes_and_escalation_guards(self) -> None:
         self.assertEqual(set(self.contract["router"]), {"simple", "normal", "complex", "critical"})

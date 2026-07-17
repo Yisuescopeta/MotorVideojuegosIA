@@ -362,6 +362,17 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(self.entry.scene.find_entity("Hero")["tag"], "Untagged")
 
+    def test_clone_world_restore_preserves_entry_version_counter_exactly(self) -> None:
+        world_version_before = self.entry.edit_world.version
+        self.entry.edit_world_version = 777
+        token = self.coordinator.capture_snapshot(self.entry, clone_world=True)
+
+        self.coordinator.restore_snapshot(self.entry, token)
+
+        self.assertEqual(self.entry.edit_world_version, world_version_before)
+        self.assertEqual(self.entry.edit_world.version, world_version_before)
+        self.assertNotEqual(self.entry.edit_world_version, 777)
+
     def test_install_failure_restores_after_partial_install_attempt(self) -> None:
         self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
         token = self.coordinator.capture_snapshot(self.entry)

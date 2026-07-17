@@ -31,6 +31,10 @@ El contrato base vigente usa:
 serializables, reglas, `feature_metadata` y referencias de prefab. Un cambio de
 authoring que deba persistir tiene que terminar en `Scene`.
 
+`Scene.remove_entity_subtree(name)` elimina la raiz y todos sus descendientes
+transitivos por `parent`, conserva el orden relativo de supervivientes y publica
+una sola reconstruccion de los indices de nombre, ID y `SceneEntryPoint`.
+
 ### World
 
 `World` contiene entidades activas para editor y runtime. No es un formato de
@@ -53,7 +57,9 @@ del payload persistente. La separacion interna de servicios de `World` queda asi
   serializacion; `World.serialize()` permanece como fachada compatible.
 - `engine.ecs.world_clone.clone_world()` es la autoridad de clonacion;
   `World.clone()` permanece como fachada compatible y pasa la factory exacta
-  `World`.
+  `World`. El clon conserva exactamente los contadores global, estructural,
+  transform, render, fisica, layout UI y seleccion, pero no copia telemetria ni
+  caches.
 
 Esta separacion no cambia Scene v2, el schema ni el payload serializado, la
 superficie publica de `EngineAPI` o el ciclo `EDIT -> PLAY -> STOP`.
@@ -142,9 +148,9 @@ La persistencia tecnica queda separada por responsabilidades:
 - `SerializableMutationCoordinator` es la autoridad de captura, commit y
   rollback semantico de una mutacion serializable. Depende de `SceneWorkspace`,
   `SceneProjectionService` y `SceneEditSyncCoordinator`. Antes de mutar, su token
-  prepara una `Scene` semanticamente valida y, solo en las rutas incrementales
-  que tambien mutan `World`, conserva un clon del mundo. El token es opaco: su
-  tipo y sus campos no forman parte de ningun contrato.
+  prepara una `Scene` semanticamente valida y, en las rutas que tambien mutan o
+  sincronizan metadata con `World`, conserva un clon del mundo. El token es
+  opaco: su tipo y sus campos no forman parte de ningun contrato.
 - `SceneIncrementalAuthoring` es la autoridad de edicion directa de componentes
   `Transform` y `RectTransform` ya presentes en `Scene` y `edit_world`. Posee la
   normalizacion numerica, los deltas, el estado de transaccion diferencial y su
@@ -246,9 +252,10 @@ prefab permanecen en structural authoring.
 `SceneSerializableEntityPort` define el limite minimo de creacion y actualizacion
 de entidades serializables para structural authoring. `SceneManager` entrega a
 `SceneStructuralAuthoring` exactamente la instancia compartida de
-`SceneEntityAuthoring` expuesta por la fachada. El contexto estructural ya no
-contiene callbacks CRUD para `create_entity`, `create_entity_from_data` ni
-`update_entity_property`. La dependencia queda unidireccional:
+`SceneEntityAuthoring` expuesta por la fachada. Structural authoring no usa un
+contexto ni callbacks al manager: recibe exactamente `SceneWorkspace`, el
+`SceneSerializableTransactionPort` compartido, `SceneSerializableEntityPort` y
+`PrefabOverridePort`. La dependencia queda unidireccional:
 `SceneStructuralAuthoring -> SceneSerializableEntityPort`; authoring serializable
 no depende de structural authoring y no se introduce un ciclo.
 
@@ -256,9 +263,9 @@ En commit, projection valida y canonicaliza las representaciones que
 `SceneWorkspace` publica. En rollback, el token instala mediante el workspace la
 `Scene` semantica preparada antes de mutar y el `World` capturado, sin reutilizar
 la proyeccion que pudo fallar; despues restaura seleccion y dirty state, y pending
-sync mediante `SceneEditSyncCoordinator`. Solo las rutas incrementales que mutan
-el mundo capturan un clon. El coordinador tambien valida y publica el commit
-incremental de una entidad, con el mismo rollback semantico ante fallo.
+sync mediante `SceneEditSyncCoordinator`. Las rutas que mutan o sincronizan
+metadata con el mundo capturan un clon. El coordinador tambien valida y publica
+el commit incremental de una entidad, con el mismo rollback semantico ante fallo.
 `SceneSerializableAuthoringPipeline` maneja el token opaco y el historial de las
 operaciones serializables. `SceneComponentAuthoring.set_scene_flow_target()`
 posee el limite completo de esa transaccion; el wrapper homonimo de
@@ -285,15 +292,16 @@ la seleccion vigente a traves de esa autoridad, limpia pending mediante
 `SceneEditSyncCoordinator` y solicita al workspace marcar dirty. History no
 conoce entries, projection ni esas autoridades.
 
-Los cambios serializables por snapshot construyen sus closures en
-`SceneSerializableAuthoringPipeline`. Mientras S8B sigue pendiente, el callback
-estructural de historial termina temporalmente en
-`SceneManager._record_structural_snapshot_change()`, que tambien construye
-closures estrechos sobre la misma capacidad de restauracion. No es una ruta de
-dispatch de history. `SceneStructuralAuthoring` aun conserva su contexto,
-escrituras directas de dirty y mutaciones internas de `Scene`; S8B debe
-reemplazarlas por dependencias y primitivas encapsuladas. La consolidacion final
-de `SceneManager` como fachada fina corresponde a S9.
+Los cambios serializables y estructurales por snapshot pasan por la misma
+instancia de `SceneSerializableAuthoringPipeline`. Structural authoring
+prevalida, abre el token, muta solo mediante primitivas de `Scene`, sincroniza
+scene flow cuando aplica y confirma el snapshot. Un `False` posterior a la
+captura revierte; un fallo de commit o history restaura payload, mundo,
+seleccion, dirty, pending, versiones y undo/redo. Esta atomicidad cubre el estado
+en memoria. Los archivos prefab ya escritos no se revierten: su I/O no forma
+parte de la transaccion atomica. `SceneChangeCoordinator` permanece pasivo y
+`SceneManager` ya no define callback estructural de historial. La consolidacion
+final de `SceneManager` como fachada fina corresponde a S9.
 
 En scene flow, metadata aporta el mapa base. Un `SceneLink` con el mismo
 `flow_key` lo reemplaza; si hay duplicados gana el ultimo en orden serializado.

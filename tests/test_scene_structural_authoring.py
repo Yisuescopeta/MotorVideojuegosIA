@@ -1,15 +1,13 @@
 import inspect
 import unittest
-from dataclasses import fields
 from unittest.mock import patch
 
+import engine.scenes.structural_authoring as structural_module
+from engine.components.transform import Transform
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.contracts import SceneSerializableEntityPort
 from engine.scenes.scene_manager import SceneManager
-from engine.scenes.structural_authoring import (
-    SceneStructuralAuthoring,
-    SceneStructuralAuthoringContext,
-)
+from engine.scenes.structural_authoring import SceneStructuralAuthoring
 
 
 def _entity(name: str, *, transform: bool = True) -> dict[str, object]:
@@ -46,27 +44,16 @@ def _manager(*entities: dict[str, object]) -> SceneManager:
 
 
 class SceneStructuralAuthoringArchitectureTests(unittest.TestCase):
-    def test_context_has_no_serializable_crud_callbacks(self) -> None:
-        field_names = {field.name for field in fields(SceneStructuralAuthoringContext)}
-
+    def test_context_is_removed_and_constructor_has_exact_four_ports(self) -> None:
+        self.assertFalse(hasattr(structural_module, "SceneStructuralAuthoringContext"))
         self.assertEqual(
-            field_names,
-            {
-                "get_active_entry",
-                "resolve_entry",
-                "flush_pending_edit_world",
-                "rebuild_edit_world",
-                "record_scene_change",
-                "sync_scene_links_from_feature_metadata",
-                "unique_entity_name",
-            },
-        )
-        self.assertTrue(
-            {
-                "create_entity",
-                "create_entity_from_data",
-                "update_entity_property",
-            }.isdisjoint(field_names)
+            list(inspect.signature(SceneStructuralAuthoring).parameters),
+            [
+                "workspace",
+                "pipeline",
+                "serializable_entities",
+                "prefab_overrides",
+            ],
         )
 
     def test_structural_dependencies_use_narrow_entity_port_without_cycles(self) -> None:
@@ -85,18 +72,24 @@ class SceneStructuralAuthoringArchitectureTests(unittest.TestCase):
         self.assertNotIn("SceneEntityAuthoring", source)
         self.assertNotIn("SceneSerializableAuthoring", source)
         self.assertNotIn("SceneManager", source)
-        self.assertNotIn("context.create_entity", source)
-        self.assertNotIn("context.create_entity_from_data", source)
-        self.assertNotIn("context.update_entity_property", source)
+        self.assertNotIn("entry.dirty", source)
+        self.assertNotIn("scene.data", source)
+        self.assertNotIn("_rebuild_entity_index", source)
 
-    def test_manager_injects_same_entity_owner_into_all_structural_services(self) -> None:
+    def test_manager_injects_exact_shared_owners_into_structural_services(self) -> None:
         manager = _manager(_entity("Parent"))
         owner = manager._serializable_authoring.entity_authoring
+        pipeline = manager._serializable_authoring.transaction_pipeline
         structural = manager._structural_authoring
 
         self.assertIs(structural._serializable_entities, owner)
         self.assertIs(structural._hierarchy.serializable_entities, owner)
         self.assertIs(structural._prefabs.serializable_entities, owner)
+        self.assertIs(structural._hierarchy.workspace, manager._workspace)
+        self.assertIs(structural._prefabs.workspace, manager._workspace)
+        self.assertIs(structural._hierarchy.pipeline, pipeline)
+        self.assertIs(structural._prefabs.pipeline, pipeline)
+        self.assertIs(structural._prefab_overrides, manager._prefab_overrides)
 
 
 class SceneStructuralEntityPortRoutingTests(unittest.TestCase):
@@ -137,18 +130,27 @@ class SceneStructuralEntityPortRoutingTests(unittest.TestCase):
         self.assertIsNotNone(orphan)
         self.assertIsNone(orphan["parent"])
 
-    def test_parent_fallback_uses_entity_port_after_prevalidation(self) -> None:
+    def test_parent_without_transform_uses_shared_pipeline_and_scene_primitive(self) -> None:
         manager = _manager(_entity("Parent"), _entity("Child", transform=False))
         port = manager._serializable_authoring.entity_authoring
+        pipeline = manager._serializable_authoring.transaction_pipeline
+        entry = manager.resolve_entry(manager.active_scene_key)
+        assert entry is not None
 
-        with patch.object(
-            port,
-            "update_entity_property",
-            wraps=port.update_entity_property,
-        ) as update:
+        with (
+            patch.object(port, "update_entity_property", wraps=port.update_entity_property) as update,
+            patch.object(pipeline, "begin", wraps=pipeline.begin) as begin,
+            patch.object(
+                entry.scene,
+                "update_entity_property",
+                wraps=entry.scene.update_entity_property,
+            ) as primitive,
+        ):
             self.assertTrue(manager.set_entity_parent("Child", "Parent"))
 
-        update.assert_called_once_with("Child", "parent", "Parent")
+        update.assert_not_called()
+        begin.assert_called_once_with(entry, failure_context="reparent:Child")
+        primitive.assert_called_once_with("Child", "parent", "Parent")
         self.assertEqual(manager.find_entity_data("Child")["parent"], "Parent")
 
     def test_instantiate_prefab_uses_entity_port_payload(self) -> None:
@@ -182,6 +184,49 @@ class SceneStructuralEntityPortRoutingTests(unittest.TestCase):
                 "overrides": {"tag": "Elite"},
             },
         )
+
+
+class SceneStructuralPendingFlushTests(unittest.TestCase):
+    def test_duplicate_builds_payload_from_world_materialized_by_begin(self) -> None:
+        manager = _manager(_entity("Rig"))
+        world = manager.get_edit_world()
+        world.get_entity_by_name("Rig").get_component(Transform).local_x = 25.0
+        self.assertTrue(manager.mark_edit_world_dirty())
+
+        self.assertTrue(manager.duplicate_entity_subtree("Rig", "RigCopy"))
+
+        copied = manager.find_entity_data("RigCopy")
+        self.assertEqual(copied["components"]["Transform"]["x"], 25.0)
+
+    def test_paste_resolves_name_conflicts_after_pending_rename_flush(self) -> None:
+        manager = _manager(_entity("Seed"))
+        self.assertTrue(manager.copy_entity_subtree("Seed"))
+        manager.get_edit_world().get_entity_by_name("Seed").name = "Renamed"
+        self.assertTrue(manager.mark_edit_world_dirty())
+
+        self.assertTrue(manager.paste_copied_entities())
+
+        self.assertIsNotNone(manager.find_entity_data("Renamed"))
+        self.assertIsNotNone(manager.find_entity_data("Seed"))
+        self.assertIsNone(manager.find_entity_data("Seed_copy"))
+
+    def test_create_prefab_replace_reads_parent_after_pending_flush(self) -> None:
+        root = _entity("Root")
+        root["parent"] = "ParentA"
+        manager = _manager(_entity("ParentA"), _entity("ParentB"), root)
+        manager.get_edit_world().get_entity_by_name("Root").parent_name = "ParentB"
+        self.assertTrue(manager.mark_edit_world_dirty())
+
+        with patch("engine.assets.prefab.PrefabManager.save_prefab", return_value=True):
+            self.assertTrue(
+                manager.create_prefab(
+                    "Root",
+                    "prefabs/root.prefab",
+                    replace_original=True,
+                )
+            )
+
+        self.assertEqual(manager.find_entity_data("Root")["parent"], "ParentB")
 
 
 if __name__ == "__main__":

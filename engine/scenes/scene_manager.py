@@ -41,7 +41,7 @@ from engine.scenes.scene_projection import SceneProjectionService
 from engine.scenes.serializable_authoring import SceneSerializableAuthoring
 from engine.scenes.serializable_mutation import SerializableMutationCoordinator
 from engine.scenes.storage import SceneStorage
-from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
+from engine.scenes.structural_authoring import SceneStructuralAuthoring
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 
 if TYPE_CHECKING:
@@ -86,17 +86,10 @@ class SceneManager:
             self._registry,
         )
         self._structural_authoring = SceneStructuralAuthoring(
-            SceneStructuralAuthoringContext(
-                get_active_entry=self._get_active_entry,
-                resolve_entry=self._resolve_entry,
-                flush_pending_edit_world=self._edit_sync.flush_pending,
-                rebuild_edit_world=self._workspace.rebuild_edit_world,
-                record_scene_change=self._record_structural_snapshot_change,
-                sync_scene_links_from_feature_metadata=self._sync_feature_metadata_from_scene_links,
-                unique_entity_name=self._unique_entity_name,
-            ),
-            self._prefab_overrides,
+            self._workspace,
+            self._serializable_authoring.transaction_pipeline,
             self._serializable_authoring.entity_authoring,
+            self._prefab_overrides,
         )
         self._runtime_port: SceneRuntimePort = SceneManagerRuntimeAdapter(self)
         self._authoring_port: SceneAuthoringPort = SceneManagerAuthoringAdapter(self)
@@ -929,51 +922,3 @@ class SceneManager:
     @staticmethod
     def _mtime_key(path: str | Path) -> str:
         return str(Path(path).resolve())
-
-    def _record_structural_snapshot_change(
-        self,
-        entry: SceneWorkspaceEntry,
-        label: str,
-        before: Dict[str, Any],
-    ) -> None:
-        before_snapshot = copy.deepcopy(before)
-        after_snapshot = self._serializable_mutations.snapshot_entry_scene_data(entry)
-        if before_snapshot == after_snapshot:
-            return
-        key = entry.key
-        self._change_history.record_snapshot_change(
-            label=label,
-            undo=lambda: self._serializable_mutations.restore_scene_data(
-                key,
-                copy.deepcopy(before_snapshot),
-            ),
-            redo=lambda: self._serializable_mutations.restore_scene_data(
-                key,
-                copy.deepcopy(after_snapshot),
-            ),
-        )
-
-    def _remove_entity_subtree(self, entry: SceneWorkspaceEntry, entity_name: str) -> bool:
-        return self._structural_authoring.remove_entity_subtree(entry, entity_name)
-
-    def _compute_world_transform_from_scene_data(
-        self, entry: SceneWorkspaceEntry, entity_name: str
-    ) -> Optional[tuple[float, float, float, float, float]]:
-        return self._structural_authoring.compute_world_transform_from_scene_data(entry, entity_name)
-
-    def _remove_single_entity(self, entry: SceneWorkspaceEntry, entity_name: str) -> bool:
-        return self._structural_authoring.remove_single_entity(entry, entity_name)
-
-    def _validate_parent(self, entry: SceneWorkspaceEntry, entity_name: str, parent_name: str) -> bool:
-        return self._structural_authoring.validate_parent(entry, entity_name, parent_name)
-
-    def _sync_feature_metadata_from_scene_links(self, entry: SceneWorkspaceEntry) -> None:
-        self._workspace.sync_feature_metadata_from_scene_links(entry)
-
-    def _unique_entity_name(self, existing_names: set[str], base_name: str) -> str:
-        candidate = base_name
-        suffix = 1
-        while candidate in existing_names:
-            candidate = f"{base_name}_{suffix}"
-            suffix += 1
-        return candidate

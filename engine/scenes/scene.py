@@ -16,6 +16,8 @@ from engine.serialization.schema import (
     validate_scene_entity_for_add,
 )
 
+_PRESERVE_EMPTY_PREFAB_OVERRIDES = "_preserve_empty_overrides"
+
 if TYPE_CHECKING:
     from engine.ecs.world import World
     from engine.levels.component_registry import ComponentRegistry
@@ -38,6 +40,9 @@ class Scene:
         self._data.setdefault("entities", [])
         self._data.setdefault("rules", [])
         self._data.setdefault("feature_metadata", {})
+        for entity_data in self._data["entities"]:
+            if isinstance(entity_data, dict):
+                self._consume_empty_prefab_override_marker(entity_data)
         self._source_path: Optional[str] = source_path
         self._entity_index: Dict[str, Dict[str, Any]] = {}
         self._entity_id_index: Dict[str, Dict[str, Any]] = {}
@@ -213,12 +218,25 @@ class Scene:
 
     def _canonicalize_entity_for_add(self, entity_data: Dict[str, Any]) -> Dict[str, Any]:
         entities = self.entities_data
-        return canonicalize_scene_entity(
+        canonical_entity = canonicalize_scene_entity(
             entity_data,
             scene_name=str(self._data.get("name", self._name) or self._name),
             index=len(entities),
             used_ids=self._entity_id_index,
         )
+        self._consume_empty_prefab_override_marker(canonical_entity)
+        return canonical_entity
+
+    @staticmethod
+    def _consume_empty_prefab_override_marker(entity_data: Dict[str, Any]) -> None:
+        prefab_instance = entity_data.get("prefab_instance")
+        if not isinstance(prefab_instance, dict):
+            return
+        if prefab_instance.pop(_PRESERVE_EMPTY_PREFAB_OVERRIDES, False) is not True:
+            return
+        overrides = prefab_instance.get("overrides")
+        if overrides == {"operations": []}:
+            prefab_instance["overrides"] = {}
 
     def _rename_entity_references(self, old_name: str, new_name: str, entity_id: str | None = None) -> None:
         for entity_data in self.entities_data:
@@ -409,6 +427,34 @@ class Scene:
                 self._rebuild_entity_index()
                 return True
         return False
+
+    def remove_entity_subtree(self, entity_name: str) -> bool:
+        """Remove one serialized entity and every transitive child in one publish."""
+        if self.find_entity(entity_name) is None:
+            return False
+        names_to_remove = {entity_name}
+        changed = True
+        while changed:
+            changed = False
+            for entity_data in self.entities_data:
+                if not isinstance(entity_data, dict):
+                    continue
+                child_name = entity_data.get("name")
+                if (
+                    isinstance(child_name, str)
+                    and child_name not in names_to_remove
+                    and entity_data.get("parent") in names_to_remove
+                ):
+                    names_to_remove.add(child_name)
+                    changed = True
+        self._data["entities"] = [
+            entity_data
+            for entity_data in self.entities_data
+            if not isinstance(entity_data, dict)
+            or entity_data.get("name") not in names_to_remove
+        ]
+        self._rebuild_entity_index()
+        return True
 
     def remove_entity_by_id(self, entity_id: str) -> bool:
         entity_data = self.find_entity_by_id(entity_id)

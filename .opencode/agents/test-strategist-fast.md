@@ -72,6 +72,7 @@ Return exactly one JSON object with exactly this conceptual schema:
 ```json
 {
   "test_contract_id": "test-contract-<task_id>",
+  "phase_status": "completed|blocked|not_applicable",
   "task_type": "bugfix|engine_feature|refactor|performance|schema_serialization|cli_api|editor_runtime|docs_only|experimental_tooling",
   "subsystems": [],
   "existing_tests_authority": [],
@@ -101,6 +102,9 @@ Strict output rules:
 - If docs-only trivial, return `"verdict": "not_applicable"` and a concrete
   `verdict_reason`.
 - Never declare tests executed here as final validation.
+- `sufficient` requires `phase_status: completed`; `insufficient` requires
+  `phase_status: blocked`; `not_applicable` requires
+  `phase_status: not_applicable`.
 
 ## Verdict Rules
 

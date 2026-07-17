@@ -106,6 +106,7 @@ required fields are invalid and Queen must treat them as blocked.
 ```json
 {
   "audit_id": "audit-<task_id>",
+  "phase_status": "completed|not_applicable",
   "target": "specific feature, component, or subsystem",
   "applicable": true,
   "not_applicable_reason": null,
@@ -149,6 +150,8 @@ contracts, agent docs, CLI, EngineAPI, or motor compliance:
 - If no score applies, the only valid result is `not_applicable` with a concrete
   reason.
 - Queen must accept `not_applicable` and skip the `>= 90` threshold check.
+- `applicable: true` requiere `phase_status: completed`; `applicable: false`
+  requiere `phase_status: not_applicable`.
 
 This audit is mandatory only when the change affects AI-relevant subsystems.
 Declaring `not_applicable` when AI flows ARE touched is a contract violation.

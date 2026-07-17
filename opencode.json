@@ -48,6 +48,48 @@
         "question": "allow"
       }
     },
+    "queen-codex-dispatch": {
+      "description": "Queen Codex/OpenCode fallback dispatcher. Primary read-only; delegates exactly one mapped task and returns child result verbatim.",
+      "mode": "primary",
+      "model": "openai/gpt-5.4-mini",
+      "temperature": 0,
+      "permission": {
+        "read": "deny",
+        "glob": "deny",
+        "grep": "deny",
+        "edit": "deny",
+        "write": "deny",
+        "bash": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "todowrite": "deny",
+        "question": "deny",
+        "skill": "deny",
+        "task": {
+          "*": "deny",
+          "context-recon": "allow",
+          "test-strategist": "allow",
+          "test-strategist-fast": "allow",
+          "test-strategist-deep": "allow",
+          "planner": "allow",
+          "planner-fast": "allow",
+          "planner-deep": "allow",
+          "builder": "allow",
+          "builder-fast": "allow",
+          "builder-deep": "allow",
+          "validator": "allow",
+          "documenter": "allow",
+          "code-reviewer": "allow",
+          "code-reviewer-fast": "allow",
+          "code-reviewer-deep": "allow",
+          "ai-friendliness": "allow",
+          "committer": "allow",
+          "godot-source-analyzer": "allow",
+          "godot-gap-analyzer": "allow",
+          "godot-adapter": "allow"
+        }
+      }
+    },
     "planner": {
       "description": "Implementation plan designer. Read-only. Produces structured JSON plans.",
       "mode": "subagent",

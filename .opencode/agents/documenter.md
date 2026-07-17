@@ -136,6 +136,7 @@ con este contrato:
 {
   "documenter_id": "documenter-<task_id>",
   "status": "completed|not_applicable|blocked|failed",
+  "phase_status": "completed|not_applicable|blocked|failed",
   "docs_changed": [],
   "reason": "",
   "canonical_docs_required": false,
@@ -153,3 +154,4 @@ Reglas de salida:
 - `canonical_docs_required` y `operational_docs_required` deben reflejar la
   clasificacion hecha desde `git diff`.
 - Salida vacia o no parseable es invalida y Queen debe bloquear.
+- `phase_status` debe coincidir con `status`.

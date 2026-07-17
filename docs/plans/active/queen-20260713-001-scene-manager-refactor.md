@@ -5,22 +5,30 @@
 - `task_id`: `queen-20260713-001`
 - `model_route`: `critical`
 - `max_cycles`: `5`
-- `cycle`: `5/5`
+- `cycle`: `1/5` (continuación reautorizada explícitamente por usuario el 2026-07-16; los cinco ciclos agotados anteriores quedan registrados como evidencia)
 - `current_phase`: `S8B`
 - `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 completed; S8A completed; S8B in_progress`
 - `task_status`: `partial`
-- `next_action`: ejecutar RECON, TEST CONTRACT, plan y crítica de S8B; eliminar God Context, callbacks al manager y mutaciones structural fuera de Scene sin adelantar S9
+- `next_action`: remediar review S8B: ejecutar `begin()` antes de lecturas dependientes, reforzar regresiones pending y repetir validator/review
 - `commit_authorized`: `false`
 - `commit_created`: `false`
 - `push_authorized`: `false`
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `resume_head_sha`: `ae728dc0d72fec6f6b0439d7a4e482321e9e36fb`
+- `resume_head_sha`: `d319dd09896360d11962dd4d6e3ac9a78fee3904`
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `final_sha`: pendiente
 
 ## Autoridades
 
 - Especificación maestra vigente aportada al reanudar: `D:/putas/plan_scene_manager_especificacion_maestra_corregida.md`
+- Revisión más reciente detectada por fecha y contenido:
+  `D:/putas/plan_scene_manager_especificacion_maestra_final_reina.md`
+  (2026-07-13 19:16, SHA-256
+  `26BAC3BAC9012FDDBD5BC0A7802ADAC01A80BDDC801F693865B59E75A4239FE2`);
+  es un superset posterior de la copia aportada (`+276/-29`) que añade el
+  protocolo progresivo de primitivas `Scene` y el mapeo explícito a cinco
+  macro-ciclos. Se cargaron ambas; el prompt actual y el plan vivo prevalecen.
+  No se creó otra copia.
 - Baseline: `artifacts/refactor_scene_manager/baseline.json`
 - Benchmark bruto: `artifacts/refactor_scene_manager/baseline_benchmarks.json`
 - Baseline de rendimiento comparable autoridad desde S1: `artifacts/refactor_scene_manager/s1-benchmarks.json`
@@ -1223,6 +1231,296 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   registrados; coordinator pasivo y compatibilidad pública/EDIT-PLAY validados.
   S8B abierto en orden estricto. Deuda obligatoria arrastrada: eliminar callback
   structural temporal y garantizar rollback total si falla history.
+- RECON reanudación 2026-07-16: working tree limpio y HEAD avanzó externamente
+  de `ae728dc0d72fec6f6b0439d7a4e482321e9e36fb` a
+  `d319dd09896360d11962dd4d6e3ac9a78fee3904`
+  (`S8A: Complete passive history coordinator refactor`), también presente en
+  `origin/feat/SceneManagerRefactor`. Autor/committer observado: Yisuescopeta;
+  incluye exactamente los 24 archivos acumulados del cierre S8A. Esta sesión no
+  creó ni empujó ese commit: `commit_authorized=false`, `commit_created=false`,
+  `push_authorized=false` permanecen invariantes. HEAD/base/merge-base:
+  `d319dd0` / `fded355` / `fded355`.
+- S8B baseline dirigido tras reconciliación: 122/122 OK en structural, jerarquía,
+  workspace/copy-paste, prefab overrides, transacciones, API pública, Unity y
+  matriz core. Producción S8B aún intacta.
+- S8B RECON raíz: `SceneStructuralAuthoringContext` conserva siete callbacks;
+  structural realiza siete escrituras directas de `entry.dirty`, modifica
+  diccionarios vivos de entidades/Transform, escribe `scene.data`, llama dos
+  veces a `Scene._rebuild_entity_index` y vuelve al manager para history,
+  workspace y helpers. Primitiva estrecha confirmada como ausente:
+  `Scene.remove_entity_subtree`; reparenting puede usar las primitivas públicas
+  existentes `update_entity_property` y `update_component_properties`.
+- S8B diseño candidato no aprobado: inyectar `SceneWorkspace`,
+  `SceneSerializableTransactionPort`, `SceneSerializableEntityPort` y
+  `PrefabOverridePort`; reutilizar el pipeline compartido para flush, snapshot,
+  commit, rollback, dirty e historial, con `clone_world=True` cuando la
+  sincronización de flow toca el World. Esto evitaría duplicar la autoridad
+  transaccional y resolvería el P3 de history; requiere TEST CONTRACT y crítica
+  profundos antes de convertirse en plan autorizado.
+- S8B bloqueo 2026-07-16: tres intentos de `test_strategist_deep`/`planner_deep`
+  no devolvieron el envelope JSON exigido, incluso tras interrupción y una
+  reformulación compacta sin herramientas. Un agente previo reportó límite de
+  uso externo hasta 2026-07-22. Clasificación Reina:
+  `reason=missing_subagent_result`; ruta `critical` no permite sustituir roles
+  deep por la sesión raíz ni iniciar builder sin TEST CONTRACT suficiente y
+  plan criticado. No se modificó producción, tests ni documentación S8B.
+  Único cambio local al bloquear: actualización de este plan vivo. Commit y
+  push siguen no autorizados y no realizados por esta sesión.
+- S8B verificación de runtime 2026-07-16, continuación actual:
+  `.codex/config.toml` mantiene `multi_agent=true`, `max_threads=3` y
+  `max_depth=1`; existen los 20 TOML standalone y todos los roles críticos
+  requeridos por S8B/S9. El mecanismo nativo fue comprobado mediante un proceso
+  Codex separado en sandbox read-only: emitió un evento real
+  `collab_tool_call` para `spawn_agent`, pero rechazó
+  `agent_type=context_recon` con `unknown agent_type 'context_recon'`;
+  `receiver_thread_ids` quedó vacío y no nació ningún subagente. No hubo JSON
+  de `context_recon` ni simulación de la sesión raíz.
+- El CLI disponible es `codex-cli 0.118.0`. La primera prueba no alcanzó
+  `spawn_agent` porque el modelo global `gpt-5.6-sol` exige una versión más
+  reciente. Una segunda prueba diagnóstica con un modelo soportado por ese CLI
+  alcanzó la herramienta nativa y aisló el fallo de registro del rol custom.
+  Clasificación actual: `reason=missing_required_agent`, más precisa que
+  `missing_subagent_result` porque el agente no llegó a existir. El mismo
+  registro custom es requisito para `test_strategist_deep`, `planner_deep`,
+  `builder_deep`, `validator`, `code_reviewer_deep`, `documenter` y
+  `ai_friendliness`; no se autoriza sustituirlos por roles genéricos ni por la
+  sesión raíz.
+- RECON diferencial actual: rama y remoto siguen en
+  `d319dd09896360d11962dd4d6e3ac9a78fee3904`, merge-base con `origin/main`
+  `fded3556ed9509d5f0e06221f1655ba0f4053687`; el único diff local es este plan.
+  El código confirma que S8B sigue abierto: `SceneStructuralAuthoringContext`
+  conserva siete callbacks, manager inyecta
+  `_record_structural_snapshot_change`, structural escribe `entry.dirty`,
+  muta `scene.data`, usa vistas vivas y llama `Scene._rebuild_entity_index`.
+  `Scene` aún no ofrece `remove_entity_subtree`. No se modificaron producción,
+  tests ni documentación canónica y no se repitieron tests: el baseline
+  dirigido 122/122 registrado sobre el mismo HEAD continúa siendo la última
+  evidencia funcional.
+- Diagnóstico sistemático adicional 2026-07-16: el ejecutable encontrado primero
+  en `PATH` sigue siendo `codex-cli 0.118.0`, pero la aplicación incluye también
+  Codex `0.144.5`, confirmado por `codex doctor` como versión actual. Con
+  `multi_agent=true`, tanto `codex exec` normal como la variante con registro
+  explícito por `-c agents.context_recon.config_file=...` carecieron de
+  `spawn_agent`; no devolvieron un envelope de agente. Activar
+  `multi_agent_v2` tampoco fue una alternativa válida porque esa feature rechaza
+  la configuración `agents.max_threads` requerida por Reina.
+- La prueba final en TUI interactiva `0.144.5`, sandbox read-only, tampoco
+  produjo una delegación nativa. La sesión intentó lanzar otro proceso CLI y
+  buscar logs, devolvió `(no output)` y fue interrumpida sin crear
+  `context_recon`. Resultado observable: las superficies accesibles desde esta
+  tarea no exponen una ruta válida para invocar los roles custom directos.
+- La documentación oficial describe subagentes custom de proyecto en
+  `.codex/agents`, pero el comportamiento observado coincide con el problema de
+  superficies tool-backed que no exponen agentes nombrados documentado en
+  `https://github.com/openai/codex/issues/15250`. El workaround histórico de
+  registrar `agents.<role>.config_file` de
+  `https://github.com/openai/codex/issues/14579` también fue probado sin éxito
+  en `codex exec`. Clasificación final del bloqueo:
+  `reason=missing_required_agent`; causa raíz:
+  `runtime_surface_missing_spawn_agent_or_named_agent_registration`.
+- Desbloqueo requerido: runtime Codex que descubra y registre realmente los
+  TOML de `.codex/agents` y exponga la delegación nativa a esta sesión raíz,
+  seguido de una invocación `context_recon` read-only con JSON válido. Hasta
+  entonces S8B permanece `blocked`; no se inicia TEST CONTRACT, plan crítico,
+  builder, Gate S8 ni S9.
+- Reactivación administrativa 2026-07-16: el usuario autorizó explícitamente
+  desbloquear `queen-20260713-001` para continuar. Se reinicia el presupuesto
+  operativo de continuación en `0/5`, se marca S8B `in_progress` y la tarea
+  `partial`. Esta autorización no sustituye los gates: antes de producción S8B
+  debe repetir preflight y demostrar delegación/roles válidos, `context_recon`
+  JSON real, TEST CONTRACT y plan crítico aprobado. No se modificaron código,
+  tests ni documentación funcional; commit y push continúan no autorizados.
+- S8B preflight de la sesión raíz actual 2026-07-16: cargados íntegramente
+  `queen/SKILL.md`, workflow, contratos, schemas, model router, `AGENTS.md`, el
+  plan vivo y la especificación maestra aportada. Rama
+  `feat/SceneManagerRefactor`, HEAD y upstream
+  `d319dd09896360d11962dd4d6e3ac9a78fee3904`, divergencia `+0/-0`, merge-base
+  con `origin/main` `fded3556ed9509d5f0e06221f1655ba0f4053687`.
+  El único cambio local previo y actual sigue siendo este plan; producción,
+  tests y documentación funcional permanecen intactos. El baseline esperado de
+  reanudación coincide.
+- Disponibilidad real de agentes en esta sesión: los veinte TOML standalone
+  existen y `.codex/config.toml` conserva `multi_agent=true`,
+  `max_threads=3`, `max_depth=1`, pero la superficie de herramientas entregada
+  a la sesión raíz no contiene `spawn_agent`, `send_input` ni otra operación
+  nativa para crear o dirigir subagentes. Por tanto ningún rol especializado es
+  realmente invocable desde esta sesión, incluido el primer rol obligatorio
+  `context_recon`.
+- Bloqueo vigente: `reason=missing_required_agent`; capacidad ausente:
+  `native_subagent_dispatch_and_named_role_registration`. Roles críticos
+  requeridos y no invocables: `context_recon`, `test_strategist_deep`,
+  `planner_deep`, `builder_deep`, `validator`, `code_reviewer_deep`,
+  `documenter` y `ai_friendliness`. La ruta `critical` prohíbe sustituirlos por
+  variantes genéricas, procesos CLI o la sesión raíz. No se inició TEST
+  CONTRACT S8B, plan, builder, Gate S8 ni S9.
+- Desbloqueo requerido: exponer a esta sesión raíz la herramienta nativa de
+  delegación y registrar los agentes nombrados desde `.codex/agents`; después
+  invocar `context_recon` read-only y validar su envelope JSON antes de continuar
+  automáticamente. `phase_status=blocked`, `task_status=blocked`; commit y push
+  no autorizados ni realizados.
+- Restauración de subagentes 2026-07-16: se mantiene política `native first`.
+  Cuando falta la herramienta nativa o devuelve `unknown agent_type`, Reina
+  puede usar `.agents/skills/queen/scripts/run_opencode_subagent.py`; timeout,
+  permisos, fallo de proceso o JSON inválido de un child nativo ya creado no
+  activan fallback. El runner valida roles contra `agent_mapping.json`, extrae
+  exclusivamente el evento OpenCode `task`, valida el resultado contractual y
+  registra backend, rol, sesiones padre/hija y modelo sin alterar schemas.
+- Evidencia de gobernanza del fallback: 97/97 tests de contratos Reina,
+  mapping/modelos/dispatcher/runner OK; 29/29 tests documentales aplicables OK;
+  `git diff --check` OK. Los prompts OpenCode de los veinte roles mapeados
+  declaran `phase_status`; modelos Codex standard/deep y roles fijos de
+  razonamiento alto usan `gpt-5.6-sol`, variantes rápidas conservan
+  `gpt-5.6-terra`.
+- Smoke real read-only S8B: `context_recon` ejecutado mediante backend
+  `opencode`, sesión padre `ses_0942cfeb6ffeBtGnfPRm0DcasC`, sesión hija
+  `ses_0942ccd82ffe33p0awR7R8IiyP`, modelo `openai/gpt-5.4-mini`; JSON validado
+  con `status=completed`, `phase_status=completed` y evidencia de archivos.
+  El smoke no modificó `engine/**`, tests funcionales SceneManager ni
+  documentación canónica SceneManager.
+- `missing_required_agent` deja de ser bloqueo activo: la limitación nativa
+  permanece registrada, pero el fallback validado satisface la delegación
+  requerida. S8B queda `in_progress`; siguiente gate obligatorio: TEST CONTRACT
+  por `test_strategist_deep` mediante fallback. No iniciar producción S8B en
+  esta tarea. Commit y push siguen no autorizados.
+- Preflight Reina de la sesión solicitante actual 2026-07-16: rama
+  `feat/SceneManagerRefactor`, HEAD/upstream
+  `d319dd09896360d11962dd4d6e3ac9a78fee3904`, divergencia `+0/-0` y merge-base
+  con `origin/main` `fded3556ed9509d5f0e06221f1655ba0f4053687`.
+  El working tree previo contiene 44 entradas (41 tracked y 3 untracked), todas
+  en gobernanza Reina/Codex/OpenCode, documentación de agentes, tests de
+  contratos y este plan; hash del diff tracked previo
+  `e9824f966f2241dc0777727aaedbd3582ed67e91`. Se preservan íntegramente y no se
+  atribuyen a esta ejecución.
+- Disponibilidad real en la superficie de herramientas de esta sesión:
+  no existe `spawn_agent`, `send_input` ni operación nativa equivalente. Los
+  TOML de `.codex/agents` existen, pero ningún rol nombrado es invocable. Ruta
+  crítica requerida para S8B y gates posteriores:
+  `context_recon`, `test_strategist_deep`, `planner_deep`, `builder_deep`,
+  `validator`, `code_reviewer_deep`, `documenter` y `ai_friendliness`.
+- La instrucción explícita del usuario actual prohíbe procesos Codex por shell,
+  `npx`, OpenCode, backends externos y cualquier fallback no nativo. Esa
+  instrucción prevalece sobre el fallback local añadido a Reina. No se ejecutó
+  `run_opencode_subagent.py`, no se inició TEST CONTRACT/plan/builder y no se
+  modificó producción, tests funcionales ni documentación canónica SceneManager.
+- Bloqueo terminal de esta continuación:
+  `reason=missing_required_agent`;
+  `cause=native_subagent_dispatch_and_named_role_registration_unavailable`;
+  `missing_role_or_capability=context_recon` como primer rol obligatorio, además
+  de toda la cadena crítica posterior. Para reanudar, esta sesión debe exponer
+  dispatch nativo y registrar los roles nombrados; después Reina validará el
+  envelope JSON de `context_recon` y continuará automáticamente desde TEST
+  CONTRACT S8B. `phase_status=blocked`, `task_status=blocked`; commit y push no
+  autorizados ni realizados.
+- Diagnóstico y reparación del bloqueo posterior 2026-07-16: la ejecución
+  fallida contenía una instrucción explícita que prohibía OpenCode, procesos
+  externos y cualquier fallback no nativo. Esa restricción hacía imposible
+  usar el único backend disponible en esta superficie; con `solo nativo`,
+  `missing_required_agent` era inevitable porque Codex no expone `spawn_agent`.
+  Además, el preflight de `queen/SKILL.md` permitía bloquear por ausencia nativa
+  antes de llegar a la política de fallback.
+- Contrato Reina corregido: en condición elegible (tool nativa ausente o
+  `unknown agent_type`) debe intentar automáticamente fallback antes de
+  `missing_required_agent`; un rol cuenta como disponible mediante backend
+  nativo o fallback mapeado usable. `AGENTS.md` incluye bootstrap equivalente
+  para catálogos de skills obsoletos. Tests anti-regresión impiden volver a
+  reportar `No ejecuto fallback` sin intentarlo.
+- Prueba real de escritura delegada: `builder_deep` ejecutado mediante backend
+  `opencode`, sesión padre `ses_09417f17fffeStFdkdpVSM8x4c`, sesión hija
+  `ses_09417cb0affe6Esn0lHqWz4X7V`, modelo `openai/gpt-5.5`; resultado
+  contractual `completed`. Modificó solo gobernanza Reina, docs operativas y
+  test de contrato.
+- RECON real posterior: `context_recon` ejecutado mediante backend `opencode`,
+  sesión padre `ses_0941520dbffe17TThUOOF23ZnH`, sesión hija
+  `ses_09415067affe2UwOOgIlh7zMl1`, modelo `openai/gpt-5.4-mini`; JSON validado
+  con `status=completed` y `phase_status=completed`. S8B queda `in_progress`;
+  siguiente gate TEST CONTRACT por `test_strategist_deep`. No se inició
+  producción S8B, commit ni push.
+- Intento TEST CONTRACT S8B de la sesión actual: `test_strategist_deep` se
+  lanzó mediante `.agents/skills/queen/scripts/run_opencode_subagent.py`, rol
+  mapeado `test-strategist-deep`, backend `opencode`, timeout solicitado
+  `900 s`. El proceso permaneció vivo más de veinte minutos sin emitir stdout
+  ni envelope contractual. El timeout de `subprocess.run()` no cerró el árbol
+  hijo `cmd.exe -> opencode.exe` en Windows y la sesión solo terminó tras parar
+  esos procesos específicos. Resultado: sin JSON, sin metadata de sesiones y
+  sin subagente válido; clasificación exacta `reason=fallback_timeout` con
+  riesgo adicional `windows_child_process_teardown_hang`.
+- Gate aplicado: no existe TEST CONTRACT S8B suficiente, por lo que
+  `planner_deep`, crítica, `builder_deep`, Gate S8 y S9 siguen prohibidos. No se
+  modificaron `engine/**`, tests funcionales SceneManager ni documentación
+  canónica. El único cambio de esta continuación es este estado operativo;
+  commit y push continúan no autorizados.
+- Continuación autorizada 2026-07-17: delegación nativa disponible. Un
+  `test_strategist_deep` read-only devolvió envelope válido con
+  `verdict=sufficient`; baseline S8B 125/125 OK. `planner_deep` produjo plan
+  S8B-S9 y la crítica independiente final devolvió `approved`, `must_fix=[]`.
+- Preflight actual: 45 entradas locales preexistentes, 42 tracked y 3
+  untracked. El plan activo es excepción exclusiva `queen_root_only`; las otras
+  44 entradas de gobernanza permanecen prohibidas y deben conservarse íntegras.
+  Runner OpenCode/Windows queda fuera de alcance porque el backend nativo ya
+  satisface la cadena crítica.
+- Contrato S8B fijado: añadir `Scene.remove_entity_subtree`; eliminar
+  `SceneStructuralAuthoringContext`; inyectar workspace, pipeline transaccional
+  compartido, entity port y prefab override port; todas las mutaciones
+  structural pasan por primitivas `Scene` y rollback semántico. Excepciones
+  conservan semántica por operación; `apply_prefab_overrides` retorna `False`.
+  Escrituras prefab en filesystem permanecen no atómicas. Builder deep
+  autorizado dentro del write set S8B, sin commit ni push.
+- PLAN SYNC S8B `clone-world-version`: TDD structural reprodujo pérdida de
+  `entry.edit_world_version` al restaurar un snapshot capturado con
+  `clone_world=True`; `World.clone()` crea un world con contador propio y
+  `_MutationState` no conserva el contador de entrada. Payload, World
+  serializado, selección, dirty, pending e historial sí restauran. Se amplía el
+  write set únicamente a `engine/scenes/serializable_mutation.py` y
+  `tests/test_serializable_mutation_coordinator.py` para capturar/restaurar el
+  contador exacto en la autoridad del snapshot. No modificar `World.clone`, ECS
+  ni workspace; exigir test directo rojo-verde y regresión existente.
+- TEST CONTRACT SYNC S8B `world-clone-versions`: `verdict=sufficient`.
+  El primer fix confirmó una frontera incorrecta: guardar el contador de entry
+  restaura un baseline válido, pero desalineado del `World` clonado, y rompe los
+  contratos existentes que normalizan sentinels inconsistentes. Autoridad
+  correcta: `engine/ecs/world_clone.py` debe preservar al final de la clonación
+  los siete contadores (`version`, structure, transform, render, physics,
+  ui-layout y selection). `SceneWorkspace.install_entry_state` continúa como
+  único escritor de `entry.edit_world_version`; retirar el override provisional
+  del coordinator. Write set ampliado solo a `engine/ecs/world_clone.py` y
+  `tests/test_ecs_clone.py`, además de corregir los dos tests S8B ya autorizados.
+  No copiar telemetría de caches ni modificar `World`, workspace u otros ECS.
+- S8B builder final: `status=completed`, sin violaciones de write set. Eliminó
+  `SceneStructuralAuthoringContext`, conectó workspace/pipeline/entity/prefab
+  ports, migró siete rutas structural y añadió `Scene.remove_entity_subtree`.
+  El sync crítico de World conserva exactamente siete contadores al clonar y
+  retira el override provisional del coordinator. Evidencia: baseline 125/125;
+  ECS/world/coordinator/history 36/36; workspace/rollback 28/28; focused S8B
+  173/173; Ruff, Mypy y diff-check verdes. Suite completa reservada al validator.
+- S8 documenter: `status=completed`. `docs/architecture.md` y
+  `docs/TECHNICAL.md` describen primitiva de subárbol, cuatro dependencias
+  structural, pipeline compartido, history pasivo, rollback en memoria,
+  frontera no atómica de archivos prefab y siete contadores de `World.clone`.
+  Texto provisional de Context/callback/S8B pendiente eliminado; diff-check
+  documental verde.
+- Gate S8 validator: `verdict=pass`, `test_contract_satisfied=true`. Focused
+  173/173; regresión Scene/EngineAPI 88/88; suite completa 3.869 OK/8 skips en
+  464,295 s; Ruff producción/tests y Mypy 424 archivos verdes; diff-check,
+  firmas públicas, imports, arquitectura y siete versiones verdes. Estado:
+  13 rutas S8/plan autorizadas y 44 entradas de gobernanza preservadas.
+- Gate S8 review independiente inicial: `verdict=changes_required`. Hallazgo P1
+  reproducido: varias rutas structural calculan transforms, subárboles, nombres o
+  payloads antes de `pipeline.begin()`, pero `begin()` puede materializar pending
+  legacy y reemplazar Scene/World. En reparent, un Parent pendiente de x=100 a
+  x=150 dejó B en world x=250/local x=100 en vez de world x=200/local x=50.
+  Causa raíz: orden temporal incorrecto, no rollback. Hallazgo P2: la conversión
+  global de overrides vacíos en `Scene` amplía comportamiento fuera de S8B.
+- PLAN SYNC S8B `begin-before-dependent-read`: el mismo builder debe mover
+  `begin()`/flush antes de toda lectura que determine remove, reparent,
+  duplicate, paste, create-prefab replace, unpack y apply-overrides; tras begin
+  debe volver a resolver Scene, World, raíz, subárbol, transforms, nombres y
+  conflictos. Todo `False` posterior a begin hace rollback; `commit_snapshot`
+  falso no ejecuta segundo rollback. `create_prefab(replace_original=False)`
+  conserva solo `flush_pending` y escritura de archivo, sin transacción Scene.
+  Añadir regresiones pending al menos para reparent y remove, y cubrir el mismo
+  patrón en duplicate/paste/prefab. Retirar o estrechar
+  `_preserve_empty_prefab_overrides` sin relajar contratos. Write set funcional y
+  tests S8B existente; gobernanza protegida, commit y push siguen prohibidos.
 
 ## Archivos modificados
 

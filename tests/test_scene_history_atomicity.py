@@ -5,6 +5,7 @@ from unittest.mock import patch
 import engine.scenes.change_history as change_history_module
 from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
+from engine.scenes.edit_sync import TRANSIENT_PREVIEW_SYNC_REASON
 from engine.scenes.scene_manager import SceneManager
 
 
@@ -139,6 +140,77 @@ class SceneHistoryAtomicityTests(unittest.TestCase):
         self.assertEqual(entry.selected_entity_name, "Hero")
         self.assertFalse(entry.dirty)
         self.assertEqual(entry.edit_world_version, entry.edit_world.version)
+        self.assertFalse(history.can_undo())
+        self.assertTrue(history.can_redo())
+        self.assertTrue(history.redo())
+        self.assertEqual(events, ["prior_redo"])
+
+    def test_structural_push_after_append_restores_full_transaction_baseline(self) -> None:
+        payload = _scene_payload()
+        payload["entities"].insert(
+            0,
+            {
+                "id": "parent-id",
+                "name": "Parent",
+                "active": True,
+                "tag": "Untagged",
+                "layer": "Default",
+                "components": {},
+                "component_metadata": {},
+            },
+        )
+        payload["entities"][1]["parent"] = "Parent"
+        manager = SceneManager(create_default_registry())
+        history = UndoRedoManager()
+        manager.set_history_manager(history)
+        manager.load_scene(payload)
+        events = self._seed_prior_redo(history)
+        entry = manager.resolve_entry(manager.active_scene_key)
+        assert entry is not None and entry.edit_world is not None
+        self.assertTrue(manager.set_selected_entity("Hero"))
+        manager._edit_sync.restore_pending_reason(entry, TRANSIENT_PREVIEW_SYNC_REASON)
+        scene_before = copy.deepcopy(entry.scene.to_dict())
+        world_before = copy.deepcopy(entry.edit_world.serialize())
+        version_before = entry.edit_world_version
+        world_versions_before = (
+            entry.edit_world.version,
+            entry.edit_world.structure_version,
+            entry.edit_world.transform_version,
+            entry.edit_world.render_version,
+            entry.edit_world.physics_version,
+            entry.edit_world.ui_layout_version,
+            entry.edit_world.selection_version,
+        )
+
+        with patch.object(
+            history,
+            "push",
+            side_effect=self._push_then_raise(history),
+        ):
+            self.assertFalse(manager.remove_entity("Parent"))
+
+        self.assertEqual(entry.scene.to_dict(), scene_before)
+        self.assertEqual(entry.edit_world.serialize(), world_before)
+        self.assertEqual(entry.selected_entity_name, "Hero")
+        self.assertEqual(entry.edit_world.selected_entity_name, "Hero")
+        self.assertFalse(entry.dirty)
+        self.assertEqual(
+            entry.pending_edit_world_sync_reason,
+            TRANSIENT_PREVIEW_SYNC_REASON,
+        )
+        self.assertEqual(entry.edit_world_version, version_before)
+        self.assertEqual(
+            (
+                entry.edit_world.version,
+                entry.edit_world.structure_version,
+                entry.edit_world.transform_version,
+                entry.edit_world.render_version,
+                entry.edit_world.physics_version,
+                entry.edit_world.ui_layout_version,
+                entry.edit_world.selection_version,
+            ),
+            world_versions_before,
+        )
         self.assertFalse(history.can_undo())
         self.assertTrue(history.can_redo())
         self.assertTrue(history.redo())

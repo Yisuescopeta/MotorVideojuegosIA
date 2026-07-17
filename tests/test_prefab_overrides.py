@@ -10,10 +10,8 @@ from engine.scenes.contracts import PrefabOverridePort
 from engine.scenes.prefab_overrides import PrefabOverrideService
 from engine.scenes.scene import Scene
 from engine.scenes.structural_authoring import (
-    SceneHierarchyAuthoring,
     ScenePrefabAuthoring,
     SceneStructuralAuthoring,
-    SceneStructuralAuthoringContext,
 )
 from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 
@@ -409,21 +407,11 @@ class SceneStructuralOverrideDelegationTests(unittest.TestCase):
         entry, _root = _entry()
         port = _RecordingOverridePort()
 
-        def unused(*args, **kwargs):
-            return None
-
         structural = SceneStructuralAuthoring(
-            SceneStructuralAuthoringContext(
-                get_active_entry=unused,
-                resolve_entry=unused,
-                flush_pending_edit_world=unused,
-                rebuild_edit_world=unused,
-                record_scene_change=unused,
-                sync_scene_links_from_feature_metadata=unused,
-                unique_entity_name=unused,
-            ),
-            port,
             Mock(),
+            Mock(),
+            Mock(),
+            port,
         )
 
         self.assertTrue(
@@ -473,34 +461,19 @@ class SceneStructuralOverrideDelegationTests(unittest.TestCase):
 class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
     @staticmethod
     def _authoring(entry):
-        rebuild = Mock()
-        record = Mock()
-
-        def unused(*args, **kwargs):
-            return None
-
+        workspace = Mock()
+        workspace.get_active_entry.return_value = entry
+        pipeline = Mock()
+        pipeline.begin.return_value = (object(), copy.deepcopy(entry.scene.to_dict()))
+        pipeline.commit_snapshot.return_value = True
         serializable_entities = Mock()
-        context = SceneStructuralAuthoringContext(
-            get_active_entry=lambda: entry,
-            resolve_entry=unused,
-            flush_pending_edit_world=unused,
-            rebuild_edit_world=rebuild,
-            record_scene_change=record,
-            sync_scene_links_from_feature_metadata=unused,
-            unique_entity_name=unused,
-        )
-        hierarchy = SceneHierarchyAuthoring(context, serializable_entities)
-        return (
-            ScenePrefabAuthoring(context, hierarchy, serializable_entities),
-            rebuild,
-            record,
-        )
+        return ScenePrefabAuthoring(workspace, pipeline, serializable_entities), pipeline
 
     def test_apply_overrides_clears_via_primitive_after_save(self) -> None:
         entry, root = _entry(legacy_overrides={"": {"tag": "Enemy"}})
         before = entry.scene.to_dict()
         root_id = root["id"]
-        authoring, rebuild, record = self._authoring(entry)
+        authoring, pipeline = self._authoring(entry)
         original_update = entry.scene.update_entity_property_by_id
 
         def install(entity_id, property_name, value):
@@ -517,8 +490,12 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
         update.assert_called_once()
         self.assertEqual(update.call_args.args[:2], (root_id, "prefab_instance"))
         self.assertEqual(entry.scene.find_entity("Instance")["prefab_instance"]["overrides"], {})
-        rebuild.assert_called_once_with(entry)
-        record.assert_called_once()
+        pipeline.begin.assert_called_once_with(
+            entry,
+            failure_context="apply_prefab_overrides:Instance",
+        )
+        pipeline.commit_snapshot.assert_called_once()
+        pipeline.rollback.assert_not_called()
 
     def test_apply_overrides_install_failure_is_atomic(self) -> None:
         for name, primitive in (
@@ -528,7 +505,7 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
             with self.subTest(name=name):
                 entry, _root = _entry(legacy_overrides={"": {"tag": "Enemy"}})
                 before = entry.scene.to_dict()
-                authoring, rebuild, record = self._authoring(entry)
+                authoring, pipeline = self._authoring(entry)
                 kwargs = (
                     {"side_effect": primitive}
                     if isinstance(primitive, Exception)
@@ -542,8 +519,8 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
                     self.assertFalse(authoring.apply_prefab_overrides("Instance"))
 
                 self.assertEqual(entry.scene.to_dict(), before)
-                rebuild.assert_not_called()
-                record.assert_not_called()
+                pipeline.rollback.assert_called_once()
+                pipeline.commit_snapshot.assert_not_called()
 
 
 if __name__ == "__main__":

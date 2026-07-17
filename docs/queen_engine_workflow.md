@@ -164,3 +164,36 @@ confirma el aislamiento real. Alcance por archivo, comandos permitidos, write
 sets disjuntos y orden del committer son
 garantias operativas reforzadas por instrucciones y tests; Codex 0.118.0 no las
 expresa con granularidad equivalente a permisos OpenCode.
+
+### Fallback automatico Codex/OpenCode
+
+Politica: native first. Queen/Codex debe usar subagente nativo cuando la tool
+existe y conoce el `agent_type`. El fallback solo aplica si falta la tool nativa
+o si el rol es desconocido para esa tool. Nunca se usa para enmascarar timeout,
+fallo de permisos, salida invalida/no JSON o fallo de proceso despues de que un
+child nativo exista.
+
+Si la tool nativa falta o desconoce el `agent_type`, Queen debe intentar
+automaticamente el fallback OpenCode mapeado antes de bloquear con
+`missing_required_agent`. Un rol cuenta como disponible si el backend nativo o
+el fallback OpenCode mapeado es usable. `missing_required_agent` solo aplica si
+ningun backend puede crear el rol. Los errores del fallback conservan su razon
+precisa y no deben reescribirse como agente nativo ausente; esta prohibido
+reportar `No ejecuto fallback` cuando habia fallback elegible sin intentarlo.
+
+El runner `.agents/skills/queen/scripts/run_opencode_subagent.py` valida el rol
+contra `agent_mapping.json` y ejecuta `opencode run --agent
+queen-codex-dispatch --format json --dir <repo>` con `shell=False`. Acepta
+exactamente un evento completado `tool_use` de tipo `task`, con `subagent_type`
+coincidente y `task_result` no vacio, aunque existan eventos root posteriores;
+no infiere exito desde texto final root. Luego parsea y valida el JSON mediante
+`validate_result.py`. `stdout` es el JSON compacto valido y `stderr` metadata
+compacta de backend/role/parent_session/child_session/model.
+Codigos de salida: configuracion `2`, timeout `3`, proceso OpenCode fallido `4`,
+resultado ausente/inutilizable `5` y JSON contractual invalido `6`.
+
+`queen-codex-dispatch` es primary sin herramientas salvo task allowlisted: no
+lee archivos, no usa glob/grep, no edita, no escribe, no ejecuta bash, no usa
+web/tools auxiliares, invoca exactamente una task allowlisted y no hace retries.
+El presupuesto sigue siendo maximo dos readers y un writer en
+paralelo; builders seriales salvo write sets disjuntos y verificados.
