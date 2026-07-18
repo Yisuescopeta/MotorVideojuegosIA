@@ -6,19 +6,38 @@
 - `model_route`: `critical`
 - `max_cycles`: `5`
 - `cycle`: `1/5` (continuación reautorizada explícitamente por usuario el 2026-07-16; los cinco ciclos agotados anteriores quedan registrados como evidencia)
-- `current_phase`: `S9`
-- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 completed; S8A completed; S8B completed; GATE S8 completed; S9 completed; GATE S9 completed`
-- `task_status`: `completed`
-- `next_action`: reporte final; sin commit ni push por autorización
+- `current_phase`: `cierre operativo y documental`
+- `phase_status`: `S0-S9 completed; validación local del SHA funcional completed; workflow CI prepared; CI execution pending`
+- `task_status`: `partial` (CI obligatorio aún no ejecutado)
+- `next_action`: crear commit documental, publicarlo y lanzar `workflow_dispatch` sobre `f0bc3cc5561b789dcc0135718e495e889b7d7465` cuando exista autorización
 - `commit_authorized`: `false`
-- `commit_created`: `false`
+- `commit_created`: `true` (commit funcional preexistente `f0bc3cc5561b789dcc0135718e495e889b7d7465`; ningún commit documental creado en este cierre)
 - `push_authorized`: `false`
+- `functional_commit_pushed`: `true` (el SHA existe en `origin/feat/SceneManagerRefactor`)
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `resume_head_sha`: `3850e1995c1a7756803bfa8486f27c7ccf570874`
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `final_sha`: `3850e1995c1a7756803bfa8486f27c7ccf570874` (HEAD sin commit; resultado en working tree)
+- `final_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `validated_functional_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `functional_closure_commit_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `closure_documentation_sha`: `pending` (cambios documentales, workflow y evidencia local sin commit)
+- `branch_head_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `upstream`: `origin/feat/SceneManagerRefactor`
+- `upstream_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `merge_base_with_origin_main`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
+- `branch_vs_origin_main`: `ahead 6, behind 0`
+- `branch_vs_upstream`: `ahead 0, behind 0`
+- `functional_commit_author`: `Yisuescopeta <jesuscervantesfernandez2006@gmail.com>`
+- `functional_commit_date`: `2026-07-18T17:17:23+02:00`
+- `working_tree_initial`: `clean`
+- `working_tree_after_closure`: `dirty` únicamente por plan, workflow y artifacts de evidencia enumerados en este documento
+- `ci_execution`: `pending`
 
 ## Autoridades
+
+Las entradas cronológicas posteriores conservan snapshots de cada fase. Frases
+como «sin commit ni push» solo describen aquel instante; la sección `Estado` y
+el cierre reproducible al final son autoridad para el estado Git actual.
 
 - Especificación maestra vigente aportada al reanudar: `D:/putas/plan_scene_manager_especificacion_maestra_corregida.md`
 - Revisión más reciente detectada por fecha y contenido:
@@ -1841,52 +1860,60 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   editor y Unity siguen discoverables sin internals nuevos; autoridades,
   serialización, snapshots, docs y compliance aprobados. Probe independiente de
   governance/CLI/coherencia IA 75/75.
-- CIERRE GATE S9 2026-07-18: `S9 completed`, `GATE S9 completed`,
-  `task_status=completed`. Validator `pass`, reviewer deep `approved`, AI audit
+- CIERRE HISTÓRICO GATE S9 previo al commit funcional: `S9 completed`,
+  `GATE S9 completed`. Validator `pass`, reviewer deep `approved`, AI audit
   `approved`, performance `benchmark_noise` no bloqueante y `must_fix=[]`.
-  Resultado queda sin commit ni push: `commit_authorized=false`,
-  `commit_created=false`, `push_authorized=false`.
-- Auditoría raíz terminal: arquitectura+workspace+contratos 69/69 OK en
+  Las afirmaciones históricas de que aún no existían commit ni push quedaron
+  superadas cuando se creó y publicó
+  `f0bc3cc5561b789dcc0135718e495e889b7d7465`; no describen el estado Git actual.
+- Auditoría raíz terminal histórica anterior a `f0bc3cc`: arquitectura+workspace+contratos 69/69 OK en
   10,285 s; Ruff del write set S8/S9 y Mypy de cinco módulos críticos verdes;
-  `git diff --check` OK. Branch `feat/SceneManagerRefactor`; HEAD, upstream y
-  merge-base `3850e1995c1a7756803bfa8486f27c7ccf570874`. Working tree limitado
+  `git diff --check` OK. En ese momento HEAD y upstream eran
+  `3850e1995c1a7756803bfa8486f27c7ccf570874`, mientras el merge-base real era
+  `fded3556ed9509d5f0e06221f1655ba0f4053687`. Working tree limitado
   al plan, docs, write set funcional/tests y dos artifacts S9 registrados;
-  hashes de arquitectura y benchmarks coinciden. Ningún commit ni push creado.
+  hashes de arquitectura y benchmarks coincidían. Esta evidencia no sustituye
+  la revalidación exacta del SHA funcional registrada abajo.
 
-## Archivos modificados
+## Inventario Git completo del refactor
 
-- `artifacts/refactor_scene_manager/baseline.json`
-- `artifacts/refactor_scene_manager/baseline_benchmarks.json`
-- `artifacts/refactor_scene_manager/s1-benchmarks.json`
-- `artifacts/refactor_scene_manager/s3-benchmarks.json`
-- `artifacts/refactor_scene_manager/s5-benchmarks.json`
-- `artifacts/refactor_scene_manager/s9-benchmarks.json`
-- `artifacts/refactor_scene_manager/s9-benchmarks-rerun.json`
-- `docs/TECHNICAL.md`
-- `docs/architecture.md`
-- `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
-- `engine/debug/benchmark_runner.py`
-- `engine/scenes/edit_sync.py`
+Fuente: `git diff --name-only fded3556ed9509d5f0e06221f1655ba0f4053687..f0bc3cc5561b789dcc0135718e495e889b7d7465`.
+Resultado: 103 archivos, todos clasificados una sola vez.
+
+### Producción del subsistema de escenas (16)
+
+- `engine/scenes/change_history.py`
+- `engine/scenes/component_authoring.py`
 - `engine/scenes/contracts.py`
-- `engine/scenes/scene_flow.py`
+- `engine/scenes/edit_sync.py`
+- `engine/scenes/entity_authoring.py`
 - `engine/scenes/incremental_authoring.py`
 - `engine/scenes/prefab_overrides.py`
-- `engine/scenes/scene_projection.py`
 - `engine/scenes/scene.py`
+- `engine/scenes/scene_flow.py`
 - `engine/scenes/scene_manager.py`
+- `engine/scenes/scene_projection.py`
 - `engine/scenes/serializable_authoring.py`
 - `engine/scenes/serializable_mutation.py`
+- `engine/scenes/serializable_pipeline.py`
 - `engine/scenes/structural_authoring.py`
 - `engine/scenes/workspace_lifecycle.py`
-- `tests/test_benchmark_run.py`
-- `tests/test_benchmark_suite.py`
+
+### Tests funcionales y arquitectónicos (26)
+
+- `tests/test_authoring_transactions.py`
+- `tests/test_ecs_clone.py`
 - `tests/test_editor_tools.py`
-- `tests/test_scene_edit_sync.py`
+- `tests/test_hierarchy_operations.py`
+- `tests/test_prefab_overrides.py`
 - `tests/test_scene_architecture.py`
+- `tests/test_scene_change_history.py`
+- `tests/test_scene_component_authoring.py`
+- `tests/test_scene_edit_sync.py`
+- `tests/test_scene_entity_authoring.py`
+- `tests/test_scene_flow.py`
 - `tests/test_scene_history_atomicity.py`
 - `tests/test_scene_incremental_authoring.py`
-- `tests/test_prefab_overrides.py`
-- `tests/test_scene_flow.py`
 - `tests/test_scene_incremental_creation.py`
 - `tests/test_scene_index.py`
 - `tests/test_scene_manager_contracts.py`
@@ -1895,13 +1922,296 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
 - `tests/test_scene_persistence_contract.py`
 - `tests/test_scene_projection.py`
 - `tests/test_scene_serializable_authoring.py`
-- `tests/test_schema_validation.py`
+- `tests/test_scene_serializable_pipeline.py`
+- `tests/test_scene_structural_authoring.py`
 - `tests/test_scene_workspace.py`
+- `tests/test_schema_validation.py`
 - `tests/test_serializable_mutation_coordinator.py`
+
+### Documentación (3)
+
+- `docs/TECHNICAL.md`
+- `docs/architecture.md`
+- `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
+
+### Benchmarks y artifacts (12)
+
+- `artifacts/refactor_scene_manager/baseline.json`
+- `artifacts/refactor_scene_manager/baseline_benchmarks.json`
+- `artifacts/refactor_scene_manager/s1-benchmarks.json`
+- `artifacts/refactor_scene_manager/s3-benchmarks.json`
+- `artifacts/refactor_scene_manager/s5-benchmarks.json`
+- `artifacts/refactor_scene_manager/s7-benchmarks-rerun.json`
+- `artifacts/refactor_scene_manager/s7-benchmarks.json`
+- `artifacts/refactor_scene_manager/s9-benchmarks-rerun.json`
+- `artifacts/refactor_scene_manager/s9-benchmarks.json`
+- `engine/debug/benchmark_runner.py`
+- `tests/test_benchmark_run.py`
+- `tests/test_benchmark_suite.py`
+
+### Infraestructura de agentes, Queen, Codex y OpenCode (44)
+
+- `.agents/skills/queen/SKILL.md`
+- `.agents/skills/queen/references/model_router.md`
+- `.agents/skills/queen/references/workflow.md`
+- `.agents/skills/queen/scripts/run_opencode_subagent.py`
+- `.codex/agents/ai_friendliness.toml`
+- `.codex/agents/builder.toml`
+- `.codex/agents/builder_deep.toml`
+- `.codex/agents/code_reviewer.toml`
+- `.codex/agents/code_reviewer_deep.toml`
+- `.codex/agents/godot_adapter.toml`
+- `.codex/agents/godot_gap_analyzer.toml`
+- `.codex/agents/godot_source_analyzer.toml`
+- `.codex/agents/planner.toml`
+- `.codex/agents/planner_deep.toml`
+- `.codex/agents/test_strategist.toml`
+- `.codex/agents/test_strategist_deep.toml`
+- `.opencode/agents/ai-friendliness.md`
+- `.opencode/agents/builder-deep.md`
+- `.opencode/agents/builder-fast.md`
+- `.opencode/agents/builder.md`
+- `.opencode/agents/code-reviewer-deep.md`
+- `.opencode/agents/code-reviewer-fast.md`
+- `.opencode/agents/code-reviewer.md`
+- `.opencode/agents/committer.md`
+- `.opencode/agents/context-recon.md`
+- `.opencode/agents/documenter.md`
+- `.opencode/agents/godot-adapter.md`
+- `.opencode/agents/godot-gap-analyzer.md`
+- `.opencode/agents/godot-source-analyzer.md`
+- `.opencode/agents/planner-deep.md`
+- `.opencode/agents/planner-fast.md`
+- `.opencode/agents/planner.md`
+- `.opencode/agents/queen-codex-dispatch.md`
+- `.opencode/agents/test-strategist-deep.md`
+- `.opencode/agents/test-strategist-fast.md`
+- `.opencode/agents/test-strategist.md`
+- `.opencode/agents/validator.md`
+- `AGENTS.md`
+- `docs/agents.md`
+- `docs/queen_engine_workflow.md`
+- `opencode.json`
+- `tests/test_codex_queen_contract.py`
+- `tests/test_queen_agent_contract.py`
+- `tests/test_queen_dispatch.py`
+
+### Otros cambios auxiliares (2)
+
+- `engine/ecs/world_clone.py`
+- `engine/editor/undo_redo.py`
+
+## Justificación de cambios auxiliares y de gobernanza
+
+### Queen y fallback Codex/OpenCode
+
+- Archivos: `.agents/skills/queen/**`, `.opencode/agents/queen-codex-dispatch.md`,
+  `opencode.json`, `AGENTS.md`, `docs/agents.md` y
+  `docs/queen_engine_workflow.md`.
+- Historia: el grupo fue materializado en
+  `a5266785896316c3880f2f919011dc431c6bfdb7` durante las fases largas del
+  refactor. El diff registra el problema concreto: Queen podía declarar
+  `missing_required_agent` cuando la tool nativa faltaba o no conocía un rol,
+  aunque existiera un rol OpenCode mapeado.
+- Solución: política native-first, fallback automático solo antes de crear un
+  child nativo, dispatcher sin permisos salvo una única `task`, validación del
+  `task_result`, códigos de error distintos y límite de concurrencia. Esto
+  soportó planificación, dispatch, validación, review y auditoría sin convertir
+  un fallo de backend en falso éxito.
+- Relación con el refactor: fue infraestructura operativa usada para mantener
+  gates y roles especializados durante S7-S9; no implementa lógica de escenas.
+- Runtime: no se importa durante ejecución normal del motor. Solo se usa al
+  invocar Queen/OpenCode desde tooling de desarrollo.
+- Protección: `tests/test_codex_queen_contract.py`,
+  `tests/test_queen_agent_contract.py` y `tests/test_queen_dispatch.py`; en la
+  revalidación exacta pasaron 99/99.
+- Riesgo: dependencia del ejecutable y formato JSONL de OpenCode, más superficie
+  de configuración. Mitigación: `shell=False`, allowlist cerrada, sin permisos
+  de lectura/escritura del dispatcher, un solo dispatch, validación contractual
+  y errores no enmascarados. Riesgo aceptable por quedar fuera del runtime.
+
+### Configuración Codex y contratos de resultados OpenCode
+
+- Archivos: los 12 `.codex/agents/*.toml` inventariados y los 20 prompts
+  `.opencode/agents/*.md` distintos del dispatcher.
+- Problema concreto: los roles estándar/deep referían `gpt-5.6`, mientras el
+  router vigente exige `gpt-5.6-sol`; además los envelopes OpenCode no exponían
+  `phase_status`, impidiendo distinguir fase terminada de tarea terminada.
+- Solución: sincronización de IDs de modelo y adición de `phase_status` con
+  reglas coherentes por rol. Esto evita dispatch inválido y cierres prematuros.
+- Runtime: configuración y prompts de desarrollo; no son imports del motor.
+- Protección: `test_codex_queen_contract.py` verifica modelos/dispatcher y
+  `test_queen_agent_contract.py` verifica `phase_status` en todos los roles.
+- Riesgo: drift futuro de nombres de modelo o contratos duplicados entre Codex
+  y OpenCode. Aceptable en esta rama porque el cambio nació durante el refactor,
+  está probado y no afecta datos ni ejecución del motor.
+
+### Gobernanza y documentación de agentes
+
+- Archivos: `AGENTS.md`, `docs/agents.md` y `docs/queen_engine_workflow.md`.
+- Problema concreto: un catálogo de skills obsoleto podía ocultar la skill
+  Queen existente y el plan no registraba la semántica del fallback ni sus
+  códigos de salida.
+- Solución: bootstrap mínimo, autoridad native-first y documentación canónica
+  del workflow. Su relación es exclusivamente planificación y auditoría.
+- Runtime: documentación/gobernanza; no se carga por el motor.
+- Riesgo: instrucciones más densas. Aceptable porque eliminan una contradicción
+  operativa observada y están cubiertas por tests de contrato.
+
+### Harness de benchmark
+
+- Archivos: `engine/debug/benchmark_runner.py`,
+  `tests/test_benchmark_run.py`, `tests/test_benchmark_suite.py` y nueve JSON de
+  `artifacts/refactor_scene_manager/`.
+- Problema concreto: mediciones one-shot y tres muestras no permitían decidir
+  gates del refactor. El cambio fuerza warmup 1, mínimo siete muestras, mediana,
+  MAD/noise floor y clasificación `repeated_gate`; además mide transiciones y
+  `transform_edit` sin dejar estado incoherente.
+- Relación: proporciona baseline S1 y comparaciones S3/S5/S7/S9 requeridas para
+  validar el refactor.
+- Runtime: módulo debug invocado por tooling/CI; no forma parte del bucle normal
+  salvo ejecución explícita de benchmarks.
+- Protección: 22/22 tests del harness en la revalidación y dos rondas 4/4.
+- Riesgo: tiempo de CI y variabilidad de microbenchmarks. Aceptable con dos
+  rondas, artifacts crudos, umbrales hard/soft y análisis de noise floor.
+
+### Cambios auxiliares que sí pertenecen al runtime
+
+- `engine/ecs/world_clone.py`: conserva las siete versiones del `World` al
+  clonar y permite que clon/original avancen de forma independiente. Fue
+  necesario para que PLAY, rollback y prefabs no pierdan versiones al reemplazar
+  mundos durante el refactor. Lo protege `tests/test_ecs_clone.py`.
+- `engine/editor/undo_redo.py`: añade checkpoint opaco y restauración exacta de
+  pilas para que `SerializableMutationCoordinator` pueda hacer rollback
+  failure-atomic sin duplicar autoridad de historial. Lo protegen contratos de
+  historial, atomicidad y rollback incluidos en el bloque 158/158.
+- Riesgo: copiar versiones obsoletas o restaurar un token ajeno. Mitigación:
+  clonación exacta seguida de avance independiente y `TypeError` para tokens no
+  creados por `UndoRedoManager`. Son cambios internos; no cambian
+  `SceneManager` ni `EngineAPI` públicas.
+
+### Confirmaciones de límites
+
+- `.agents/**`, `.codex/**`, `.opencode/**`, `AGENTS.md`, `opencode.json`, sus
+  docs y tests no se cargan como runtime normal del motor.
+- Excepciones declaradas: `engine/ecs/world_clone.py` y
+  `engine/editor/undo_redo.py` sí son runtime interno; el benchmark runner solo
+  se carga al ejecutar tooling de benchmark.
+- No cambia el schema de escenas: `engine/serialization/schema.py` no aparece
+  en el diff; `tests/test_schema_validation.py` refuerza el contrato.
+- No cambia API pública de `EngineAPI`: no aparece ningún archivo `engine/api/**`.
+  Los wrappers públicos de `SceneManager` conservan firma y comportamiento;
+  contratos públicos/adapters pasaron 101/101.
+- No introduce segunda autoridad de estado: `tests/test_scene_architecture.py`
+  pasó 22/22 y verifica writers únicos, wiring único, imports runtime y grafo
+  acíclico.
+- Estos cambios no invalidan revisión funcional: suite exacta 3914/3914,
+  estáticos, contratos, arquitectura y benchmarks están verdes. No existe
+  `must_fix` funcional abierto.
+
+## Archivos de esta corrección de cierre
+
+No pertenecen al snapshot funcional `f0bc3cc`:
+
+- `.github/workflows/scene-manager-refactor-validation.yml`
+- `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/full-suite.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/ruff-production.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/ruff-tests.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/mypy-global.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/scene-architecture.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/public-contracts.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/scene-state-contracts.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-harness-tests.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/queen-governance-tests.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-round-1.json`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-round-1.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-round-2.json`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-round-2.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/diff-check-working-tree.log`
+- `artifacts/refactor_scene_manager/closure_f0bc3cc/diff-check-branch.log`
 
 ## Hallazgos pendientes
 
-- Ninguno. Gate final cerrado con `must_fix=[]` y `should_fix=[]`.
+- `ci_execution=pending`: workflow preparado pero no puede ejecutarse hasta que
+  el archivo exista en un commit publicado. No hay autorización de commit/push.
+- La suite completa deja dos settings tracked marcados por normalización de
+  finales de línea. Empezó limpia y pasó; se restauraron solo esos dos archivos
+  en el worktree temporal antes de los demás gates. No altera el SHA auditado,
+  pero es deuda de aislamiento de tests no atribuible al refactor funcional.
+- `must_fix=[]` para código funcional. Estado global `partial` exclusivamente
+  porque CI obligatorio sigue pendiente.
+
+## Revalidación reproducible del SHA funcional
+
+### Entorno aislado
+
+- Worktree detached temporal:
+  `C:/Users/usuario/AppData/Local/Temp/OpenGame-validation-f0bc3cc`; eliminado
+  limpio después de preservar la evidencia fuera del snapshot.
+- Cada log registra antes del comando: `git rev-parse HEAD`,
+  `git status --short` y `python --version`.
+- Todos los bloques comenzaron con SHA
+  `f0bc3cc5561b789dcc0135718e495e889b7d7465`, status vacío y Python 3.11.1.
+- La suite completa fue el primer bloque. Sus efectos laterales sobre dos
+  settings se restauraron desde el mismo SHA antes de continuar.
+
+### Comandos y resultados
+
+| Gate | Comando exacto | Exit | Resultado | Duración | Evidencia |
+| --- | --- | ---: | --- | ---: | --- |
+| Suite completa | `python -m unittest discover -s tests` | 0 | 3914 pass, 0 fail, 8 skip | 418.113 s unittest; 427.557 s proceso | `closure_f0bc3cc/full-suite.log` |
+| Ruff producción | `python -m ruff check engine cli tools main.py` | 0 | sin findings | 0.251 s | `closure_f0bc3cc/ruff-production.log` |
+| Ruff tests | `python -m ruff check tests` | 0 | sin findings | 0.244 s | `closure_f0bc3cc/ruff-tests.log` |
+| Mypy global | `python -m mypy engine cli tools main.py` | 0 | 424 archivos, 0 issues | 6.517 s | `closure_f0bc3cc/mypy-global.log` |
+| Arquitectura/imports/ciclos | `python -m unittest tests.test_scene_architecture` | 0 | 22 pass, 0 fail, 0 skip | 7.438 s unittest; 7.816 s proceso | `closure_f0bc3cc/scene-architecture.log` |
+| API pública/adapters | `python -m unittest tests.test_scene_manager_contracts tests.test_engine_api_scene_sync tests.test_engine_api_public_contract tests.test_engine_api_facade_smoke tests.test_api_authoring_workspace tests.test_unity_core_authoring` | 0 | 101 pass, 0 fail, 0 skip | 5.016 s unittest; 5.636 s proceso | `closure_f0bc3cc/public-contracts.log` |
+| Rollback/dirty/pending/history/prefabs | `python -m unittest tests.test_scene_mutation_rollback_contract tests.test_scene_manager_sync tests.test_scene_edit_sync tests.test_scene_history_atomicity tests.test_scene_change_history tests.test_prefab_overrides tests.test_prefab_persistence tests.test_scene_persistence_contract tests.test_scene_save_integrity tests.test_scene_workspace tests.test_serializable_mutation_coordinator` | 0 | 158 pass, 0 fail, 0 skip | 1.483 s unittest; 2.058 s proceso | `closure_f0bc3cc/scene-state-contracts.log` |
+| Harness benchmark | `python -m unittest tests.test_benchmark_run tests.test_benchmark_suite` | 0 | 22 pass, 0 fail, 0 skip | 48.303 s unittest; 48.907 s proceso | `closure_f0bc3cc/benchmark-harness-tests.log` |
+| Gobernanza auxiliar | `python -m unittest tests.test_codex_queen_contract tests.test_queen_agent_contract tests.test_queen_dispatch` | 0 | 99 pass, 0 fail, 0 skip | 0.160 s unittest; 0.512 s proceso | `closure_f0bc3cc/queen-governance-tests.log` |
+| Benchmark ronda 1 | `python -m tools.benchmark_suite --quick --backend legacy_aabb --out C:/Users/usuario/Documents/GitHub/MotorVideojuegosIA/artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-round-1.json` | 0 | 4/4 pass, 0 warnings, 0 fail | 105.731 s | JSON + log ronda 1 |
+| Benchmark ronda 2 | `python -m tools.benchmark_suite --quick --backend legacy_aabb --out C:/Users/usuario/Documents/GitHub/MotorVideojuegosIA/artifacts/refactor_scene_manager/closure_f0bc3cc/benchmark-round-2.json` | 0 | 4/4 pass, 0 warnings, 0 fail | 107.330 s | JSON + log ronda 2 |
+| Diff worktree | `git diff --check` | 0 | limpio | 0.173 s | `closure_f0bc3cc/diff-check-working-tree.log` |
+| Diff completo de rama | `git diff --check fded3556ed9509d5f0e06221f1655ba0f4053687..f0bc3cc5561b789dcc0135718e495e889b7d7465` | 0 | limpio | 0.297 s | `closure_f0bc3cc/diff-check-branch.log` |
+
+Directorio de ejecución en todos los casos: el worktree detached indicado.
+Ruff/Mypy/diff no producen conteo de tests; skips no aplican.
+
+### Benchmarks y comparación
+
+- Protocolo: suite `--quick` completa de cuatro casos, backend `legacy_aabb`;
+  `benchmark_runner` impone warmup efectivo 1, siete muestras mínimas, mediana,
+  MAD y noise floor.
+- Baseline autoritativo: `s1-benchmarks.json`, SHA-256
+  `BC2A089A0FAC5F20A2B73CA07D98A1533C233074675EDA259C224EF4CA9758D4`.
+- Ronda 1: SHA-256
+  `02A386573AD2160CB5EF676FEAC30B10D23A6B225BA554241F1B7E33B37F437C`.
+- Ronda 2: SHA-256
+  `B55B051A04E78A7C25B9CFA0B9A68FA29B5C33F3ED29580702C29167F5CCF8F5`.
+- Ambos reports: `status=passed`, 4 casos, 0 warnings y 0 failures.
+- Frente a S1, `transform_edit` conserva alerta histórica: mediana agrupada
+  0.02265 ms frente a 0.01640 ms, +38.11 %. No es regresión nueva del cierre:
+  mejora 17.79 % frente al centro de los dos artifacts S9 del mismo código y el
+  A/B same-process ya registrado en S5 midió coste causal 5.57 %, menor al 10 %.
+- `scene_add_entity_canonicalization` agrupado queda +10.75 % frente a S1, con
+  delta absoluto 0.0010 ms igual al MAD actual y sin repetirse en ambas rondas
+  individuales. Resto de alertas >10 % frente a S1 son mejoras.
+- Clasificación: `benchmark_noise`/sin regresión material nueva;
+  `third_run_required=false`, `must_fix=[]`.
+
+### CI
+
+- Workflow existente `.github/workflows/ci.yml`: Python 3.11, suite, Ruff,
+  Mypy y benchmark quick, pero sin `workflow_dispatch`, checkout de SHA exacto
+  ni guard explícito del SHA.
+- Workflow nuevo `.github/workflows/scene-manager-refactor-validation.yml`:
+  dispatch manual, input por defecto `f0bc3cc...`, exige SHA hexadecimal de 40
+  caracteres, checkout explícito, guard de igualdad, Python 3.11, instalación
+  canónica, suite, Ruff, Mypy, arquitectura, dos benchmarks, diff-check y upload
+  de logs/artifacts. Permisos `contents: read`, credenciales no persistidas,
+  timeout 45 minutos, sin secretos ni escritura remota.
+- `ci_execution=pending`: archivo local sin commit ni push; no existe run URL ni
+  resultado de jobs. Por este gate pendiente, `task_status=partial`.
 
 ## Evidencia de comandos
 

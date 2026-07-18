@@ -1,0 +1,156 @@
+name: SceneManager refactor validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      validation_ref:
+        description: Exact 40-character commit SHA to validate
+        required: false
+        default: f0bc3cc5561b789dcc0135718e495e889b7d7465
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate exact functional snapshot
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}\scene-manager-validation
+    steps:
+      - name: Checkout requested snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.validation_ref }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact SHA
+        shell: pwsh
+        run: |
+          $expected = "${{ inputs.validation_ref }}"
+          $actual = git rev-parse HEAD
+          git status --short
+          if ($expected -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "validation_ref must be an exact 40-character commit SHA; got '$expected'"
+          }
+          if ($actual -ne $expected.ToLowerInvariant()) {
+            throw "Checked out $actual instead of $expected"
+          }
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          python -m pip install --upgrade "pip>=26.1.2" "setuptools>=78.1.1" "wheel>=0.46" "pytest>=9.0.3"
+          python -m pip install -e .[dev]
+          New-Item -ItemType Directory -Force $env:EVIDENCE_DIR | Out-Null
+          $dirty = @(git status --short)
+          if ($dirty.Count -ne 0) {
+            $dirty | Write-Error
+            throw "Canonical installation mutated the validation snapshot"
+          }
+
+      - name: Full test suite
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m unittest discover -s tests 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'full-suite.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore tracked test side effects
+        if: always()
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          git restore --source="${{ inputs.validation_ref }}" -- projects/Fornite/settings/project_settings.json settings/project_settings.json
+          $remaining = @(git status --short)
+          if ($remaining.Count -ne 0) {
+            $remaining | Write-Error
+            throw "Unexpected tracked or untracked changes after the full suite"
+          }
+
+      - name: Ruff production
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m ruff check engine cli tools main.py 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'ruff-production.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Ruff tests
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m ruff check tests 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'ruff-tests.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Mypy
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m mypy engine cli tools main.py 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'mypy.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Scene architecture and import-cycle contracts
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m unittest tests.test_scene_architecture 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'scene-architecture.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Benchmark round 1
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m tools.benchmark_suite --quick --backend legacy_aabb --out (Join-Path $env:EVIDENCE_DIR 'benchmark-round-1.json') 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'benchmark-round-1.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Benchmark round 2
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          & python -m tools.benchmark_suite --quick --backend legacy_aabb --out (Join-Path $env:EVIDENCE_DIR 'benchmark-round-2.json') 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'benchmark-round-2.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Diff check
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          git status --short
+          python --version
+          git diff --check
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scene-manager-refactor-validation-${{ inputs.validation_ref }}
+          path: ${{ runner.temp }}/scene-manager-validation/
+          if-no-files-found: warn
+          retention-days: 30
