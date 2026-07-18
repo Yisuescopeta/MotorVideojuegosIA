@@ -915,9 +915,13 @@ Acciones de reglas soportadas por contrato:
 
 ## Workspace y authoring
 
-`SceneManager` conserva wrappers compatibles y enruta carga/guardado, authoring,
-scene flow, historial, transacciones, operaciones estructurales y prefabs hacia
-la entrada activa o la entrada indicada.
+`SceneManager` es una fachada fina de composicion, wiring, routing y
+coordinacion transversal. Conserva los wrappers publicos compatibles y coordina
+carga/guardado, persistencia y refresh, runtime, authoring, scene flow,
+historial, transacciones, operaciones estructurales y prefabs hacia la entrada
+activa o indicada. Sus helpers de entrada solo delegan en `SceneWorkspace`; el
+tracking de mtime, los callbacks de guardado y la compilacion de senales runtime
+siguen siendo coordinacion propia de la fachada.
 
 `engine.scenes.scene_persistence.ScenePersistenceService` es la autoridad
 tecnica de resolucion de rutas, storage default o custom, readback, recuento de
@@ -935,14 +939,17 @@ postcondicion de I/O, no una segunda autoridad de proyeccion.
 
 `SceneWorkspace` es la autoridad en memoria de entradas abiertas y activa,
 seleccion y dirty state por entrada, claves, normalizacion de rutas, rekey y
-ciclo `EDIT -> PLAY -> STOP`; no realiza I/O. Delega proyeccion tecnica en
+ciclo `EDIT -> PLAY -> STOP`; `activate_scene()` es la transicion explicita
+para activar una entrada ya abierta y es la ruta usada por `SceneManager` al
+reutilizar `load_scene_from_file`; no realiza I/O. Delega proyeccion tecnica en
 `SceneProjectionService` y scene flow en `SceneFlowPolicy`.
 `SceneWorkspace.install_entry_state()` es el unico punto que instala juntos
 `scene`, `edit_world` y `edit_world_version`. `SceneManager` conecta estos
 servicios con persistencia y authoring, y conserva tracking de mtime, callbacks,
-wrappers y routing; no implementa schema, materializacion ni reconstruccion de
-mundos. Las firmas publicas, Scene v2, su schema y la atomicidad vigente de los
-caminos default y custom no cambian.
+wrappers y routing; no asigna la entrada activa ni implementa schema,
+materializacion, reconstruccion de mundos, pending sync, snapshots, historial,
+scene flow, transforms, prefabs o jerarquias. Las firmas publicas, Scene v2, su
+schema y la atomicidad vigente de los caminos default y custom no cambian.
 
 `engine.scenes.edit_sync.SceneEditSyncCoordinator` es la autoridad unica sobre
 las razones y el estado de pending sync legacy o preview transitorio. Sus
@@ -1093,12 +1100,15 @@ entidad: valida el payload, publica conjuntamente `Scene` y `World`, o restaura
 el snapshot semantico ante cualquier fallo.
 
 `restore_scene_data(scene_key, data)` ofrece la capacidad reutilizable para
-undo/redo por snapshot. Resuelve una entrada EDIT, pasa una copia defensiva a
-`SceneWorkspace.replace_entry_scene()`, limpia pending mediante
-`SceneEditSyncCoordinator` y solicita `SceneWorkspace.mark_dirty()`. Una entrada
-ausente, una entrada en PLAY o un payload invalido retorna `False`. El
-coordinador de history no necesita conocer workspace, projection, edit sync ni
-la entrada restaurada.
+undo/redo por snapshot. Resuelve una entrada EDIT y el coordinador instala la
+copia defensiva mediante la ruta comun del workspace, que publica juntos
+`Scene` y `World` y preserva seleccion. Antes de crear el `World`, restaura en
+memoria las formas vacias de overrides del snapshot por `serialized_id`; la
+persistencia y el schema conservan su canonicalizacion normal de esos payloads.
+Despues limpia pending mediante `SceneEditSyncCoordinator` y solicita
+`SceneWorkspace.mark_dirty()`. Una entrada ausente, una entrada en PLAY o un
+payload invalido retorna `False`. El coordinador de history no necesita conocer
+workspace, projection, edit sync ni la entrada restaurada.
 
 `SceneSerializableAuthoringPipeline` captura, confirma o revierte las operaciones
 con el token opaco del coordinador y registra historial mediante

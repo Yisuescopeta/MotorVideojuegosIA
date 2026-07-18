@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +24,26 @@ class SceneWorkspaceTests(unittest.TestCase):
             "scale_x": 1.0,
             "scale_y": 1.0,
         }
+
+    @staticmethod
+    def _write_scene_file(directory: str, name: str) -> Path:
+        path = Path(directory) / f"{name}.json"
+        SceneWorkspaceTests._write_scene_payload(path, name)
+        return path
+
+    @staticmethod
+    def _write_scene_payload(path: Path, name: str) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "name": name,
+                    "entities": [],
+                    "rules": [],
+                    "feature_metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
 
     def test_exit_play_clears_pending_edit_sync(self) -> None:
         self.scene_manager.load_scene(
@@ -229,6 +250,140 @@ class SceneWorkspaceTests(unittest.TestCase):
         self.assertIsNone(self.scene_manager.activate_scene(scene_b_key))
         self.assertEqual(self.scene_manager.active_scene_key, scene_a_key)
         self.assertTrue(self.scene_manager.is_playing)
+
+    def test_loading_an_open_scene_path_activates_through_workspace_in_edit_mode(self) -> None:
+        self.scene_manager.create_new_scene("Active")
+        active_key = self.scene_manager.active_scene_key
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = self._write_scene_file(temp_dir, "AlreadyOpen")
+            opened_world = self.scene_manager.load_scene_from_file(path.as_posix(), activate=False)
+            opened_entry = self.scene_manager.resolve_entry(path.as_posix())
+
+            self.assertIsNotNone(opened_entry)
+            self.assertEqual(self.scene_manager.active_scene_key, active_key)
+
+            activated_world = self.scene_manager.load_scene_from_file(path.as_posix(), activate=True)
+
+        assert opened_entry is not None
+        self.assertIs(activated_world, opened_world)
+        self.assertIs(activated_world, opened_entry.edit_world)
+        self.assertEqual(self.scene_manager.active_scene_key, opened_entry.key)
+
+    def test_loading_an_open_scene_path_without_activation_preserves_active_entry(self) -> None:
+        self.scene_manager.create_new_scene("Active")
+        active_entry = self.scene_manager.resolve_entry(None)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = self._write_scene_file(temp_dir, "Inactive")
+            opened_world = self.scene_manager.load_scene_from_file(path.as_posix(), activate=False)
+            opened_entry = self.scene_manager.resolve_entry(path.as_posix())
+            open_scenes_before = self.scene_manager.list_open_scenes()
+
+            reused_world = self.scene_manager.load_scene_from_file(path.as_posix(), activate=False)
+
+        self.assertIs(reused_world, opened_world)
+        self.assertIs(self.scene_manager.resolve_entry(None), active_entry)
+        self.assertIs(self.scene_manager.resolve_entry(path.as_posix()), opened_entry)
+        self.assertEqual(self.scene_manager.list_open_scenes(), open_scenes_before)
+
+    def test_loading_an_open_scene_path_rejects_activation_during_play_without_state_change(self) -> None:
+        self.scene_manager.create_new_scene("Playing")
+        playing_entry = self.scene_manager.resolve_entry(None)
+        assert playing_entry is not None
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = self._write_scene_file(temp_dir, "Inactive")
+            self.assertIsNotNone(self.scene_manager.load_scene_from_file(path.as_posix(), activate=False))
+            inactive_entry = self.scene_manager.resolve_entry(path.as_posix())
+            assert inactive_entry is not None
+            entries_before = tuple(self.scene_manager.resolve_entry(item["key"]) for item in self.scene_manager.list_open_scenes())
+            runtime_world = self.scene_manager.enter_play()
+            self.assertIsNotNone(runtime_world)
+
+            result = self.scene_manager.load_scene_from_file(path.as_posix(), activate=True)
+
+        self.assertIsNone(result)
+        self.assertIs(self.scene_manager.resolve_entry(None), playing_entry)
+        self.assertIs(self.scene_manager.active_world, runtime_world)
+        self.assertIs(playing_entry.runtime_world, runtime_world)
+        self.assertTrue(playing_entry.is_playing)
+        self.assertIs(self.scene_manager.resolve_entry(inactive_entry.key), inactive_entry)
+        self.assertEqual(
+            tuple(self.scene_manager.resolve_entry(item["key"]) for item in self.scene_manager.list_open_scenes()),
+            entries_before,
+        )
+
+    def test_reusing_open_scene_does_not_acknowledge_uninstalled_file_mtime(self) -> None:
+        self.scene_manager.create_new_scene("Active")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = self._write_scene_file(temp_dir, "DiskOne")
+            self.assertIsNotNone(self.scene_manager.load_scene_from_file(path.as_posix(), activate=False))
+            initial_mtime = path.stat().st_mtime
+            self._write_scene_payload(path, "DiskTwo")
+
+            with patch.object(
+                self.scene_manager._persistence,
+                "get_mtime",
+                return_value=initial_mtime + 100.0,
+            ):
+                self.assertIsNotNone(
+                    self.scene_manager.load_scene_from_file(path.as_posix(), activate=True)
+                )
+                refreshed_world = self.scene_manager.get_edit_world()
+
+        self.assertIsNotNone(refreshed_world)
+        current_scene = self.scene_manager.current_scene
+        assert current_scene is not None
+        self.assertEqual(current_scene.name, "DiskTwo")
+
+    def test_rejected_open_scene_activation_does_not_acknowledge_file_mtime(self) -> None:
+        self.scene_manager.create_new_scene("Playing")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = self._write_scene_file(temp_dir, "DiskOne")
+            self.assertIsNotNone(self.scene_manager.load_scene_from_file(path.as_posix(), activate=False))
+            initial_mtime = path.stat().st_mtime
+            self._write_scene_payload(path, "DiskTwo")
+            self.assertIsNotNone(self.scene_manager.enter_play())
+
+            with patch.object(
+                self.scene_manager._persistence,
+                "get_mtime",
+                return_value=initial_mtime + 100.0,
+            ):
+                self.assertIsNone(
+                    self.scene_manager.load_scene_from_file(path.as_posix(), activate=True)
+                )
+                self.assertIsNotNone(self.scene_manager.exit_play())
+                self.assertIsNotNone(self.scene_manager.activate_scene(path.as_posix()))
+                refreshed_world = self.scene_manager.get_edit_world()
+
+        self.assertIsNotNone(refreshed_world)
+        current_scene = self.scene_manager.current_scene
+        assert current_scene is not None
+        self.assertEqual(current_scene.name, "DiskTwo")
+
+    def test_reusing_dirty_open_scene_keeps_unsaved_payload_when_file_is_newer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = self._write_scene_file(temp_dir, "DiskOne")
+            self.assertIsNotNone(self.scene_manager.load_scene_from_file(path.as_posix(), activate=True))
+            self.assertTrue(self.scene_manager.set_feature_metadata("local_edit", True))
+            edited_world = self.scene_manager.get_edit_world()
+            initial_mtime = path.stat().st_mtime
+            self._write_scene_payload(path, "DiskTwo")
+
+            with patch.object(
+                self.scene_manager._persistence,
+                "get_mtime",
+                return_value=initial_mtime + 100.0,
+            ):
+                reused_world = self.scene_manager.load_scene_from_file(path.as_posix(), activate=True)
+                refreshed_world = self.scene_manager.get_edit_world()
+
+        self.assertIs(reused_world, edited_world)
+        self.assertIs(refreshed_world, edited_world)
+        current_scene = self.scene_manager.current_scene
+        assert current_scene is not None
+        self.assertEqual(current_scene.name, "DiskOne")
+        self.assertEqual(self.scene_manager.get_feature_metadata()["local_edit"], True)
+        self.assertTrue(self.scene_manager.is_dirty)
 
     def test_workspace_state_tracks_active_scene_and_view_state(self) -> None:
         self.scene_manager.create_new_scene("Scene A")

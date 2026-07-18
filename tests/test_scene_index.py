@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 from engine.scenes.scene import Scene
@@ -157,7 +158,7 @@ class SceneIndexTests(unittest.TestCase):
 
         self.assertEqual(scene.to_dict(), before)
 
-    def test_scene_load_keeps_canonical_empty_override_shape_without_private_markers(self) -> None:
+    def test_scene_load_and_from_dict_canonicalize_empty_override_shape(self) -> None:
         scene = Scene(
             data={
                 "name": "OverrideShapes",
@@ -185,16 +186,126 @@ class SceneIndexTests(unittest.TestCase):
                 "feature_metadata": {},
             }
         )
+        round_tripped = Scene.from_dict(scene.to_dict())
 
+        for current_scene in (scene, round_tripped):
+            for entity_name in ("ExplicitEmpty", "CanonicalEmpty"):
+                self.assertEqual(
+                    current_scene.find_entity(entity_name)["prefab_instance"]["overrides"],
+                    {"operations": []},
+                )
+            for entity_data in current_scene.to_dict()["entities"]:
+                self.assertNotIn(
+                    "_preserve_empty_overrides",
+                    entity_data["prefab_instance"],
+                )
+
+    def test_scene_snapshot_restores_only_exact_empty_shapes_by_live_id(self) -> None:
+        scene = Scene(
+            data={
+                "name": "SnapshotOverrideShapes",
+                "entities": [
+                    {
+                        "id": "target-id",
+                        "name": "Target",
+                        "prefab_instance": {"overrides": {"operations": []}},
+                        "components": {},
+                    },
+                    {
+                        "id": "canonical-id",
+                        "name": "Canonical",
+                        "prefab_instance": {"overrides": {"operations": []}},
+                        "components": {},
+                    },
+                    {
+                        "id": "non-empty-id",
+                        "name": "NonEmpty",
+                        "prefab_instance": {
+                            "overrides": {
+                                "operations": [
+                                    {
+                                        "op": "set_entity_property",
+                                        "target": "",
+                                        "field": "tag",
+                                        "value": "Enemy",
+                                    }
+                                ]
+                            }
+                        },
+                        "components": {},
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        target_instance = copy.deepcopy(scene.find_entity("Target")["prefab_instance"])
+        target_instance["overrides"] = {}
+        self.assertTrue(
+            scene.update_entity_property_by_id(
+                "target-id",
+                "prefab_instance",
+                target_instance,
+            )
+        )
+
+        snapshot = scene.to_snapshot_dict()
+        self.assertEqual(snapshot["entities"][0]["prefab_instance"]["overrides"], {})
         self.assertEqual(
-            scene.find_entity("ExplicitEmpty")["prefab_instance"]["overrides"],
+            snapshot["entities"][1]["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        rebuilt = Scene.from_dict(snapshot)
+        self.assertEqual(
+            rebuilt.find_entity_by_id("target-id")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        snapshot_before_restore = copy.deepcopy(snapshot)
+
+        rebuilt.restore_empty_prefab_override_shapes(snapshot)
+        rebuilt.restore_empty_prefab_override_shapes(snapshot)
+
+        self.assertEqual(snapshot, snapshot_before_restore)
+        self.assertEqual(
+            rebuilt.find_entity_by_id("target-id")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            rebuilt.find_entity_by_id("canonical-id")["prefab_instance"]["overrides"],
             {"operations": []},
         )
         self.assertEqual(
-            scene.find_entity("CanonicalEmpty")["prefab_instance"]["overrides"],
+            rebuilt.find_entity_by_id("non-empty-id")["prefab_instance"]["overrides"],
+            snapshot["entities"][2]["prefab_instance"]["overrides"],
+        )
+
+        ignored = copy.deepcopy(snapshot)
+        ignored["entities"][0]["id"] = "missing-id"
+        ignored["entities"].append(
+            {
+                "id": "",
+                "name": "Invalid",
+                "prefab_instance": {"overrides": {}},
+                "components": {},
+            }
+        )
+        canonical = Scene.from_dict(snapshot)
+        canonical.restore_empty_prefab_override_shapes(ignored)
+        self.assertEqual(
+            canonical.find_entity_by_id("target-id")["prefab_instance"]["overrides"],
             {"operations": []},
         )
-        self.assertNotIn("_preserve_empty_overrides", scene.to_dict())
+        malicious = copy.deepcopy(snapshot)
+        malicious["entities"][2]["prefab_instance"]["overrides"] = {}
+        non_empty = Scene.from_dict(snapshot)
+        non_empty_before = copy.deepcopy(
+            non_empty.find_entity_by_id("non-empty-id")["prefab_instance"]["overrides"]
+        )
+        non_empty.restore_empty_prefab_override_shapes(malicious)
+        self.assertEqual(
+            non_empty.find_entity_by_id("non-empty-id")["prefab_instance"]["overrides"],
+            non_empty_before,
+        )
 
     def test_add_entity_rejects_duplicate_name_using_index(self) -> None:
         scene = self._scene()

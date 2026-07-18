@@ -16,8 +16,6 @@ from engine.serialization.schema import (
     validate_scene_entity_for_add,
 )
 
-_PRESERVE_EMPTY_PREFAB_OVERRIDES = "_preserve_empty_overrides"
-
 if TYPE_CHECKING:
     from engine.ecs.world import World
     from engine.levels.component_registry import ComponentRegistry
@@ -40,9 +38,6 @@ class Scene:
         self._data.setdefault("entities", [])
         self._data.setdefault("rules", [])
         self._data.setdefault("feature_metadata", {})
-        for entity_data in self._data["entities"]:
-            if isinstance(entity_data, dict):
-                self._consume_empty_prefab_override_marker(entity_data)
         self._source_path: Optional[str] = source_path
         self._entity_index: Dict[str, Dict[str, Any]] = {}
         self._entity_id_index: Dict[str, Dict[str, Any]] = {}
@@ -224,19 +219,7 @@ class Scene:
             index=len(entities),
             used_ids=self._entity_id_index,
         )
-        self._consume_empty_prefab_override_marker(canonical_entity)
         return canonical_entity
-
-    @staticmethod
-    def _consume_empty_prefab_override_marker(entity_data: Dict[str, Any]) -> None:
-        prefab_instance = entity_data.get("prefab_instance")
-        if not isinstance(prefab_instance, dict):
-            return
-        if prefab_instance.pop(_PRESERVE_EMPTY_PREFAB_OVERRIDES, False) is not True:
-            return
-        overrides = prefab_instance.get("overrides")
-        if overrides == {"operations": []}:
-            prefab_instance["overrides"] = {}
 
     def _rename_entity_references(self, old_name: str, new_name: str, entity_id: str | None = None) -> None:
         for entity_data in self.entities_data:
@@ -566,6 +549,62 @@ class Scene:
 
     def to_dict(self) -> Dict[str, Any]:
         return migrate_scene_data(self._data)
+
+    def to_snapshot_dict(self) -> Dict[str, Any]:
+        """Return canonical data while preserving live operation-owned empty shapes."""
+        snapshot = self.to_dict()
+        empty_override_ids = {
+            entity_id.strip()
+            for entity_data in self.entities_data
+            if isinstance(entity_data, dict)
+            and isinstance((entity_id := entity_data.get("id")), str)
+            and entity_id.strip()
+            and isinstance((prefab_instance := entity_data.get("prefab_instance")), dict)
+            and prefab_instance.get("overrides") == {}
+        }
+        snapshot_entities = snapshot.get("entities", [])
+        if not isinstance(snapshot_entities, list):
+            return snapshot
+        for entity_data in snapshot_entities:
+            if not isinstance(entity_data, dict):
+                continue
+            entity_id = entity_data.get("id")
+            if not isinstance(entity_id, str) or entity_id.strip() not in empty_override_ids:
+                continue
+            prefab_instance = entity_data.get("prefab_instance")
+            if (
+                isinstance(prefab_instance, dict)
+                and prefab_instance.get("overrides") == {"operations": []}
+            ):
+                prefab_instance["overrides"] = {}
+        return snapshot
+
+    def restore_empty_prefab_override_shapes(self, snapshot_data: Dict[str, Any]) -> None:
+        """Restore exact empty override shapes from a trusted in-memory snapshot."""
+        snapshot_entities = snapshot_data.get("entities", [])
+        if not isinstance(snapshot_entities, list):
+            return
+        for snapshot_entity in snapshot_entities:
+            if not isinstance(snapshot_entity, dict):
+                continue
+            entity_id = snapshot_entity.get("id")
+            if not isinstance(entity_id, str) or not entity_id.strip():
+                continue
+            snapshot_prefab_instance = snapshot_entity.get("prefab_instance")
+            if (
+                not isinstance(snapshot_prefab_instance, dict)
+                or snapshot_prefab_instance.get("overrides") != {}
+            ):
+                continue
+            entity_data = self.find_entity_by_id(entity_id.strip())
+            if entity_data is None:
+                continue
+            prefab_instance = entity_data.get("prefab_instance")
+            if (
+                isinstance(prefab_instance, dict)
+                and prefab_instance.get("overrides") == {"operations": []}
+            ):
+                prefab_instance["overrides"] = {}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], source_path: Optional[str] = None) -> "Scene":

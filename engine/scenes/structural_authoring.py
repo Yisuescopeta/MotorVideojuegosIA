@@ -584,7 +584,11 @@ class ScenePrefabAuthoring:
         except Exception:
             self.pipeline.rollback(entry, token)
             return False
-        return self.pipeline.commit_snapshot(entry, token, before, label=label)
+        try:
+            return self.pipeline.commit_snapshot(entry, token, before, label=label)
+        except Exception:
+            self.pipeline.rollback(entry, token)
+            return False
 
 
 class SceneStructuralAuthoring:

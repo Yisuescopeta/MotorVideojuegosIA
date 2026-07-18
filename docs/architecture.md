@@ -137,7 +137,10 @@ La persistencia tecnica queda separada por responsabilidades:
   dirty state.
 - `SceneWorkspace` es la autoridad de entradas abiertas y activa, seleccion y
   dirty state por entrada, claves, normalizacion de rutas y rekey, ademas del
-  ciclo de vida `EDIT -> PLAY -> STOP` en memoria. Delega conversion tecnica en
+  ciclo de vida `EDIT -> PLAY -> STOP` en memoria. `activate_scene()` es la
+  transicion explicita para activar una entrada ya abierta y es la ruta usada
+  por `SceneManager` al reutilizar `load_scene_from_file`. Delega conversion
+  tecnica en
   `SceneProjectionService` y reglas de scene flow en `SceneFlowPolicy`; no
   realiza I/O. `install_entry_state()` es el unico punto que instala juntos
   `scene`, `edit_world` y `edit_world_version` en una entrada.
@@ -191,12 +194,13 @@ La persistencia tecnica queda separada por responsabilidades:
 - `SceneFlowPolicy` concentra, sin estado de workspace ni I/O, las reglas
   deterministas de precedencia, sincronizacion y validez entre `SceneLink` y
   `feature_metadata.scene_flow`.
-- `SceneManager` conserva wrappers, routing, tracking de mtime y callbacks de
-  guardado, y conecta persistencia, workspace, proyeccion, edit sync, authoring
-  incremental y serializable, overrides y politica de scene flow. No implementa
-  schema, materializacion, reconstruccion de mundos, politica de pending sync,
-  deltas incrementales, authoring serializable general, rollback serializable ni
-  algoritmos de override; las solicita a los servicios propietarios.
+- `SceneManager` es una fachada de composicion, wiring, routing y coordinacion
+  transversal. Conserva compatibilidad publica, callbacks de guardado, tracking
+  de mtime y la coordinacion entre persistencia, workspace, runtime y las
+  autoridades de authoring. No implementa schema, proyeccion, pending sync,
+  snapshots, historial, scene flow, transforms, prefabs ni algoritmos de
+  jerarquia; los solicita a los servicios propietarios. Los wrappers privados de
+  entrada que siguen existiendo solo delegan una resolucion al workspace.
 
 Antes de una mutacion serializable o estructural, la ruta propietaria delega el
 flush legacy en `SceneEditSyncCoordinator.flush_pending()`. El guardado delega en
@@ -300,8 +304,7 @@ captura revierte; un fallo de commit o history restaura payload, mundo,
 seleccion, dirty, pending, versiones y undo/redo. Esta atomicidad cubre el estado
 en memoria. Los archivos prefab ya escritos no se revierten: su I/O no forma
 parte de la transaccion atomica. `SceneChangeCoordinator` permanece pasivo y
-`SceneManager` ya no define callback estructural de historial. La consolidacion
-final de `SceneManager` como fachada fina corresponde a S9.
+`SceneManager` ya no define callback estructural de historial.
 
 En scene flow, metadata aporta el mapa base. Un `SceneLink` con el mismo
 `flow_key` lo reemplaza; si hay duplicados gana el ultimo en orden serializado.

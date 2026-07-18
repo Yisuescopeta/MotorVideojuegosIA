@@ -57,13 +57,15 @@ class SerializableMutationCoordinator:
             raise ValueError("serializable mutation requires an edit world")
         source_path = entry.scene.source_path
         fallback_name = entry.scene.name
-        prepared = self._workspace.prepare_scene_payload(entry.scene.to_dict())
+        snapshot_data = entry.scene.to_snapshot_dict()
+        prepared = self._workspace.prepare_scene_payload(copy.deepcopy(snapshot_data))
         scene = self._projection.create_scene(
             prepared,
             source_path=source_path,
             fallback_name=fallback_name,
         )
         self._workspace.sync_scene_links_from_feature_metadata(scene)
+        scene.restore_empty_prefab_override_shapes(snapshot_data)
         return _MutationState(
             scene=scene,
             world=entry.edit_world.clone() if clone_world else entry.edit_world,
@@ -73,19 +75,24 @@ class SerializableMutationCoordinator:
         )
 
     def snapshot_scene_data(self, snapshot: object) -> dict[str, Any]:
-        return copy.deepcopy(self._state(snapshot).scene.to_dict())
+        return self._state(snapshot).scene.to_snapshot_dict()
 
     def snapshot_entry_scene_data(self, entry: SceneWorkspaceEntry) -> dict[str, Any]:
         """Return a defensive scene snapshot for history boundaries."""
-        return copy.deepcopy(entry.scene.to_dict())
+        return entry.scene.to_snapshot_dict()
 
     def restore_scene_data(self, scene_key: str, data: dict[str, Any]) -> bool:
         """Restore one edit scene through workspace and pending-sync authorities."""
         entry = self._workspace.resolve_entry(scene_key)
         if entry is None or entry.is_playing:
             return False
+        selection = self._workspace.capture_selection(entry)
         try:
-            self._workspace.replace_entry_scene(entry, copy.deepcopy(data))
+            self._install_payload(
+                entry,
+                data,
+                selection=selection,
+            )
         except ValueError:
             return False
         self._edit_sync.clear_pending(entry)
@@ -115,7 +122,7 @@ class SerializableMutationCoordinator:
         try:
             self._install_payload(
                 entry,
-                entry.scene.to_dict(),
+                entry.scene.to_snapshot_dict(),
                 selection=selection,
             )
         except Exception as exc:
@@ -138,7 +145,7 @@ class SerializableMutationCoordinator:
             self.restore_snapshot(entry, snapshot)
             return False
         try:
-            self._projection.validate_payload(entry.scene.to_dict())
+            self._projection.validate_payload(entry.scene.to_snapshot_dict())
             self._edit_sync.clear_pending(entry)
             self._workspace.install_entry_state(
                 entry,
@@ -160,13 +167,15 @@ class SerializableMutationCoordinator:
     ) -> None:
         source_path = entry.scene.source_path
         fallback_name = entry.scene.name
-        prepared = self._workspace.prepare_scene_payload(data)
+        snapshot_data = copy.deepcopy(data)
+        prepared = self._workspace.prepare_scene_payload(copy.deepcopy(snapshot_data))
         scene = self._projection.create_scene(
             prepared,
             source_path=source_path,
             fallback_name=fallback_name,
         )
         self._workspace.sync_scene_links_from_feature_metadata(scene)
+        scene.restore_empty_prefab_override_shapes(snapshot_data)
         world = self._projection.create_world(scene)
         self._workspace.install_entry_state(entry, scene, world)
         self._workspace.restore_selection(entry, selection)

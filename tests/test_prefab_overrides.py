@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import engine.scenes.prefab_overrides as prefab_overrides_module
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.contracts import PrefabOverridePort
 from engine.scenes.prefab_overrides import PrefabOverrideService
@@ -495,6 +496,7 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
         pipeline.begin.assert_called_once_with(
             entry,
             failure_context="apply_prefab_overrides:Instance",
+            clone_world=True,
         )
         pipeline.commit_snapshot.assert_called_once()
         pipeline.rollback.assert_not_called()
@@ -523,6 +525,35 @@ class ScenePrefabApplyOverrideMutationTests(unittest.TestCase):
                 self.assertEqual(entry.scene.to_dict(), before)
                 pipeline.rollback.assert_called_once()
                 pipeline.commit_snapshot.assert_not_called()
+
+    def test_apply_overrides_commit_false_does_not_run_second_rollback(self) -> None:
+        entry, _root = _entry(legacy_overrides={"": {"tag": "Enemy"}})
+        authoring, pipeline = self._authoring(entry)
+        pipeline.commit_snapshot.return_value = False
+
+        with patch(
+            "engine.assets.prefab.PrefabManager.save_prefab",
+            return_value=True,
+        ):
+            self.assertFalse(authoring.apply_prefab_overrides("Instance"))
+
+        pipeline.commit_snapshot.assert_called_once()
+        pipeline.rollback.assert_not_called()
+
+    def test_apply_overrides_commit_exception_rolls_back_and_returns_false(self) -> None:
+        entry, _root = _entry(legacy_overrides={"": {"tag": "Enemy"}})
+        authoring, pipeline = self._authoring(entry)
+        token = pipeline.begin.return_value[0]
+        pipeline.commit_snapshot.side_effect = RuntimeError("commit failed")
+
+        with patch(
+            "engine.assets.prefab.PrefabManager.save_prefab",
+            return_value=True,
+        ):
+            self.assertFalse(authoring.apply_prefab_overrides("Instance"))
+
+        pipeline.commit_snapshot.assert_called_once()
+        pipeline.rollback.assert_called_once_with(entry, token)
 
 
 class ScenePrefabPostFlushStateTests(unittest.TestCase):
@@ -631,6 +662,8 @@ class ScenePrefabPostFlushStateTests(unittest.TestCase):
 
     def test_apply_preserves_empty_override_shapes_only_for_the_owning_operation(self) -> None:
         manager = SceneManager(create_default_registry())
+        history = UndoRedoManager()
+        manager.set_history_manager(history)
         manager.load_scene(
             {
                 "name": "Apply Override Shapes",
@@ -686,6 +719,9 @@ class ScenePrefabPostFlushStateTests(unittest.TestCase):
         before_canonical = copy.deepcopy(
             entry.scene.find_entity("UnrelatedCanonical")["prefab_instance"]["overrides"]
         )
+        before_target = copy.deepcopy(
+            entry.scene.find_entity("Instance")["prefab_instance"]["overrides"]
+        )
 
         with patch("engine.assets.prefab.PrefabManager.save_prefab", return_value=True):
             self.assertTrue(manager.apply_prefab_overrides("Instance"))
@@ -704,6 +740,40 @@ class ScenePrefabPostFlushStateTests(unittest.TestCase):
         )
         self.assertEqual(before_explicit, {})
         self.assertEqual(before_canonical, {"operations": []})
+        edit_root = manager.get_edit_world().get_entity_by_name("Instance")
+        self.assertEqual(edit_root.prefab_instance["overrides"], {})
+
+        self.assertTrue(history.undo())
+        self.assertEqual(
+            manager.find_entity_data("Instance")["prefab_instance"]["overrides"],
+            before_target,
+        )
+        self.assertEqual(
+            manager.find_entity_data("UnrelatedExplicit")["prefab_instance"]["overrides"],
+            before_explicit,
+        )
+        self.assertEqual(
+            manager.find_entity_data("UnrelatedCanonical")["prefab_instance"]["overrides"],
+            before_canonical,
+        )
+        edit_root = manager.get_edit_world().get_entity_by_name("Instance")
+        self.assertEqual(edit_root.prefab_instance["overrides"], before_target)
+
+        self.assertTrue(history.redo())
+        self.assertEqual(
+            manager.find_entity_data("Instance")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            manager.find_entity_data("UnrelatedExplicit")["prefab_instance"]["overrides"],
+            before_explicit,
+        )
+        self.assertEqual(
+            manager.find_entity_data("UnrelatedCanonical")["prefab_instance"]["overrides"],
+            before_canonical,
+        )
+        edit_root = manager.get_edit_world().get_entity_by_name("Instance")
+        self.assertEqual(edit_root.prefab_instance["overrides"], {})
 
 
 if __name__ == "__main__":

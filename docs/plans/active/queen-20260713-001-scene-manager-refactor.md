@@ -6,17 +6,17 @@
 - `model_route`: `critical`
 - `max_cycles`: `5`
 - `cycle`: `1/5` (continuación reautorizada explícitamente por usuario el 2026-07-16; los cinco ciclos agotados anteriores quedan registrados como evidencia)
-- `current_phase`: `S8B`
-- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 completed; S8A completed; S8B in_progress`
-- `task_status`: `partial`
-- `next_action`: builder deep S8B: demostrar re-resolución post-`begin()`, cubrir pending unpack/apply y estrechar overrides vacíos; después repetir Gate S8
+- `current_phase`: `S9`
+- `phase_status`: `S0 completed; S1 completed; S2 completed; S3 completed; S4 completed; S5 completed; S6 completed; S7A completed; S7B completed; S7C completed; S7D completed; GATE S7 completed; S8A completed; S8B completed; GATE S8 completed; S9 completed; GATE S9 completed`
+- `task_status`: `completed`
+- `next_action`: reporte final; sin commit ni push por autorización
 - `commit_authorized`: `false`
 - `commit_created`: `false`
 - `push_authorized`: `false`
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `resume_head_sha`: `a5266785896316c3880f2f919011dc431c6bfdb7`
+- `resume_head_sha`: `3850e1995c1a7756803bfa8486f27c7ccf570874`
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `final_sha`: pendiente
+- `final_sha`: `3850e1995c1a7756803bfa8486f27c7ccf570874` (HEAD sin commit; resultado en working tree)
 
 ## Autoridades
 
@@ -296,7 +296,9 @@ No existe C6. Hallazgos pendientes tras C5 producen `partial`, `blocked` o `fail
 
 - `scene_manager.py`
 - nuevo `tests/test_scene_architecture.py`
-- tests manager/sync.
+- `tests/test_scene_workspace.py` para la regresión conductual de activación de
+  una escena ya abierta; tests manager/sync solo condicionales a una expectativa
+  privada demostrada y con PLAN SYNC previo.
 - `docs/architecture.md`, `docs/TECHNICAL.md` por documenter.
 - `engine/scenes/__init__.py` solo si reexport compatible demostrado.
 - artifacts benchmark final.
@@ -1563,6 +1565,293 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
   restante, workspace y demás paths están prohibidos al builder. Aplicar las
   cuatro fases de debugging: reproducir, comparar patrón, confirmar una hipótesis
   y solo entonces hacer el fix mínimo con TDD.
+- CONTINUACIÓN raíz 2026-07-18: rama `feat/SceneManagerRefactor`, HEAD y
+  upstream coinciden en `3850e1995c1a7756803bfa8486f27c7ccf570874`
+  (`+0/-0`) y el working tree estaba limpio. Ese commit preexistente contiene
+  `clone_world=True` para apply y nuevas regresiones S8B; esta continuación no
+  lo creó ni lo empujó. `py -3.11` está disponible como Python 3.11.1, por lo
+  que sustituye la limitación de entorno registrada el 2026-07-17.
+- TDD raíz S8B 2026-07-18: el baseline exacto de 180 tests dejó dos fallos.
+  Uno es migración de test: la expectativa antigua de
+  `test_apply_overrides_clears_via_primitive_after_save` no incluye el
+  `clone_world=True` requerido. El otro es funcional: tras
+  `apply_prefab_overrides`, el objetivo termina con `{"operations": []}` en
+  vez de `{}` porque el commit reconstruye la Scene y la canonicalización
+  global vuelve a cambiar la representación. El test confirma que no es un
+  problema de rollback ni del flush. La solución debe retirar la política
+  global de `Scene.__init__`/canonicalización y conservar la representación
+  únicamente en la operación, payload, port o primitiva propietaria. Antes de
+  ampliar el write set a pipeline/coordinator, el planificador crítico debe
+  demostrar que la autoridad actual no puede preservar correctamente Scene,
+  World e historial con el write set S8B ya autorizado.
+- PLAN SYNC S8B `empty-override-shape-owner` 2026-07-18: planner deep read-only
+  confirmó que `_normalize_prefab_override_map` es la frontera que destruye la
+  distinción durante `Scene.to_dict`, capture, commit, reconstrucción e
+  historial. El fix mínimo es preservar `{}` cuando el mapa está vacío,
+  conservar `{"operations": []}` por la rama canónica existente y seguir
+  migrando únicamente mapas legacy no vacíos. Se retiran de `Scene` el marcador
+  privado y su consumo global. No cambia `schema_version`, validación ni formas
+  aceptadas; no se modifica pipeline/coordinator ni las cuatro dependencias de
+  structural. Write set ampliado exclusivamente a
+  `engine/serialization/schema.py`, `tests/test_schema_validation.py` y los
+  paths S8B ya autorizados `engine/scenes/scene.py`,
+  `tests/test_scene_index.py`, `tests/test_prefab_overrides.py`. Documentación
+  de schema queda condicionada a que el documenter confirme un contrato canónico
+  estable; `architecture.md`/`TECHNICAL.md` no cambian por este ajuste.
+- S8B remediation builder 2026-07-18: `status=completed`, sin violaciones de
+  write set. `_normalize_prefab_override_map` conserva por separado `{}` y
+  `{"operations": []}`; los mapas legacy no vacíos continúan migrando. Se
+  eliminaron el marcador privado y sus dos consumos globales en `Scene`; la
+  expectativa directa de apply usa `clone_world=True`. La regresión pública
+  prueba objetivo, entidad ajena `{}`, entidad ajena operations, World y
+  undo/redo exactos. TDD dirigido 4/4; focused S8B 180/180; schema 60/60;
+  conjunto builder 108/108; Ruff, Mypy y diff-check verdes.
+- S8B documenter 2026-07-18: `status=completed`. Solo
+  `docs/schema_serialization.md` cambió porque la preservación de las dos formas
+  vacías es contrato observable de migración. `architecture.md` y
+  `TECHNICAL.md` permanecen intactos; no cambió autoridad arquitectónica.
+- Gate S8 validator repetido 2026-07-18: `verdict=pass` y
+  `test_contract_satisfied=true`. Focused 240/240; regresión amplia 116/116;
+  suite completa exacta `py -3.11` 3.880 OK/8 skips en 676,996 s y exit 0;
+  Ruff producción/tests, Mypy global, diff-check, imports, firmas, write set,
+  cuatro dependencias, versiones y atomicidad verdes.
+- Gate S8 reviewer deep 2026-07-18: `verdict=changes_requested`. Structural,
+  orden post-begin, clone World, rollback/history, cuatro dependencias y ausencia
+  de Context fueron aprobados. Único `must_fix` major: preservar `{}` en
+  `_normalize_prefab_override_map` cambia globalmente migración/carga de scenes
+  y prefabs, convierte un ajuste propietario en contrato de schema y contradice
+  el no-objetivo. Gate S8 continúa abierto. Debe restaurarse la canonicalización
+  previa y mover la preservación exacta de formas a una frontera explícita de
+  transacción/payload/Scene, con Scene, World, history y rollback coherentes y
+  sin marcador privado.
+- TEST CONTRACT SYNC S8B `empty-override-transaction-owner` 2026-07-18:
+  `verdict=sufficient`. Debe restaurarse el contrato general `{}` ->
+  `{"operations": []}` en scene/prefab migration, conservar mapas legacy no
+  vacíos, y probar apply con target `{}`, entidad ajena viva `{}`, entidad ajena
+  operations, paridad Scene/World, undo/redo, projection failure y
+  history.push después de append con selección, dirty, pending, siete versiones,
+  `edit_world_version` y stacks exactos. `commit_snapshot=False` no hace segundo
+  rollback; una excepción de commit en apply sí hace rollback y retorna `False`,
+  conforme al prompt vigente.
+- PLAN SYNC S8B `transaction-shape-snapshot`: planner deep y crítica independiente
+  aprobaron mover la preservación a `SerializableMutationCoordinator` apoyado
+  por primitivas explícitas de `Scene`. `Scene.to_snapshot_dict()` conserva `{}`
+  solo por ID estable en una copia defensiva; la restauración idempotente solo
+  cambia el caso canónico vacío correspondiente, nunca operaciones no vacías.
+  Coordinator usa esa forma exacta en capture, commit, snapshots de history y
+  restore; `_install_payload` prepara/proyecta canónicamente, restaura shapes
+  después de crear/sincronizar Scene y antes de crear World, e instala solo vía
+  workspace. Schema, formato persistido, pipeline, ports, history y cuatro
+  dependencias structural no cambian. Write set builder exacto:
+  `engine/scenes/scene.py`, `engine/scenes/serializable_mutation.py`,
+  `engine/scenes/structural_authoring.py` solo para la semántica pública de
+  excepción final de apply, `engine/serialization/schema.py`,
+  `tests/test_scene_index.py`, `tests/test_schema_validation.py`,
+  `tests/test_serializable_mutation_coordinator.py`,
+  `tests/test_prefab_overrides.py` y `tests/test_scene_history_atomicity.py`.
+  `docs/schema_serialization.md` será restaurado solo por documenter; plan,
+  pipeline, contracts, manager, workspace, projection, ECS y gobernanza quedan
+  prohibidos al builder.
+- S8B transaction-shape builder 2026-07-18: `status=completed`, sin violaciones
+  de write set. TDD rojo: 114 tests con 3 fallos y 4 errores. Resultado: schema
+  restaurado sin diff; marcador global eliminado; `Scene.to_snapshot_dict` y
+  restauración exacta por ID; coordinator propaga la forma en capture, commit,
+  restore, history y World; apply captura excepción final con rollback y
+  `False`, pero `commit_snapshot=False` no repite rollback. Tests directos,
+  projection failure, apply Scene/World/undo/redo y push-after-append cubren
+  formas, selección, dirty, pending, versiones y stacks. Focused 114/114,
+  matriz propietaria 170/170 y baseline S8B ampliado 246/246; Ruff write set,
+  Mypy producción, diff-check y auditoría de marcador verdes.
+- S8B documenter post-review: el hunk rechazado de
+  `docs/schema_serialization.md` fue restaurado exactamente a HEAD y no queda
+  diff documental. La canonicalización persistida no cambió; la preservación es
+  interna al snapshot transaccional ya cubierto por documentación arquitectónica.
+- Gate S8 validator final post-remediation 2026-07-18: `verdict=pass` y
+  `test_contract_satisfied=true`. Focused 259/259 en 2,006 s; regresión amplia
+  272/272 en 9,772 s; suite completa 3.886 OK/8 skips en 470,702 s;
+  gobernanza 75/75; Ruff producción/tests, Mypy 424 archivos, diff-check,
+  imports/ciclos, API, write set, orden begin y versiones verdes.
+- Gate S8 reviewer deep final: `verdict=approved`, `must_fix=[]`,
+  `should_fix=[]`. Confirmó canonicalización persistida intacta, snapshot exacto
+  por ID limitado a memoria, Scene/World coherentes, atomicidad, cuatro
+  dependencias, pipeline único y siete rutas post-begin.
+- Gate S8 AI audit final R2: `verdict=approved`, `safe_for_agents=true`,
+  puntuación 100/100, `must_fix=[]`, `should_fix=[]`. `docs/TECHNICAL.md` fue
+  corregido de forma mínima para reflejar instalación conjunta Scene/World vía
+  workspace, shapes exactos antes de World y schema persistido canónico.
+- CIERRE GATE S8 2026-07-18: `S8B completed`, `GATE S8 completed`;
+  `current_phase=S9`, `task_status=partial`. S9 continúa sin commit ni push.
+- S9 RECON 2026-07-18: `status=completed`. `SceneManager` tiene 924 líneas,
+  pero tamaño no es criterio. `_active_scene_key` getter/setter y `_entries` no
+  tienen consumidores externos; `_entry_path_or_key` está muerto. La única
+  activación directa residual está en reuse de `load_scene_from_file`.
+  `_get_active_entry`/`_resolve_entry` son wrappers finos con consumidores;
+  `_mtime_key`, callbacks de guardado, runtime signal compiler, refresh,
+  persistence, `apply_change` y transacciones son coordinación válida. No hay
+  algoritmos extraídos activos ni imports runtime de manager desde servicios.
+- TEST CONTRACT S9 2026-07-18: `verdict=sufficient`. Nuevo test AST/import graph
+  debe verificar imports runtime sin confundir `TYPE_CHECKING`, grafo acíclico,
+  cuatro dependencias structural, ausencia de Context/callback manager, writers
+  exclusivos, rebuild local, owners únicos y manager sin algoritmos extraídos;
+  routing Transform/RectTransform/parent/prefab sigue permitido. API pública,
+  seis kinds, EngineAPI, adapters, editor, CLI, runtime y benchmarks no se
+  relajan.
+- S9 plan crítico: diseño funcional mínimo aprobado en sustancia: eliminar
+  `_active_scene_key`, `_entries` y `_entry_path_or_key`; iterar workspace en
+  `clear_all_dirty`; reutilizar `SceneWorkspace.activate_scene` para una escena
+  ya abierta y propagar rechazo PLAY; conservar los demás wrappers/coordinadores.
+  Crítica inicial `changes_requested` por permisos/test/fingerprint, corregidos
+  en este PLAN SYNC antes del builder.
+- PLAN SYNC S9 `architecture-and-prestate`: builder autorizado exactamente en
+  `engine/scenes/scene_manager.py`, nuevo `tests/test_scene_architecture.py` y
+  `tests/test_scene_workspace.py`. `tests/test_scene_manager_contracts.py` y
+  `tests/test_scene_manager_sync.py` permanecen read-only y deben pasar sin
+  migración; cualquier necesidad exige evidencia y sync. Predicados AST:
+  imports runtime excluyen bloques `if TYPE_CHECKING`; `contracts.py` es boundary
+  de adapters y `__init__.py` reexport lazy; writers de entry solo workspace,
+  storage Scene solo scene.py; targets se identifican por forma AST, no texto;
+  grafo dirigido de owners sin ciclos; structural cuatro params y wiring único;
+  facade se valida por delegación/mutaciones/imports, nunca LOC ni substrings de
+  Transform/parent/prefab. No autorizar cambios fuera de esos tres paths.
+- Fingerprint pre-S9 funcional: 9 paths S8 fuera del plan, diff hash
+  `14683e3075554f5acdb59bf4bb471138c4490d25`; hunk protegido de
+  `docs/TECHNICAL.md` hash `3e69f4378e983baa74556fa266ce3b0ebf51312f`.
+  Paths: `docs/TECHNICAL.md`, `engine/scenes/scene.py`,
+  `engine/scenes/serializable_mutation.py`,
+  `engine/scenes/structural_authoring.py`, `tests/test_prefab_overrides.py`,
+  `tests/test_scene_history_atomicity.py`, `tests/test_scene_index.py`,
+  `tests/test_schema_validation.py`,
+  `tests/test_serializable_mutation_coordinator.py`. Builder S9 debe preservar
+  esos bytes; documenter posterior podrá añadir hunks canónicos en docs sin
+  alterar el hunk S8. Auditoría S9 compara delta contra este fingerprint, no el
+  diff total contra HEAD.
+- S9 plan critique R2: `verdict=approved`, `safe_to_build=true`; permisos,
+  predicados AST y fingerprint corregidos antes del builder.
+- S9 builder 2026-07-18: `status=completed`, sin violaciones de write set.
+  Eliminó `_active_scene_key`, `_entries` y `_entry_path_or_key`; reuse de
+  `load_scene_from_file` activa exclusivamente mediante workspace y propaga el
+  rechazo PLAY; `clear_all_dirty` usa la autoridad real. Añadió el test AST de
+  imports runtime, grafo de owners, writers, rebuild, cuatro dependencias,
+  wiring único y fachada, además de tres contratos conductuales de carga
+  existente. TDD rojo 37 con dos fallos esperados tras corregir dos defectos del
+  test; verde 37/37. Focused manager 87/87; owners 180/180; EngineAPI/editor
+  149/149; CLI/runtime/Unity 142/142; Ruff, Mypy y diff-check verdes. Fingerprint
+  S8 `14683e3075554f5acdb59bf4bb471138c4490d25` y hunk TECHNICAL
+  `3e69f4378e983baa74556fa266ce3b0ebf51312f` intactos.
+- S9 documenter 2026-07-18: `status=completed`. Actualizó únicamente
+  `docs/architecture.md` y `docs/TECHNICAL.md`: workspace es la única transición
+  de activación y SceneManager queda documentado como fachada fina. El hunk S8
+  de restauración exacta se preservó; `motor doctor` quedó sano con dos avisos
+  preexistentes de bootstrap ausente y `git diff --check` verde.
+- GATE S9 benchmark rondas 1 y 2: mismo harness quick, backend `legacy_aabb`,
+  warmup 1 y siete muestras; ambas 4/4 casos, 0 warnings y 0 failures. Artefactos
+  `s9-benchmarks.json` SHA-256
+  `75482AEF8AA82FC9A1F5DA778357089A9E64AF5328B48525B463C330C21A295B` y
+  `s9-benchmarks-rerun.json` SHA-256
+  `80F4498C633B8E0052CF9A3AA321261BE3574A9A3471296A90BEDB3C6F088664`.
+  Performance review independiente: `verdict=benchmark_noise`,
+  `third_run_required=false`, `gate_blocking=false`, `must_fix=[]`; las alertas
+  aisladas no se repitieron o quedaron dentro del noise floor histórico y no hay
+  cambio causal en los hot paths medidos.
+- GATE S9 validator ciclo 1: `phase_status=blocked` únicamente por evidencia de
+  ejecución truncada, sin `must_fix` funcional. Owners 190/190, EngineAPI,
+  adapters y editor 77/77, runtime y Unity 93/93, Ruff producción/tests, Mypy
+  global de 424 archivos, arquitectura, artifacts y diff-check verdes. La suite
+  completa y el bloque CLI fueron ejecutados, pero el terminal no expuso sus
+  footers; Reina raíz debe repetirlos con captura acotada y pedir revalidación
+  antes del reviewer.
+- GATE S9 evidencia de ejecución raíz: sesiones persistidas hasta footer real.
+  CLI 61/61 OK en 121,353 s, exit 0; suite completa 3.899/3.899 OK, 8 skips,
+  502,944 s, exit 0. El bloqueo era de captura del terminal, no funcional;
+  revalidación independiente solicitada antes del reviewer.
+- GATE S9 validator final: `verdict=pass`, `test_contract_satisfied=true`,
+  `must_fix=[]`. Confirma suite 3.899/3.899, 8 skips; CLI 61/61; owners
+  190/190; API, adapters y editor 77/77; runtime y Unity 93/93; Ruff
+  producción/tests; Mypy global 424; arquitectura, artifacts, write set y
+  diff-check verdes.
+- GATE S9 reviewer deep ciclo 1: `verdict=changes_requested`, `gate_ready=false`,
+  cuatro `must_fix`. (1) La reutilización de una escena abierta adelanta mtime
+  sin instalar el nuevo payload y puede suprimir refresh externo. (2) El test
+  AST no normaliza `ImportFrom.level`, por lo que imports/aristas relativas
+  evaden el contrato. (3) El audit de writers limita entry state a módulos
+  directos de `engine/scenes` y no resuelve receptores `SceneWorkspaceEntry` en
+  todo `engine/**`. (4) docs llaman erróneamente a `activate_scene()` la única
+  transición, aunque workspace también activa al load/create/close. S8,
+  firmas, owners reales y benchmark permanecen verdes.
+- PLAN SYNC S9 remediation R1: builder autorizado únicamente en
+  `engine/scenes/scene_manager.py`, `tests/test_scene_architecture.py` y
+  `tests/test_scene_workspace.py`; documenter posterior únicamente en
+  `docs/architecture.md` y `docs/TECHNICAL.md`. Remedio mínimo: no reconocer
+  mtime no instalado en reuse/rechazo PLAY; normalizar imports absolutos y
+  relativos incluido `module=None` respetando `TYPE_CHECKING`; analizar writers
+  resolubles/tipados como `SceneWorkspaceEntry` bajo todo `engine/**` con única
+  autoridad `workspace_lifecycle.py`; añadir probes adversariales estables.
+- S9 remediation builder R1: `status=completed`, write set exacto y sin
+  violaciones. TDD rojo reprodujo dos `DiskOne != DiskTwo`; control dirty verde.
+  La rama reuse ya no reconoce un mtime cuyo payload no instaló. El AST
+  normaliza imports absolutos/relativos incluido `module=None`, respeta
+  `TYPE_CHECKING`, incorpora aristas relativas y audita receivers entry
+  tipados/resueltos en todo `engine/**` sin falsos positivos conocidos.
+  Arquitectura+workspace 45/45 y focused amplio 125/125; Ruff 3 archivos,
+  Mypy manager+arquitectura y diff-check verdes. Suite completa reservada al
+  revalidator.
+- S9 remediation documenter R1: `status=completed`, únicamente
+  `docs/architecture.md` y `docs/TECHNICAL.md`. Ambas describen
+  `activate_scene()` como transición explícita para una entrada ya abierta y
+  ruta de reuse del manager, manteniendo `SceneWorkspace` como autoridad única
+  del estado activo sin negar load/create/close internos. Diff-check verde.
+- GATE S9 validator post-R1: `verdict=pass`, `test_contract_satisfied=true`,
+  `must_fix=[]`. Focused Scene/arquitectura/manager/persistencia/rollback
+  235/235; API/adapters/editor/runtime/Unity 170/170; CLI 61/61; governance
+  75/75; suite completa 3.907/3.907 OK, 8 skips, 471,042 s, exit 0. Ruff
+  producción/tests, Mypy global 424, diff-check, write set, S8 protegido y
+  artifacts verdes. Los cuatro `must_fix` R1 quedan verificados.
+- GATE S9 reviewer deep post-R1: `verdict=changes_requested`, `gate_ready=false`,
+  un `must_fix` y un `should_fix`, ambos limitados al test AST. El writer audit
+  no detecta entry dentro de `enumerate(entries.values())` ni un atributo
+  `self.entry` tipado compartido entre métodos, y marca falsamente un
+  `config.resolve_entry()` ajeno. Además debe endurecerse alias de
+  `TYPE_CHECKING` y scans de futuros subpaquetes. Mtime, docs, imports relativos,
+  S8 y benchmark quedan aprobados.
+- PLAN SYNC S9 remediation R2: builder autorizado exclusivamente en
+  `tests/test_scene_architecture.py`. Debe resolver elementos de values/items y
+  enumerate, propagar atributos de instancia tipados entre métodos, vincular
+  resolvers a receptores workspace/manager conocidos o tipados, registrar aliases
+  de `TYPE_CHECKING` y usar `rglob` con paths relativos en scans de servicios y
+  wiring. Añadir probes adversariales de los casos exactos; ningún cambio de
+  producción, docs, artifacts ni tests conductuales.
+- S9 remediation builder R2: `status=completed`, único archivo
+  `tests/test_scene_architecture.py`, sin violaciones. TDD rojo 4/4 para alias
+  `TYPE_CHECKING`, enumerate-values, atributo entry entre métodos y resolver
+  ajeno; verde 22/22 arquitectura y 69/69 arquitectura+workspace+contratos.
+  Añadió items/subscript/port/wrapper y subpaths; Ruff, Mypy y diff-check verdes.
+  Producción, docs, S8 y artifacts intactos.
+- GATE S9 validator post-R2: `verdict=pass`, `test_contract_satisfied=true`,
+  `must_fix=[]`. Arquitectura 22/22, focused 132/132 y suite completa
+  3.914/3.914 OK, 8 skips, 461,301 s, exit 0. Ruff producción/tests, Mypy
+  global 424, diff-check, write set, producción S8/S9 protegida y artifacts
+  verdes. Test arquitectónico SHA-256
+  `48BFFF476FA9D6EAD713198099947D080BBF09FB60EF176415D15FAC8831E69E`.
+- GATE S9 reviewer deep final post-R2: `verdict=approved`, `gate_ready=true`,
+  `must_fix=[]`, `should_fix=[]`. Probes exactos y 17 clasificaciones
+  adversariales sin falsos positivos/negativos materiales; mtime, docs, S8,
+  imports, writers, subpaths, API, benchmark y evidencia global aceptados.
+- GATE S9 AI audit final: `verdict=approved`, `safe_for_agents=true`, 100/100,
+  tier `excellent`, `must_fix=[]`, `should_fix=[]`. APIs, ports, adapters, CLI,
+  editor y Unity siguen discoverables sin internals nuevos; autoridades,
+  serialización, snapshots, docs y compliance aprobados. Probe independiente de
+  governance/CLI/coherencia IA 75/75.
+- CIERRE GATE S9 2026-07-18: `S9 completed`, `GATE S9 completed`,
+  `task_status=completed`. Validator `pass`, reviewer deep `approved`, AI audit
+  `approved`, performance `benchmark_noise` no bloqueante y `must_fix=[]`.
+  Resultado queda sin commit ni push: `commit_authorized=false`,
+  `commit_created=false`, `push_authorized=false`.
+- Auditoría raíz terminal: arquitectura+workspace+contratos 69/69 OK en
+  10,285 s; Ruff del write set S8/S9 y Mypy de cinco módulos críticos verdes;
+  `git diff --check` OK. Branch `feat/SceneManagerRefactor`; HEAD, upstream y
+  merge-base `3850e1995c1a7756803bfa8486f27c7ccf570874`. Working tree limitado
+  al plan, docs, write set funcional/tests y dos artifacts S9 registrados;
+  hashes de arquitectura y benchmarks coinciden. Ningún commit ni push creado.
 
 ## Archivos modificados
 
@@ -1571,6 +1860,8 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
 - `artifacts/refactor_scene_manager/s1-benchmarks.json`
 - `artifacts/refactor_scene_manager/s3-benchmarks.json`
 - `artifacts/refactor_scene_manager/s5-benchmarks.json`
+- `artifacts/refactor_scene_manager/s9-benchmarks.json`
+- `artifacts/refactor_scene_manager/s9-benchmarks-rerun.json`
 - `docs/TECHNICAL.md`
 - `docs/architecture.md`
 - `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
@@ -1591,6 +1882,8 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
 - `tests/test_benchmark_suite.py`
 - `tests/test_editor_tools.py`
 - `tests/test_scene_edit_sync.py`
+- `tests/test_scene_architecture.py`
+- `tests/test_scene_history_atomicity.py`
 - `tests/test_scene_incremental_authoring.py`
 - `tests/test_prefab_overrides.py`
 - `tests/test_scene_flow.py`
@@ -1602,15 +1895,13 @@ S1 debe producir benchmark comparable con warmup y mínimo siete muestras para `
 - `tests/test_scene_persistence_contract.py`
 - `tests/test_scene_projection.py`
 - `tests/test_scene_serializable_authoring.py`
+- `tests/test_schema_validation.py`
 - `tests/test_scene_workspace.py`
 - `tests/test_serializable_mutation_coordinator.py`
 
 ## Hallazgos pendientes
 
-- Ejecutar S3-S9 sin trasladar God Object ni introducir doble autoridad.
-- Retirar en S9 las asignaciones directas residuales a
-  `workspace.active_scene_key` observadas por el validator, conservando wrappers
-  compatibles.
+- Ninguno. Gate final cerrado con `must_fix=[]` y `should_fix=[]`.
 
 ## Evidencia de comandos
 

@@ -46,6 +46,46 @@ def _scene_payload() -> dict:
     }
 
 
+def _prefab_shape_payload() -> dict:
+    return {
+        "name": "Serializable Prefab Shapes",
+        "entities": [
+            {
+                "id": "target-id",
+                "name": "Target",
+                "prefab_instance": {
+                    "prefab_path": "missing-target.prefab",
+                    "root_name": "Target",
+                    "overrides": {"": {"tag": "Enemy"}},
+                },
+                "components": {},
+            },
+            {
+                "id": "explicit-id",
+                "name": "Explicit",
+                "prefab_instance": {
+                    "prefab_path": "missing-explicit.prefab",
+                    "root_name": "Explicit",
+                    "overrides": {"operations": []},
+                },
+                "components": {},
+            },
+            {
+                "id": "canonical-id",
+                "name": "Canonical",
+                "prefab_instance": {
+                    "prefab_path": "missing-canonical.prefab",
+                    "root_name": "Canonical",
+                    "overrides": {"operations": []},
+                },
+                "components": {},
+            },
+        ],
+        "rules": [],
+        "feature_metadata": {},
+    }
+
+
 class SerializableMutationCoordinatorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.projection = SceneProjectionService(create_default_registry())
@@ -62,6 +102,20 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
         self.workspace.load_scene(_scene_payload())
         self.entry = self.workspace.get_active_entry()
         assert self.entry is not None
+
+    @staticmethod
+    def _set_empty_override_shape(entry, entity_name: str) -> None:
+        scene_entity = entry.scene.find_entity(entity_name)
+        world_entity = entry.edit_world.get_entity_by_name(entity_name)
+        assert scene_entity is not None and world_entity is not None
+        prefab_instance = copy.deepcopy(scene_entity["prefab_instance"])
+        prefab_instance["overrides"] = {}
+        assert entry.scene.update_entity_property_by_id(
+            scene_entity["id"],
+            "prefab_instance",
+            prefab_instance,
+        )
+        world_entity.prefab_instance = copy.deepcopy(prefab_instance)
 
     def test_valid_commit_installs_equivalent_scene_world_and_clears_pending(self) -> None:
         self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
@@ -95,6 +149,158 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
         self.assertIsNone(self.entry.dirty_before_pending_edit_world_sync)
         self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
         self.assertEqual(self.coordinator.snapshot_scene_data(token), before)
+
+    def test_prefab_empty_shapes_are_exact_across_commit_and_snapshot(self) -> None:
+        self.workspace.load_scene(_prefab_shape_payload())
+        entry = self.workspace.get_active_entry()
+        assert entry is not None and entry.edit_world is not None
+        self._set_empty_override_shape(entry, "Explicit")
+        token = self.coordinator.capture_snapshot(entry, clone_world=True)
+        before = self.coordinator.snapshot_scene_data(token)
+        target = copy.deepcopy(entry.scene.find_entity("Target")["prefab_instance"])
+        target["overrides"] = {}
+        self.assertTrue(
+            entry.scene.update_entity_property_by_id(
+                "target-id",
+                "prefab_instance",
+                target,
+            )
+        )
+
+        self.assertTrue(
+            self.coordinator.commit_mutation(
+                entry,
+                token,
+                failure_context="prefab_empty_shapes",
+            )
+        )
+
+        self.assertEqual(
+            entry.scene.find_entity("Target")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.scene.find_entity("Explicit")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.scene.find_entity("Canonical")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Target").prefab_instance["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Explicit").prefab_instance["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Canonical").prefab_instance["overrides"],
+            {"operations": []},
+        )
+        self.assertNotEqual(
+            before["entities"][0]["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            before["entities"][1]["prefab_instance"]["overrides"],
+            {},
+        )
+
+        self.assertTrue(self.coordinator.restore_scene_data(entry.key, before))
+        self.assertNotEqual(
+            entry.scene.find_entity("Target")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.scene.find_entity("Explicit")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.scene.find_entity("Canonical")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Explicit").prefab_instance["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Canonical").prefab_instance["overrides"],
+            {"operations": []},
+        )
+
+    def test_prefab_empty_shapes_restore_exactly_after_projection_failure(self) -> None:
+        self.workspace.load_scene(_prefab_shape_payload())
+        entry = self.workspace.get_active_entry()
+        assert entry is not None and entry.edit_world is not None
+        self._set_empty_override_shape(entry, "Explicit")
+        self.assertTrue(self.workspace.select_entity(entry, entity_name="Explicit"))
+        self.workspace.mark_dirty(entry)
+        self.edit_sync.restore_pending_reason(entry, LEGACY_AUTHORING_SYNC_REASON)
+        token = self.coordinator.capture_snapshot(entry, clone_world=True)
+        scene_before = entry.scene.to_snapshot_dict()
+        world_before = copy.deepcopy(entry.edit_world.serialize())
+        versions_before = (
+            entry.edit_world.version,
+            entry.edit_world.structure_version,
+            entry.edit_world.transform_version,
+            entry.edit_world.render_version,
+            entry.edit_world.physics_version,
+            entry.edit_world.ui_layout_version,
+            entry.edit_world.selection_version,
+        )
+        target = copy.deepcopy(entry.scene.find_entity("Target")["prefab_instance"])
+        target["overrides"] = {}
+        self.assertTrue(
+            entry.scene.update_entity_property_by_id(
+                "target-id",
+                "prefab_instance",
+                target,
+            )
+        )
+
+        with patch.object(
+            self.projection,
+            "create_world",
+            side_effect=RuntimeError("shape projection failure"),
+        ):
+            self.assertFalse(
+                self.coordinator.commit_mutation(
+                    entry,
+                    token,
+                    failure_context="shape_projection_failure",
+                )
+            )
+
+        self.assertEqual(entry.scene.to_snapshot_dict(), scene_before)
+        self.assertEqual(entry.edit_world.serialize(), world_before)
+        self.assertEqual(
+            entry.scene.find_entity("Explicit")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Explicit").prefab_instance["overrides"],
+            {},
+        )
+        self.assertEqual(entry.selected_entity_name, "Explicit")
+        self.assertTrue(entry.dirty)
+        self.assertEqual(
+            entry.pending_edit_world_sync_reason,
+            LEGACY_AUTHORING_SYNC_REASON,
+        )
+        self.assertEqual(
+            (
+                entry.edit_world.version,
+                entry.edit_world.structure_version,
+                entry.edit_world.transform_version,
+                entry.edit_world.render_version,
+                entry.edit_world.physics_version,
+                entry.edit_world.ui_layout_version,
+                entry.edit_world.selection_version,
+            ),
+            versions_before,
+        )
 
     def test_projection_failure_restores_semantic_state_through_authorities(self) -> None:
         self.workspace.load_scene(
@@ -412,14 +618,19 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
     def test_restore_scene_data_uses_workspace_and_sync_authorities(self) -> None:
         self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
         self.edit_sync.restore_pending_reason(self.entry, LEGACY_AUTHORING_SYNC_REASON)
+        self.entry.scene.set_source_path("scenes/restore-source.scene.json")
         payload = copy.deepcopy(self.entry.scene.to_dict())
         payload["entities"][0]["tag"] = "Restored"
 
         with patch.object(
             self.workspace,
-            "replace_entry_scene",
-            wraps=self.workspace.replace_entry_scene,
-        ) as replace_scene, patch.object(
+            "prepare_scene_payload",
+            wraps=self.workspace.prepare_scene_payload,
+        ) as prepare_payload, patch.object(
+            self.workspace,
+            "install_entry_state",
+            wraps=self.workspace.install_entry_state,
+        ) as install_state, patch.object(
             self.edit_sync,
             "clear_pending",
             wraps=self.edit_sync.clear_pending,
@@ -436,8 +647,13 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.entry.selected_entity_name, "Hero")
         self.assertIsNone(self.entry.pending_edit_world_sync_reason)
         self.assertTrue(self.entry.dirty)
+        self.assertEqual(
+            self.entry.scene.source_path,
+            "scenes/restore-source.scene.json",
+        )
         self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)
-        replace_scene.assert_called_once()
+        prepare_payload.assert_called_once()
+        install_state.assert_called_once()
         clear_pending.assert_called_once_with(self.entry)
         mark_dirty.assert_called_once_with(self.entry)
 

@@ -216,6 +216,143 @@ class SceneHistoryAtomicityTests(unittest.TestCase):
         self.assertTrue(history.redo())
         self.assertEqual(events, ["prior_redo"])
 
+    def test_apply_prefab_push_after_append_restores_shapes_and_full_baseline(self) -> None:
+        payload = _scene_payload()
+        payload["entities"] = [
+            {
+                "id": "instance-id",
+                "name": "Instance",
+                "prefab_instance": {
+                    "prefab_path": "missing-instance.prefab",
+                    "root_name": "Instance",
+                    "overrides": {"": {"tag": "Enemy"}},
+                },
+                "components": {},
+            },
+            {
+                "id": "explicit-id",
+                "name": "Explicit",
+                "prefab_instance": {
+                    "prefab_path": "missing-explicit.prefab",
+                    "root_name": "Explicit",
+                    "overrides": {"operations": []},
+                },
+                "components": {},
+            },
+            {
+                "id": "canonical-id",
+                "name": "Canonical",
+                "prefab_instance": {
+                    "prefab_path": "missing-canonical.prefab",
+                    "root_name": "Canonical",
+                    "overrides": {"operations": []},
+                },
+                "components": {},
+            },
+        ]
+        manager = SceneManager(create_default_registry())
+        history = UndoRedoManager()
+        manager.set_history_manager(history)
+        manager.load_scene(payload)
+        events = self._seed_prior_redo(history)
+        entry = manager.resolve_entry(manager.active_scene_key)
+        assert entry is not None and entry.edit_world is not None
+        explicit = copy.deepcopy(entry.scene.find_entity("Explicit")["prefab_instance"])
+        explicit["overrides"] = {}
+        self.assertTrue(
+            entry.scene.update_entity_property_by_id(
+                "explicit-id",
+                "prefab_instance",
+                explicit,
+            )
+        )
+        entry.edit_world.get_entity_by_name("Explicit").prefab_instance = copy.deepcopy(
+            explicit
+        )
+        entry.edit_world_version = entry.edit_world.version
+        self.assertTrue(manager.set_selected_entity("Instance"))
+        manager._edit_sync.restore_pending_reason(entry, TRANSIENT_PREVIEW_SYNC_REASON)
+        scene_before = entry.scene.to_snapshot_dict()
+        world_before = copy.deepcopy(entry.edit_world.serialize())
+        selection_before = (
+            entry.selected_entity_name,
+            entry.selected_entity_id,
+            entry.edit_world.selected_entity_name,
+        )
+        dirty_before = entry.dirty
+        pending_before = (
+            entry.pending_edit_world_sync_reason,
+            entry.dirty_before_pending_edit_world_sync,
+        )
+        version_before = entry.edit_world_version
+        world_versions_before = (
+            entry.edit_world.version,
+            entry.edit_world.structure_version,
+            entry.edit_world.transform_version,
+            entry.edit_world.render_version,
+            entry.edit_world.physics_version,
+            entry.edit_world.ui_layout_version,
+            entry.edit_world.selection_version,
+        )
+
+        with patch(
+            "engine.assets.prefab.PrefabManager.save_prefab",
+            return_value=True,
+        ), patch.object(
+            history,
+            "push",
+            side_effect=self._push_then_raise(history),
+        ):
+            self.assertFalse(manager.apply_prefab_overrides("Instance"))
+
+        self.assertEqual(entry.scene.to_snapshot_dict(), scene_before)
+        self.assertEqual(entry.edit_world.serialize(), world_before)
+        self.assertEqual(
+            entry.scene.find_entity("Explicit")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            entry.scene.find_entity("Canonical")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        self.assertEqual(
+            entry.edit_world.get_entity_by_name("Explicit").prefab_instance["overrides"],
+            {},
+        )
+        self.assertEqual(
+            (
+                entry.selected_entity_name,
+                entry.selected_entity_id,
+                entry.edit_world.selected_entity_name,
+            ),
+            selection_before,
+        )
+        self.assertEqual(entry.dirty, dirty_before)
+        self.assertEqual(
+            (
+                entry.pending_edit_world_sync_reason,
+                entry.dirty_before_pending_edit_world_sync,
+            ),
+            pending_before,
+        )
+        self.assertEqual(entry.edit_world_version, version_before)
+        self.assertEqual(
+            (
+                entry.edit_world.version,
+                entry.edit_world.structure_version,
+                entry.edit_world.transform_version,
+                entry.edit_world.render_version,
+                entry.edit_world.physics_version,
+                entry.edit_world.ui_layout_version,
+                entry.edit_world.selection_version,
+            ),
+            world_versions_before,
+        )
+        self.assertFalse(history.can_undo())
+        self.assertTrue(history.can_redo())
+        self.assertTrue(history.redo())
+        self.assertEqual(events, ["prior_redo"])
+
     def test_transaction_push_after_append_rethrows_and_remains_rollbackable(self) -> None:
         manager, history = self._manager_with_history()
         events = self._seed_prior_redo(history)

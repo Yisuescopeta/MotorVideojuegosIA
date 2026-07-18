@@ -99,18 +99,6 @@ class SceneManager:
         self._scene_file_mtimes: dict[str, float] = {}
 
     @property
-    def _entries(self) -> dict[str, SceneWorkspaceEntry]:
-        return self._workspace.entries
-
-    @property
-    def _active_scene_key(self) -> str:
-        return self._workspace.active_scene_key
-
-    @_active_scene_key.setter
-    def _active_scene_key(self, value: str) -> None:
-        self._workspace.active_scene_key = value
-
-    @property
     def current_scene(self) -> Optional[Scene]:
         entry = self._get_active_entry()
         return entry.scene if entry is not None else None
@@ -387,15 +375,8 @@ class SceneManager:
         existing = self._workspace.resolve_entry(workspace_path)
         if existing is not None:
             if activate:
-                self._workspace.active_scene_key = existing.key
-            world = existing.edit_world
-            try:
-                mtime = self._persistence.get_mtime(resolved_path)
-                if mtime is not None:
-                    self._scene_file_mtimes[mtime_key] = mtime
-            except OSError:
-                pass
-            return world
+                return self._workspace.activate_scene(existing.key)
+            return existing.edit_world
         try:
             loaded = self._persistence.load(resolved_path, storage=storage)
         except SceneStorageReadError as exc:
@@ -788,7 +769,7 @@ class SceneManager:
             self._workspace.clear_dirty(entry)
 
     def clear_all_dirty(self) -> None:
-        for entry in self._entries.values():
+        for entry in self._workspace.entries.values():
             self._workspace.clear_dirty(entry)
 
     def begin_transaction(self, label: str = "transaction", key: Optional[str] = None) -> bool:
@@ -915,9 +896,6 @@ class SceneManager:
         Si key_or_path es None o vacío, retorna la entrada activa.
         """
         return self._resolve_entry(key_or_path)
-
-    def _entry_path_or_key(self, entry: Optional[SceneWorkspaceEntry]) -> str:
-        return "" if entry is None else (entry.source_path or entry.key)
 
     @staticmethod
     def _mtime_key(path: str | Path) -> str:
