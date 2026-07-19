@@ -1,4 +1,12 @@
-# Queen plan — SceneManager refactor
+# Queen Execution Plan: SceneManager refactor
+
+Status: failed
+Authority: operational-plan
+Task ID: queen-20260713-001
+Created at: 2026-07-14T12:45:01+02:00
+Updated at: 2026-07-19T00:03:26Z
+Archived at: 2026-07-19T00:03:26Z
+Mode: long-task-plan
 
 ## Estado
 
@@ -6,32 +14,35 @@
 - `model_route`: `critical`
 - `max_cycles`: `5`
 - `cycle`: `1/5` (continuación reautorizada explícitamente por usuario el 2026-07-16; los cinco ciclos agotados anteriores quedan registrados como evidencia)
-- `current_phase`: `cierre operativo y documental`
-- `phase_status`: `S0-S9 completed; validación local del SHA funcional completed; workflow CI prepared; CI execution pending`
-- `task_status`: `partial` (CI obligatorio aún no ejecutado)
-- `next_action`: crear commit documental, publicarlo y lanzar `workflow_dispatch` sobre `f0bc3cc5561b789dcc0135718e495e889b7d7465` cuando exista autorización
-- `commit_authorized`: `false`
-- `commit_created`: `true` (commit funcional preexistente `f0bc3cc5561b789dcc0135718e495e889b7d7465`; ningún commit documental creado en este cierre)
-- `push_authorized`: `false`
+- `current_phase`: `cierre CI fallido`
+- `phase_status`: `S0-S9 completed; CI failed`
+- `task_status`: `partial` (el refactor funcional sigue cerrado, pero el gate CI obligatorio concluyó `failure`)
+- `next_action`: mantener inmutable `f0bc3cc5561b789dcc0135718e495e889b7d7465`, definir y provisionar una versión fijada de OpenCode en el runner mediante un cambio exclusivo del workflow, repetir `workflow_dispatch` contra ese SHA exacto y exigir `conclusion=success`. En un SHA sucesor separado, hacer herméticos los tests Queen para eliminar la dependencia accidental de `PATH`, sin sustituir el target funcional de este cierre
+- `commit_authorized`: `true` (autorización explícita del usuario para commits de cierre)
+- `commit_created`: `true` (commit funcional `f0bc3cc5561b789dcc0135718e495e889b7d7465` y prerequisito de workflow `70a152325c7f693df7a1b315e72b5ad2188c16db`; el SHA del commit final de evidencia no se autorreferencia aquí)
+- `push_authorized`: `true` (autorización explícita del usuario)
 - `functional_commit_pushed`: `true` (el SHA existe en `origin/feat/SceneManagerRefactor`)
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `resume_head_sha`: `3850e1995c1a7756803bfa8486f27c7ccf570874`
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `final_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
-- `validated_functional_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `functional_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `ci_validation_target_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `ci_checkout_verified_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465` (el step `Verify exact SHA` pasó; la suite posterior falló)
 - `functional_closure_commit_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
-- `closure_documentation_sha`: `pending` (cambios documentales, workflow y evidencia local sin commit)
-- `branch_head_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
+- `closure_documentation_sha`: `075b28ae491302679cd6a476db156d8eb0bca1df` (HEAD documental auditado antes de este cierre CI; no es el commit final posterior)
+- `branch_head_sha_before_ci_closure`: `075b28ae491302679cd6a476db156d8eb0bca1df`
+- `upstream_sha_before_ci_closure`: `075b28ae491302679cd6a476db156d8eb0bca1df`
+- `branch_vs_origin_main_before_ci_closure`: `ahead 7, behind 0`
+- `workflow_dispatch_fix_sha`: `70a152325c7f693df7a1b315e72b5ad2188c16db`
+- `branch_head_sha_at_ci_dispatch`: `70a152325c7f693df7a1b315e72b5ad2188c16db`
 - `upstream`: `origin/feat/SceneManagerRefactor`
-- `upstream_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
 - `merge_base_with_origin_main`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
-- `branch_vs_origin_main`: `ahead 6, behind 0`
-- `branch_vs_upstream`: `ahead 0, behind 0`
+- `branch_vs_upstream_before_ci_closure`: `ahead 0, behind 0`
 - `functional_commit_author`: `Yisuescopeta <jesuscervantesfernandez2006@gmail.com>`
 - `functional_commit_date`: `2026-07-18T17:17:23+02:00`
 - `working_tree_initial`: `clean`
-- `working_tree_after_closure`: `dirty` únicamente por plan, workflow y artifacts de evidencia enumerados en este documento
-- `ci_execution`: `pending`
+- `working_tree_after_closure`: `clean` tras el commit final de evidencia y su push; comprobación externa posterior obligatoria porque el plan no puede registrar autorreferencialmente ese SHA
+- `ci_execution`: `failed`
 
 ## Autoridades
 
@@ -1932,7 +1943,7 @@ Resultado: 103 archivos, todos clasificados una sola vez.
 
 - `docs/TECHNICAL.md`
 - `docs/architecture.md`
-- `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
+- `docs/plans/archive/queen-20260713-001-scene-manager-refactor.md`
 
 ### Benchmarks y artifacts (12)
 
@@ -2114,7 +2125,7 @@ Resultado: 103 archivos, todos clasificados una sola vez.
 No pertenecen al snapshot funcional `f0bc3cc`:
 
 - `.github/workflows/scene-manager-refactor-validation.yml`
-- `docs/plans/active/queen-20260713-001-scene-manager-refactor.md`
+- `docs/plans/archive/queen-20260713-001-scene-manager-refactor.md`
 - `artifacts/refactor_scene_manager/closure_f0bc3cc/full-suite.log`
 - `artifacts/refactor_scene_manager/closure_f0bc3cc/ruff-production.log`
 - `artifacts/refactor_scene_manager/closure_f0bc3cc/ruff-tests.log`
@@ -2133,14 +2144,26 @@ No pertenecen al snapshot funcional `f0bc3cc`:
 
 ## Hallazgos pendientes
 
-- `ci_execution=pending`: workflow preparado pero no puede ejecutarse hasta que
-  el archivo exista en un commit publicado. No hay autorización de commit/push.
-- La suite completa deja dos settings tracked marcados por normalización de
-  finales de línea. Empezó limpia y pasó; se restauraron solo esos dos archivos
-  en el worktree temporal antes de los demás gates. No altera el SHA auditado,
-  pero es deuda de aislamiento de tests no atribuible al refactor funcional.
-- `must_fix=[]` para código funcional. Estado global `partial` exclusivamente
-  porque CI obligatorio sigue pendiente.
+- `ci_execution=failed`: run `29665496955` terminó con `conclusion=failure`.
+  `Full test suite` ejecutó 3.914 tests: 11 failures, 1 error y 26 skips; los
+  doce problemas pertenecen exclusivamente a `tests.test_queen_dispatch`.
+- Causa raíz: el runner GitHub limpio no contiene `opencode` en `PATH`. Once
+  tests mockean `run_opencode` pero `main()` resuelve antes el ejecutable y
+  retorna `EXIT_CONFIG=2`; el test directo de `run_opencode` tampoco inyecta el
+  executable. La máquina local sí resuelve `opencode.CMD`, por eso la evidencia
+  local histórica pasó. Es un defecto de aislamiento de tests Queen/OpenCode,
+  no un fallo funcional de SceneManager.
+- Los steps Ruff, Mypy, arquitectura, benchmarks y diff-check quedaron
+  `skipped` por el fallo anterior. El artifact `8435654167` sí se publicó y se
+  descargó correctamente; contiene `full-suite.log` utilizable.
+- La revalidación local histórica de la suite completa dejó dos settings
+  tracked marcados por normalización de finales de línea: empezó limpia, pasó y
+  restauró solo esos dos archivos en el worktree temporal antes de los demás
+  gates. Esa evidencia local es anterior y distinta del run CI fallido; no
+  altera el SHA auditado, pero revela deuda de aislamiento de tests no atribuible
+  al refactor funcional.
+- `must_fix=[]` para código funcional de SceneManager. Estado global `partial`
+  porque el gate CI obligatorio falló y no puede declararse completado.
 
 ## Revalidación reproducible del SHA funcional
 
@@ -2210,8 +2233,158 @@ Ruff/Mypy/diff no producen conteo de tests; skips no aplican.
   canónica, suite, Ruff, Mypy, arquitectura, dos benchmarks, diff-check y upload
   de logs/artifacts. Permisos `contents: read`, credenciales no persistidas,
   timeout 45 minutos, sin secretos ni escritura remota.
-- `ci_execution=pending`: archivo local sin commit ni push; no existe run URL ni
-  resultado de jobs. Por este gate pendiente, `task_status=partial`.
+- Primer intento de dispatch: `2026-07-18T23:15:33.7285676Z`, sin run creado.
+  GitHub devolvió `HTTP 422` porque `runner.temp` no está disponible en
+  `jobs.<job_id>.env`. El push previo `29663662271` ya había fallado sin jobs
+  por la misma definición inválida. La corrección mínima movió `EVIDENCE_DIR`
+  a `steps.env`, lo propagó mediante `GITHUB_ENV`, quedó aprobada por review y
+  AI audit, y se publicó en el commit prerequisito
+  `70a152325c7f693df7a1b315e72b5ad2188c16db`.
+- Segundo dispatch: creado inequívocamente respecto al listado previo vacío,
+  con timestamp UTC inmediatamente anterior `2026-07-18T23:35:33.4140250Z`.
+  GitHub aceptó el workflow y creó el run `29665496955`.
+- `ci_execution=failed`: el run terminó; no se considera gate completado.
+
+#### Run ejecutado
+
+| Campo | Valor |
+| --- | --- |
+| workflow | `.github/workflows/scene-manager-refactor-validation.yml` |
+| databaseId | `29665496955` |
+| URL | `https://github.com/Yisuescopeta/OpenGame/actions/runs/29665496955` |
+| createdAt | `2026-07-18T23:35:33Z` (`2026-07-19T01:35:33+02:00`) |
+| startedAt | `2026-07-18T23:35:33Z` |
+| updatedAt | `2026-07-18T23:42:33Z` |
+| event | `workflow_dispatch` |
+| rama de dispatch | `feat/SceneManagerRefactor` |
+| headSha del evento | `70a152325c7f693df7a1b315e72b5ad2188c16db` |
+| `validation_ref` solicitado | `f0bc3cc5561b789dcc0135718e495e889b7d7465` |
+| SHA checkout verificado | `f0bc3cc5561b789dcc0135718e495e889b7d7465` (`Checkout requested snapshot` y `Verify exact SHA`: `success`) |
+| status | `completed` |
+| conclusion | `failure` |
+
+`headSha` identifica el commit que contiene/dispara el workflow; no sustituye
+al SHA funcional. El input, el checkout y el step de igualdad demuestran que el
+snapshot ejecutado fue exactamente `f0bc3cc...`; el artifact conserva la salida
+de la suite asociada a ese mismo run.
+
+#### Jobs
+
+| Job | Job ID | Status | Conclusion | startedAt | completedAt | URL |
+| --- | ---: | --- | --- | --- | --- | --- |
+| Validate exact functional snapshot | `88135130129` | `completed` | `failure` | `2026-07-18T23:35:40Z` | `2026-07-18T23:42:32Z` | `https://github.com/Yisuescopeta/OpenGame/actions/runs/29665496955/job/88135130129` |
+
+#### Steps
+
+| Nº | Step | Status | Conclusion | startedAt | completedAt | Observación |
+| ---: | --- | --- | --- | --- | --- | --- |
+| 1 | Set up job | `completed` | `success` | `2026-07-18T23:35:41Z` | `2026-07-18T23:35:43Z` | — |
+| 2 | Checkout requested snapshot | `completed` | `success` | `2026-07-18T23:35:43Z` | `2026-07-18T23:35:54Z` | Checkout del input exacto |
+| 3 | Verify exact SHA | `completed` | `success` | `2026-07-18T23:35:54Z` | `2026-07-18T23:36:10Z` | Igualdad con `f0bc3cc...` confirmada |
+| 4 | Set up Python 3.11 | `completed` | `success` | `2026-07-18T23:36:10Z` | `2026-07-18T23:36:13Z` | Python 3.11.9 |
+| 5 | Configure validation evidence directory | `completed` | `success` | `2026-07-18T23:36:13Z` | `2026-07-18T23:36:14Z` | Remediación del parser efectiva |
+| 6 | Install project | `completed` | `success` | `2026-07-18T23:36:14Z` | `2026-07-18T23:36:49Z` | Snapshot permaneció limpio |
+| 7 | Full test suite | `completed` | `failure` | `2026-07-18T23:36:49Z` | `2026-07-18T23:42:26Z` | 3.914 tests; 11 failures, 1 error, 26 skips |
+| 8 | Restore tracked test side effects | `completed` | `success` | `2026-07-18T23:42:26Z` | `2026-07-18T23:42:27Z` | Limpieza controlada completada |
+| 9 | Ruff production | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 10 | Ruff tests | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 11 | Mypy | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 12 | Scene architecture and import-cycle contracts | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 13 | Benchmark round 1 | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 14 | Benchmark round 2 | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 15 | Diff check | `completed` | `skipped` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:27Z` | Skip por fallo anterior |
+| 16 | Upload validation evidence | `completed` | `success` | `2026-07-18T23:42:27Z` | `2026-07-18T23:42:28Z` | Artifact publicado pese al fallo (`if: always()`) |
+| 31 | Post Set up Python 3.11 | `completed` | `skipped` | `2026-07-18T23:42:28Z` | `2026-07-18T23:42:28Z` | Cleanup no requerido por la action |
+| 32 | Post Checkout requested snapshot | `completed` | `success` | `2026-07-18T23:42:28Z` | `2026-07-18T23:42:30Z` | — |
+| 33 | Complete job | `completed` | `success` | `2026-07-18T23:42:30Z` | `2026-07-18T23:42:30Z` | Job conserva conclusión global `failure` |
+
+#### Artefactos
+
+| Artifact ID | Nombre | size_in_bytes | created_at | expires_at | expired |
+| ---: | --- | ---: | --- | --- | --- |
+| `8435654167` | `scene-manager-refactor-validation-f0bc3cc5561b789dcc0135718e495e889b7d7465` | `6777` | `2026-07-18T23:42:28Z` | `2026-08-17T23:42:27Z` | `false` |
+
+- API: `https://api.github.com/repos/Yisuescopeta/OpenGame/actions/artifacts/8435654167`.
+- archive_download_url: `https://api.github.com/repos/Yisuescopeta/OpenGame/actions/artifacts/8435654167/zip`.
+- Digest remoto: `sha256:edb5b941c5496c40f77086f1923a9b33888543cb2ea907ee8368d3f1be51e9c7`.
+- Descarga comprobada fuera del repo en
+  `C:/Users/usuario/AppData/Local/Temp/OpenGame-run-29665496955-artifact`.
+  Contiene `full-suite.log`, 43.802 bytes, SHA-256
+  `529ADF10624285C12C655568C8ABF6DCBD519A21FD82994239B645028DC8A690`;
+  el archivo se abrió y analizó correctamente.
+
+#### Fallo, warnings y anomalías
+
+- Fallo causal: `opencode executable not found on PATH` en
+  `tests.test_queen_dispatch`. Once casos esperaban alcanzar sus mocks de
+  `run_opencode`, pero la resolución previa devolvió código `2`; el caso directo
+  lanzó `DispatchError`. Total: 11 failures, 1 error, 26 skips.
+- La máquina local tiene
+  `C:/Users/usuario/AppData/Roaming/npm/opencode.CMD`; el runner no. La diferencia
+  explica el verde local histórico. No se relajó ningún test ni se cambió
+  ningún algoritmo del refactor.
+- Anotación GitHub: Node.js 20 de `actions/checkout@v4`,
+  `actions/setup-python@v5` y `actions/upload-artifact@v4` está deprecado y
+  GitHub forzó Node.js 24. No fue la causa del fallo.
+- El log también contiene warnings/deprecations esperados de runtime opcional
+  y Box2D; no aparecen como failures. Los siete gates posteriores quedaron
+  skipped y no se presentan como ejecutados.
+
+#### Comandos de cierre CI
+
+| Comando | Resultado |
+| --- | --- |
+| `git fetch --all --prune` | exit 0 |
+| `git switch feat/SceneManagerRefactor` | exit 0; rama correcta |
+| `git pull --ff-only` | exit 0; up to date |
+| `git status --short` | vacío al preflight |
+| `git rev-parse HEAD` / `git rev-parse origin/feat/SceneManagerRefactor` | ambos `075b28ae491302679cd6a476db156d8eb0bca1df` antes del cierre CI |
+| `git merge-base HEAD origin/main` | `fded3556ed9509d5f0e06221f1655ba0f4053687` |
+| `gh auth status` | exit 0; cuenta `Yisuescopeta`, scopes `repo` y `workflow` |
+| primer `gh workflow run ... -f validation_ref=f0bc3cc...` | exit 1; HTTP 422, no creó run |
+| `git push origin feat/SceneManagerRefactor` para `70a1523...` | exit 0 |
+| segundo `gh workflow run ... -f validation_ref=f0bc3cc...` | exit 0; creó run `29665496955` |
+| `gh run list ... --event workflow_dispatch ...` | exit 0; único run nuevo identificado |
+| `gh run watch 29665496955 --repo Yisuescopeta/OpenGame --exit-status` | exit 1 tras estado terminal `failure` |
+| `gh run view 29665496955 ... --json ...` | exit 0; metadata, job y steps obtenidos |
+| `gh api repos/Yisuescopeta/OpenGame/actions/runs/29665496955/artifacts` | exit 0; un artifact real |
+| `gh run download 29665496955 ...` | exit 0; artifact utilizable |
+
+Invocaciones GitHub completas usadas para el run terminal y su evidencia:
+
+```powershell
+gh workflow run scene-manager-refactor-validation.yml --repo Yisuescopeta/OpenGame --ref feat/SceneManagerRefactor -f validation_ref=f0bc3cc5561b789dcc0135718e495e889b7d7465
+gh run list --repo Yisuescopeta/OpenGame --workflow scene-manager-refactor-validation.yml --event workflow_dispatch --limit 10 --json databaseId,createdAt,displayTitle,event,headBranch,headSha,status,conclusion,url,workflowName
+gh run watch 29665496955 --repo Yisuescopeta/OpenGame --exit-status
+gh run view 29665496955 --repo Yisuescopeta/OpenGame --json databaseId,url,status,conclusion,createdAt,startedAt,updatedAt,headBranch,headSha,event,workflowName,jobs
+gh api repos/Yisuescopeta/OpenGame/actions/runs/29665496955/artifacts
+gh run download 29665496955 --repo Yisuescopeta/OpenGame --name scene-manager-refactor-validation-f0bc3cc5561b789dcc0135718e495e889b7d7465 --dir C:\Users\usuario\AppData\Local\Temp\OpenGame-run-29665496955-artifact
+```
+
+#### Validación local posterior
+
+| Comando | Resultado |
+| --- | --- |
+| `python -m unittest tests.test_codex_queen_contract tests.test_queen_agent_contract tests.test_queen_dispatch` | exit 1 antes de cargar tests: el alias `python.exe` local apunta a Microsoft Store y no hay intérprete asociado |
+| `py -3.11 -m unittest tests.test_codex_queen_contract tests.test_queen_agent_contract tests.test_queen_dispatch` | exit 0; 99 tests, `OK` |
+| `py -3.11 -m unittest tests.test_repository_governance tests.test_start_here_ai_coherence` | exit 0; 29 tests, `OK` |
+| revalidación conjunta de los cinco módulos anteriores con `py -3.11 -m unittest ...` | exit 0; 128 tests, `OK` |
+| `python -m ruff check .` | exit 1 antes de ejecutar Ruff por el mismo alias de Microsoft Store |
+| `py -3.11 -m ruff check .` | exit 1; 372 hallazgos globales preexistentes (174 W293, 128 W291, 35 F541, 22 I001, 7 F401, 2 E402, 2 E722 y 2 F841) |
+| `py -3.11 -m ruff check engine cli tools main.py` | exit 0; `All checks passed!` |
+| `py -3.11 -m ruff check tests` | exit 0; `All checks passed!` |
+| `git diff --check` | exit 0, sin salida |
+
+Los 372 hallazgos globales están fuera de este diff de cierre, que solo modifica
+el workflow y este plan Markdown; no se aplicó `--fix` ni se amplió el alcance.
+El lint global no queda presentado como verde. Los tests enfocados y las dos
+superficies Ruff usadas por el workflow sí pasaron localmente.
+
+Review independiente final `review-queen-20260713-001-ci-closure`:
+`verdict=approved`, `must_fix=[]`. Confirma la evidencia de GitHub, el archivo
+canónico único, la ausencia de cambios en `engine/` o `tests/` y que el commit
+de evidencia puede avanzar sin cambiar `task_status=partial`. Conserva como
+hallazgos no resueltos el gate CI fallido y la deuda Ruff global.
 
 ## Evidencia de comandos
 
