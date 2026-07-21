@@ -51,6 +51,7 @@ contradecirlos.
 - [mobile_export.md](mobile_export.md) - requisitos, templates y builds Android/iOS.
 - [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) - contrato del artefacto generado `motor_ai.json`.
 - [editor_ui_architecture.md](editor_ui_architecture.md) - separación oficial Editor UI (impuro) vs `ui_core` (puro).
+- [editor_in_engine_migration_plan_v4.md](editor_in_engine_migration_plan_v4.md) - plan aprobado de migración incremental del editor; registro de ejecución por gates.
 
 ## Referencia operativa
 
