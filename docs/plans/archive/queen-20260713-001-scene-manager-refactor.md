@@ -1,11 +1,12 @@
 # Queen Execution Plan: SceneManager refactor
 
-Status: failed
+Status: completed
 Authority: operational-plan
 Task ID: queen-20260713-001
 Created at: 2026-07-14T12:45:01+02:00
-Updated at: 2026-07-19T00:03:26Z
+Updated at: 2026-07-21T18:56:14Z
 Archived at: 2026-07-19T00:03:26Z
+Completed at: 2026-07-21T18:54:14Z
 Mode: long-task-plan
 
 ## Estado
@@ -14,12 +15,12 @@ Mode: long-task-plan
 - `model_route`: `critical`
 - `max_cycles`: `5`
 - `cycle`: `1/5` (continuación reautorizada explícitamente por usuario el 2026-07-16; los cinco ciclos agotados anteriores quedan registrados como evidencia)
-- `current_phase`: `cierre CI fallido`
-- `phase_status`: `S0-S9 completed; CI failed`
-- `task_status`: `partial` (el refactor funcional sigue cerrado, pero el gate CI obligatorio concluyó `failure`)
-- `next_action`: mantener inmutable `f0bc3cc5561b789dcc0135718e495e889b7d7465`, definir y provisionar una versión fijada de OpenCode en el runner mediante un cambio exclusivo del workflow, repetir `workflow_dispatch` contra ese SHA exacto y exigir `conclusion=success`. En un SHA sucesor separado, hacer herméticos los tests Queen para eliminar la dependencia accidental de `PATH`, sin sustituir el target funcional de este cierre
+- `current_phase`: `cierre CI completado`
+- `phase_status`: `S0-S9 completed; CI completed`
+- `task_status`: `completed`
+- `next_action`: `none`
 - `commit_authorized`: `true` (autorización explícita del usuario para commits de cierre)
-- `commit_created`: `true` (commit funcional `f0bc3cc5561b789dcc0135718e495e889b7d7465` y prerequisito de workflow `70a152325c7f693df7a1b315e72b5ad2188c16db`; el SHA del commit final de evidencia no se autorreferencia aquí)
+- `commit_created`: `true` (commit funcional `f0bc3cc5561b789dcc0135718e495e889b7d7465` y commit test/workflow `8926d4b25b6377927141b129f734d2aaed1db211`; el SHA del commit documental final no se autorreferencia aquí)
 - `push_authorized`: `true` (autorización explícita del usuario)
 - `functional_commit_pushed`: `true` (el SHA existe en `origin/feat/SceneManagerRefactor`)
 - `base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
@@ -27,22 +28,50 @@ Mode: long-task-plan
 - `resume_merge_base_sha`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `functional_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
 - `ci_validation_target_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
-- `ci_checkout_verified_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465` (el step `Verify exact SHA` pasó; la suite posterior falló)
+- `ci_checkout_verified_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465` (functional checkout exacto; `engine/` idéntico al harness)
 - `functional_closure_commit_sha`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`
-- `closure_documentation_sha`: `075b28ae491302679cd6a476db156d8eb0bca1df` (HEAD documental auditado antes de este cierre CI; no es el commit final posterior)
+- `closure_documentation_sha`: `self-referential final documentation commit; reported externally after creation`
 - `branch_head_sha_before_ci_closure`: `075b28ae491302679cd6a476db156d8eb0bca1df`
 - `upstream_sha_before_ci_closure`: `075b28ae491302679cd6a476db156d8eb0bca1df`
 - `branch_vs_origin_main_before_ci_closure`: `ahead 7, behind 0`
 - `workflow_dispatch_fix_sha`: `70a152325c7f693df7a1b315e72b5ad2188c16db`
-- `branch_head_sha_at_ci_dispatch`: `70a152325c7f693df7a1b315e72b5ad2188c16db`
+- `branch_head_sha_at_ci_dispatch`: `8926d4b25b6377927141b129f734d2aaed1db211`
 - `upstream`: `origin/feat/SceneManagerRefactor`
 - `merge_base_with_origin_main`: `fded3556ed9509d5f0e06221f1655ba0f4053687`
 - `branch_vs_upstream_before_ci_closure`: `ahead 0, behind 0`
 - `functional_commit_author`: `Yisuescopeta <jesuscervantesfernandez2006@gmail.com>`
 - `functional_commit_date`: `2026-07-18T17:17:23+02:00`
 - `working_tree_initial`: `clean`
-- `working_tree_after_closure`: `clean` tras el commit final de evidencia y su push; comprobación externa posterior obligatoria porque el plan no puede registrar autorreferencialmente ese SHA
-- `ci_execution`: `failed`
+- `working_tree_after_closure`: `clean`
+- `ci_execution`: `completed`
+
+## Cierre CI 2026-07-21
+
+- El snapshot funcional permaneció inmutable en `f0bc3cc5561b789dcc0135718e495e889b7d7465`.
+- No se instaló OpenCode ni se añadió al workflow, manifiestos o `PATH`.
+- La corrección fue exclusivamente de hermeticidad en `tests/test_queen_dispatch.py`: los tests que mockean `run_opencode` controlan también `resolve_opencode_executable`, y el test directo inyecta `executable="opencode"`.
+- El test corregido se incorporó como overlay controlado desde `harness/tests/test_queen_dispatch.py` a `functional/tests/test_queen_dispatch.py`.
+- El workflow comparó tree SHA de `engine/` antes del overlay: harness `2d62a63d347d0091cc9877b07bba1b6d778c9a46`, functional `2d62a63d347d0091cc9877b07bba1b6d778c9a46`; permanecieron idénticos.
+- Tras el overlay, el único archivo modificado fue `tests/test_queen_dispatch.py`; no hubo cambios en `functional/engine/`.
+- El run verde `29858340033` sustituye al run fallido `29665496955` como gate terminal; el run fallido se conserva como evidencia histórica.
+
+### Evidencia del workflow
+
+- `test/workflow commit`: `8926d4b25b6377927141b129f734d2aaed1db211`.
+- `harness SHA`: `8926d4b25b6377927141b129f734d2aaed1db211`.
+- `functional validation SHA`: `f0bc3cc5561b789dcc0135718e495e889b7d7465`.
+- `run ID`: `29858340033`.
+- `URL`: `https://github.com/Yisuescopeta/OpenGame/actions/runs/29858340033`.
+- `createdAt`: `2026-07-21T18:42:04Z`.
+- `startedAt`: `2026-07-21T18:42:04Z`.
+- `updatedAt`: `2026-07-21T18:54:14Z`.
+- `status`: `completed`.
+- `conclusion`: `success`.
+- `job ID`: `88728273671`.
+- Job `Validate exact functional snapshot`: `success`.
+- Steps `Set up job`, `Validate validation_ref format`, `Checkout workflow harness`, `Checkout functional snapshot`, `Configure validation evidence directory`, `Verify snapshots and engine tree`, `Overlay controlled Queen test`, `Set up Python 3.11`, `Install project`, `Full test suite`, `Restore tracked test side effects`, `Ruff production`, `Ruff tests`, `Mypy`, `Scene architecture and import-cycle contracts`, `Benchmark round 1`, `Benchmark round 2`, `Diff check`, `Upload validation evidence`, all post-steps and `Complete job`: `success`.
+- Artefact `scene-manager-refactor-validation-f0bc3cc5561b789dcc0135718e495e889b7d7465`: ID `8506555393`, digest `sha256:96df3d41b6f0003eda135a66c2f23713e26750b038a757c50a8870c2b8181116`, size `42382` bytes, `created_at` `2026-07-21T18:54:05Z`, `expires_at` `2026-08-20T18:54:04Z`, `expired=false`.
+- Artefact download: successful to temporary evidence directory; inspection confirmed snapshot, overlay, post-suite status, full-suite, Ruff, Mypy, architecture and benchmark logs/JSON files. Diff-check produced no output because it was clean; its step concluded `success`.
 
 ## Autoridades
 
