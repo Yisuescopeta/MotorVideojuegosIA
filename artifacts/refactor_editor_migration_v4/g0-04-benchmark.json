@@ -1,0 +1,71 @@
+{
+  "benchmark": "editor_migration_g0",
+  "environment": {
+    "implementation": "cpython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.13"
+  },
+  "operations": {
+    "projection_create_world": {
+      "budget_p95_ms": 250.0,
+      "max_ms": 0.1628,
+      "median_ms": 0.0902,
+      "p95_ms": 0.1628,
+      "passed": true,
+      "repeats": 7,
+      "samples_ms": [
+        0.1628,
+        0.0902,
+        0.0923,
+        0.0884,
+        0.0865,
+        0.0952,
+        0.09
+      ],
+      "warmup": 1
+    },
+    "world_clone": {
+      "budget_p95_ms": 250.0,
+      "max_ms": 0.1519,
+      "median_ms": 0.1443,
+      "p95_ms": 0.1519,
+      "passed": true,
+      "repeats": 7,
+      "samples_ms": [
+        0.1519,
+        0.142,
+        0.1493,
+        0.145,
+        0.1395,
+        0.1399,
+        0.1443
+      ],
+      "warmup": 1
+    },
+    "world_serialize": {
+      "budget_p95_ms": 250.0,
+      "max_ms": 0.1047,
+      "median_ms": 0.0978,
+      "p95_ms": 0.1047,
+      "passed": true,
+      "repeats": 7,
+      "samples_ms": [
+        0.1047,
+        0.0999,
+        0.094,
+        0.0968,
+        0.1,
+        0.0964,
+        0.0978
+      ],
+      "warmup": 1
+    }
+  },
+  "passed": true,
+  "scene": {
+    "entity_count": 3,
+    "path": "C:/Users/usuario/Documents/GitHub/MotorVideojuegosIA/artifacts/refactor_editor_migration_v4/g0-04-reference_scene.json",
+    "sha256": "0ac78c03b89ce49d642e7d91b2ab269a6d2d6aa43790e2c4e5f65a870167002a"
+  },
+  "schema_version": 1
+}

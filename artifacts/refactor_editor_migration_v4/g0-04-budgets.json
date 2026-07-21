@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "warmup": 1,
+  "repeats": 7,
+  "operations": {
+    "projection_create_world": {
+      "p95_ms": 250.0
+    },
+    "world_serialize": {
+      "p95_ms": 250.0
+    },
+    "world_clone": {
+      "p95_ms": 250.0
+    }
+  }
+}

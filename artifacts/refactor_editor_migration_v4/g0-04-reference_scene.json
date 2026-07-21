@@ -1,0 +1,63 @@
+{
+  "name": "G0ReferenceScene",
+  "schema_version": 2,
+  "entities": [
+    {
+      "id": "root-id",
+      "name": "Root",
+      "active": true,
+      "tag": "Untagged",
+      "layer": "Default",
+      "components": {
+        "Transform": {
+          "x": 0.0,
+          "y": 0.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        }
+      }
+    },
+    {
+      "id": "actor-id",
+      "name": "Actor",
+      "active": true,
+      "tag": "Player",
+      "layer": "Default",
+      "parent": "Root",
+      "components": {
+        "Transform": {
+          "x": 32.0,
+          "y": 48.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        }
+      }
+    },
+    {
+      "id": "camera-id",
+      "name": "Camera",
+      "active": true,
+      "tag": "Untagged",
+      "layer": "Default",
+      "parent": "Root",
+      "components": {
+        "Transform": {
+          "x": 160.0,
+          "y": 90.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        }
+      }
+    }
+  ],
+  "rules": [],
+  "feature_metadata": {
+    "benchmark": {
+      "purpose": "editor_migration_g0",
+      "persistent": true
+    }
+  }
+}
