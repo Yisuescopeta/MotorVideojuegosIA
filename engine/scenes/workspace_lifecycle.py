@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from engine.core.runtime_logging import log_err, log_info, log_warn
+from engine.scenes.projection_integrity import (
+    AuthoringProjectionFingerprintService,
+    ProjectionIntegrityEvidence,
+)
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_projection import SceneProjectionService
@@ -27,6 +31,8 @@ class SceneWorkspaceEntry:
     pending_edit_world_sync_reason: Optional[str] = None
     dirty_before_pending_edit_world_sync: Optional[bool] = None
     edit_world_version: int = 0
+    scene_revision: int = 0
+    projection_integrity_evidence: Optional[ProjectionIntegrityEvidence] = None
     view_state: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -374,11 +380,18 @@ class SceneWorkspace:
         self.restore_selection(entry, selection)
         return scene
 
-    @staticmethod
-    def install_entry_state(entry: SceneWorkspaceEntry, scene: Scene, world: "World") -> None:
+    def install_entry_state(self, entry: SceneWorkspaceEntry, scene: Scene, world: "World") -> None:
         entry.scene = scene
         entry.edit_world = world
         entry.edit_world_version = world.version
+        entry.scene_revision += 1
+        entry.projection_integrity_evidence = AuthoringProjectionFingerprintService(
+            self._projection.create_world
+        ).build_evidence(
+            scene,
+            world,
+            scene_revision=entry.scene_revision,
+        )
 
     def rebuild_edit_world(
         self,
