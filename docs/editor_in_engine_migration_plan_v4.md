@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G0.5 — `PR-G05-02` pendiente; `PR-G05-01` registra evidencia sin bloquear acciones todavía.
+- Gate actual: G0.5 — `PR-G05-03` pendiente; `PR-G05-02` deja disponible el guard fail-closed sin activar todavía la protección de save.
 
 ### Commits
 
@@ -2042,6 +2042,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `test(g0): enforce migration fitness rules` | G0 / `PR-G00-03` | Completado | 4 tests OK; baseline actual coincide; 0 violaciones nuevas. |
 | `perf(g0): add migration benchmark baseline` | G0 / `PR-G00-04` | Completado | 3 tests OK; 3 operaciones, warmup 1/repeats 7, todos p95 bajo 250 ms; baseline funcional: 59 tests OK. |
 | `feat(g05): add projection fingerprint evidence` | G0.5 / `PR-G05-01` | Completado | 110 tests OK; fingerprint excluye selección, detecta mutación directa sin `touch_*` y workspace registra evidencia. Ruff no disponible en runtime bundled. |
+| `feat(g05): add projection integrity guard` | G0.5 / `PR-G05-02` | Completado | 114 tests OK; reportes tipados, schema/revisión fail-closed, mutación directa rechazada y `World.version` no usado como autoridad. |
 
 ### Actualizaciones
 
@@ -2051,3 +2052,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G00-03` añade fitness rules contra snapshot G0-01: superficies mutables, consumidores nuevos, boundary runtime/editor y errores AST.
 - 2026-07-22: `PR-G00-04` añade escena de referencia, budgets y benchmark reproducible de creación de proyección, serialización y clone.
 - 2026-07-22: `PR-G05-01` añade canonicalización, `ProjectionIntegrityEvidence` y evidencia por instalación/rebuild de `EditWorld`; aún no activa fail-closed.
+- 2026-07-22: `PR-G05-02` añade `ProjectionIntegrityGuard`, códigos/acciones tipados y pruebas de mutación directa, versión no autoritativa, evidencia ausente y revisión obsoleta; la integración en save queda para `PR-G05-03`.

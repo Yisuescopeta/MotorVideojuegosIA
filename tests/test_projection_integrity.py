@@ -6,7 +6,10 @@ from engine.components.transform import Transform
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.projection_integrity import (
     AuthoringProjectionFingerprintService,
+    ProjectionIntegrityAction,
+    ProjectionIntegrityCode,
     ProjectionFingerprintError,
+    ProjectionIntegrityGuard,
 )
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
@@ -81,6 +84,76 @@ class ProjectionIntegrityFingerprintTests(unittest.TestCase):
     def test_non_finite_values_are_rejected(self) -> None:
         with self.assertRaises(ProjectionFingerprintError):
             self.service.fingerprint_payload({"value": float("nan")})
+
+    def test_guard_allows_registered_projection_without_using_world_version(self) -> None:
+        projection = SceneProjectionService(create_default_registry())
+        workspace = SceneWorkspace(projection=projection, flow_policy=SceneFlowPolicy())
+        workspace.load_scene(self.scene.to_dict())
+        entry = workspace.get_active_entry()
+        assert entry is not None and entry.edit_world is not None
+        entry.edit_world.touch_transform()
+
+        report = ProjectionIntegrityGuard(
+            AuthoringProjectionFingerprintService(projection.create_world)
+        ).inspect(entry, action=ProjectionIntegrityAction.PLAY)
+
+        self.assertTrue(report.allowed)
+        self.assertEqual(report.code, ProjectionIntegrityCode.CLEAN)
+        self.assertEqual(report.expected_world_version + 1, report.observed_world_version)
+
+    def test_guard_rejects_direct_component_mutation_without_touch(self) -> None:
+        projection = SceneProjectionService(create_default_registry())
+        workspace = SceneWorkspace(projection=projection, flow_policy=SceneFlowPolicy())
+        workspace.load_scene(self.scene.to_dict())
+        entry = workspace.get_active_entry()
+        assert entry is not None and entry.edit_world is not None
+        actor = entry.edit_world.get_entity_by_name("Actor")
+        assert actor is not None
+        transform = actor.get_component(Transform)
+        assert transform is not None
+        before_version = entry.edit_world.version
+
+        transform.x = 72.0
+
+        report = ProjectionIntegrityGuard(
+            AuthoringProjectionFingerprintService(projection.create_world)
+        ).inspect(entry)
+
+        self.assertFalse(report.allowed)
+        self.assertEqual(report.code, ProjectionIntegrityCode.UNREGISTERED_EDIT_WORLD_MUTATION)
+        self.assertNotEqual(report.expected_fingerprint, report.observed_fingerprint)
+        self.assertEqual(report.expected_world_version, before_version)
+        self.assertEqual(report.observed_world_version, before_version)
+
+    def test_guard_fails_closed_without_evidence(self) -> None:
+        projection = SceneProjectionService(create_default_registry())
+        workspace = SceneWorkspace(projection=projection, flow_policy=SceneFlowPolicy())
+        workspace.load_scene(self.scene.to_dict())
+        entry = workspace.get_active_entry()
+        assert entry is not None
+        entry.projection_integrity_evidence = None
+
+        report = ProjectionIntegrityGuard(
+            AuthoringProjectionFingerprintService(projection.create_world)
+        ).inspect(entry, action=ProjectionIntegrityAction.AUTOSAVE)
+
+        self.assertFalse(report.allowed)
+        self.assertEqual(report.code, ProjectionIntegrityCode.MISSING_EVIDENCE)
+
+    def test_guard_fails_closed_when_evidence_revision_is_stale(self) -> None:
+        projection = SceneProjectionService(create_default_registry())
+        workspace = SceneWorkspace(projection=projection, flow_policy=SceneFlowPolicy())
+        workspace.load_scene(self.scene.to_dict())
+        entry = workspace.get_active_entry()
+        assert entry is not None
+        entry.scene_revision += 1
+
+        report = ProjectionIntegrityGuard(
+            AuthoringProjectionFingerprintService(projection.create_world)
+        ).inspect(entry)
+
+        self.assertFalse(report.allowed)
+        self.assertEqual(report.code, ProjectionIntegrityCode.EVIDENCE_REVISION_MISMATCH)
 
     def test_workspace_records_evidence_when_projection_is_installed(self) -> None:
         projection = SceneProjectionService(create_default_registry())

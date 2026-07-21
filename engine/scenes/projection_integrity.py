@@ -7,6 +7,7 @@ import json
 import math
 from dataclasses import dataclass
 from collections.abc import Callable
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -18,12 +19,51 @@ class ProjectionFingerprintError(ValueError):
     """Raised when a projection boundary cannot be canonicalized safely."""
 
 
+class ProjectionIntegrityAction(str, Enum):
+    """Operation whose persistent-authoring boundary is being checked."""
+
+    SAVE = "save"
+    AUTOSAVE = "autosave"
+    PLAY = "play"
+    LIFECYCLE = "lifecycle"
+    RELOAD = "reload"
+    EXPORT = "export"
+    PREVIEW_COMMIT = "preview_commit"
+
+
+class ProjectionIntegrityCode(str, Enum):
+    """Stable, machine-readable outcomes from the integrity boundary."""
+
+    CLEAN = "clean"
+    MISSING_EVIDENCE = "missing_evidence"
+    PROJECTION_SCHEMA_MISMATCH = "projection_schema_mismatch"
+    EVIDENCE_REVISION_MISMATCH = "evidence_revision_mismatch"
+    UNREGISTERED_EDIT_WORLD_MUTATION = "unregistered_edit_world_mutation"
+    FINGERPRINT_ERROR = "fingerprint_error"
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectionIntegrityEvidence:
     scene_revision: int
     projected_world_version: int
     canonical_fingerprint: str
     projection_schema_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionIntegrityReport:
+    """Immutable decision record for a protected projection boundary."""
+
+    action: ProjectionIntegrityAction
+    allowed: bool
+    code: ProjectionIntegrityCode
+    message: str
+    expected_fingerprint: str | None = None
+    observed_fingerprint: str | None = None
+    scene_revision: int | None = None
+    observed_scene_revision: int | None = None
+    expected_world_version: int | None = None
+    observed_world_version: int | None = None
 
 
 class AuthoringProjectionFingerprintService:
@@ -149,3 +189,107 @@ class AuthoringProjectionFingerprintService:
         raise ProjectionFingerprintError(
             f"Projection payload contains unsupported value type {type(value).__name__}"
         )
+
+
+class ProjectionIntegrityGuard:
+    """Fail-closed checker for persistent Scene/EditWorld boundaries."""
+
+    def __init__(
+        self,
+        fingerprint_service: AuthoringProjectionFingerprintService,
+    ) -> None:
+        self._fingerprint_service = fingerprint_service
+
+    def inspect(
+        self,
+        entry: "SceneWorkspaceEntry",
+        *,
+        action: ProjectionIntegrityAction = ProjectionIntegrityAction.SAVE,
+    ) -> ProjectionIntegrityReport:
+        evidence = entry.projection_integrity_evidence
+        world = entry.edit_world
+        if evidence is None or world is None:
+            return ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.MISSING_EVIDENCE,
+                message="Projection integrity evidence is required before a protected action.",
+                scene_revision=entry.scene_revision,
+                observed_scene_revision=entry.scene_revision,
+                observed_world_version=world.version if world is not None else None,
+            )
+
+        if evidence.projection_schema_version != self._fingerprint_service.PROJECTION_SCHEMA_VERSION:
+            return ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.PROJECTION_SCHEMA_MISMATCH,
+                message="Projection integrity evidence uses an unsupported schema version.",
+                expected_fingerprint=evidence.canonical_fingerprint,
+                scene_revision=evidence.scene_revision,
+                observed_scene_revision=entry.scene_revision,
+                expected_world_version=evidence.projected_world_version,
+                observed_world_version=world.version,
+            )
+
+        if evidence.scene_revision != entry.scene_revision:
+            return ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.EVIDENCE_REVISION_MISMATCH,
+                message="Projection integrity evidence does not match the current Scene revision.",
+                expected_fingerprint=evidence.canonical_fingerprint,
+                scene_revision=evidence.scene_revision,
+                observed_scene_revision=entry.scene_revision,
+                expected_world_version=evidence.projected_world_version,
+                observed_world_version=world.version,
+            )
+
+        try:
+            observed_fingerprint = self._fingerprint_service.fingerprint_world(
+                entry.scene,
+                world,
+            )
+        except (ProjectionFingerprintError, ValueError, TypeError) as exc:
+            return ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.FINGERPRINT_ERROR,
+                message=f"Projection fingerprint could not be verified: {exc}",
+                expected_fingerprint=evidence.canonical_fingerprint,
+                scene_revision=evidence.scene_revision,
+                observed_scene_revision=entry.scene_revision,
+                expected_world_version=evidence.projected_world_version,
+                observed_world_version=world.version,
+            )
+
+        if observed_fingerprint != evidence.canonical_fingerprint:
+            return ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.UNREGISTERED_EDIT_WORLD_MUTATION,
+                message="EditWorld differs from the registered authoring projection.",
+                expected_fingerprint=evidence.canonical_fingerprint,
+                observed_fingerprint=observed_fingerprint,
+                scene_revision=evidence.scene_revision,
+                observed_scene_revision=entry.scene_revision,
+                expected_world_version=evidence.projected_world_version,
+                observed_world_version=world.version,
+            )
+
+        return ProjectionIntegrityReport(
+            action=action,
+            allowed=True,
+            code=ProjectionIntegrityCode.CLEAN,
+            message="EditWorld matches the registered authoring projection.",
+            expected_fingerprint=evidence.canonical_fingerprint,
+            observed_fingerprint=observed_fingerprint,
+            scene_revision=evidence.scene_revision,
+            observed_scene_revision=entry.scene_revision,
+            expected_world_version=evidence.projected_world_version,
+            observed_world_version=world.version,
+        )
+
+
+if TYPE_CHECKING:
+    from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
