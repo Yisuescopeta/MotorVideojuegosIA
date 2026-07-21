@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G0 — `PR-G00-03` pendiente; `PR-G00-02` conserva rojo baseline intencionado.
+- Gate actual: G0 — `PR-G00-04` pendiente; `PR-G00-02` conserva rojo baseline intencionado.
 
 ### Commits
 
@@ -2039,9 +2039,11 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `docs: register editor migration plan v4` | Registro | Completado | Commit documental inicial; copia, ledger, índice, diff y gobernanza validados. |
 | `chore(g0): add editor migration inventory` | G0 / `PR-G00-01` | Completado | 4 tests OK; 394 Python files, 2.666 import edges, 6 legacy consumers, 8 direct-assignment candidates, 0 parse errors. |
 | `test(g0): record direct mutation gap` | G0 / `PR-G00-02` | Baseline rojo intencionado | 3 pruebas OK; 1 prueba falla porque `prepare_for_save()` acepta mutación directa sin `touch_*`; se resolverá en G0.5. |
+| `test(g0): enforce migration fitness rules` | G0 / `PR-G00-03` | Completado | 4 tests OK; baseline actual coincide; 0 violaciones nuevas. |
 
 ### Actualizaciones
 
 - 2026-07-22: plan copiado sin cambios; hash SHA-256 fuente/copia verificado.
 - 2026-07-22: `PR-G00-01` implementa inventario AST/import graph reproducible, superficies mutables, candidatos `World -> Scene` y reportes JSON/Markdown.
 - 2026-07-22: `PR-G00-02` añade corpus de 8 familias de mutación y prueba de autoridad roja para asignación directa de componentes.
+- 2026-07-22: `PR-G00-03` añade fitness rules contra snapshot G0-01: superficies mutables, consumidores nuevos, boundary runtime/editor y errores AST.

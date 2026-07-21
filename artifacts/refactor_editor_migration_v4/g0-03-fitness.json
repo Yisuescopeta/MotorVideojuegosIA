@@ -1,0 +1,28 @@
+{
+  "baseline_metrics": {
+    "direct_world_assignment_candidates": 8,
+    "import_edges": 2666,
+    "legacy_sync_consumers": 6,
+    "parse_errors": 0,
+    "python_files": 394,
+    "runtime_to_editor_boundary_edges": 0,
+    "scene_mutable_surface_candidates": 6,
+    "scene_public_surfaces": 38,
+    "world_mutation_call_candidates": 120
+  },
+  "current_metrics": {
+    "direct_world_assignment_candidates": 8,
+    "import_edges": 2666,
+    "legacy_sync_consumers": 6,
+    "parse_errors": 0,
+    "python_files": 394,
+    "runtime_to_editor_boundary_edges": 0,
+    "scene_mutable_surface_candidates": 6,
+    "scene_public_surfaces": 38,
+    "world_mutation_call_candidates": 120
+  },
+  "fitness": "editor_migration_g0",
+  "passed": true,
+  "schema_version": 1,
+  "violations": []
+}
