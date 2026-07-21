@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "purpose": "G0-02 direct EditWorld mutation corpus",
+  "protected_actions": [
+    "save",
+    "play",
+    "scene_switch"
+  ],
+  "cases": [
+    {
+      "id": "transform_component_direct_assignment",
+      "family": "component",
+      "operation": "Transform.x = 72.0",
+      "touch_required": false,
+      "expected_contract": "block_unregistered_mutation"
+    },
+    {
+      "id": "collider_component_direct_assignment",
+      "family": "component",
+      "operation": "Collider.shape = 'box'",
+      "touch_required": false,
+      "expected_contract": "block_unregistered_mutation"
+    },
+    {
+      "id": "nested_serializable_payload_assignment",
+      "family": "nested_payload",
+      "operation": "component.payload['layers'][0] = 'Gameplay'",
+      "touch_required": false,
+      "expected_contract": "block_unregistered_mutation"
+    },
+    {
+      "id": "structural_creation",
+      "family": "structure",
+      "operation": "EditWorld.create_entity('CreatedDirectly')",
+      "touch_required": false,
+      "expected_contract": "block_unregistered_mutation"
+    },
+    {
+      "id": "structural_removal",
+      "family": "structure",
+      "operation": "EditWorld.remove_entity(entity_id)",
+      "touch_required": false,
+      "expected_contract": "block_unregistered_mutation"
+    },
+    {
+      "id": "persistent_metadata_assignment",
+      "family": "metadata",
+      "operation": "EditWorld.feature_metadata['physics_2d'] = value",
+      "touch_required": false,
+      "expected_contract": "block_unregistered_mutation"
+    },
+    {
+      "id": "selection_change",
+      "family": "selection",
+      "operation": "EditWorld.selected_entity_name = 'Actor'",
+      "touch_required": false,
+      "expected_contract": "ignore_as_persistent_divergence"
+    },
+    {
+      "id": "registered_preview",
+      "family": "preview",
+      "operation": "Transform.x = 55.0 under active preview lease",
+      "touch_required": false,
+      "expected_contract": "cancel_without_persisting"
+    }
+  ]
+}
