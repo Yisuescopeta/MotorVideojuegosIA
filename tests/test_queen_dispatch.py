@@ -80,10 +80,11 @@ class QueenDispatchTests(unittest.TestCase):
             json.dumps({"type": "text", "text": "root final success"}),
         ])
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-        with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
-            with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
-                with mock.patch("sys.stdout") as out, mock.patch("sys.stderr") as err:
-                    self.assertEqual(self.dispatch.main(), 0)
+        with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+            with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
+                with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
+                    with mock.patch("sys.stdout") as out, mock.patch("sys.stderr") as err:
+                        self.assertEqual(self.dispatch.main(), 0)
         parsed = json.loads("".join(call.args[0] for call in out.write.call_args_list if call.args))
         self.assertEqual(parsed["builder_id"], "builder-test")
         metadata = json.loads("".join(call.args[0] for call in err.write.call_args_list if call.args))
@@ -107,10 +108,11 @@ class QueenDispatchTests(unittest.TestCase):
     def test_no_task_fake_success_is_process_failure(self) -> None:
         stdout = json.dumps([{"type": "assistant", "status": "completed", "text": "success"}])
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-        with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
-            with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
-                with mock.patch("sys.stderr"):
-                    self.assertEqual(self.dispatch.main(), 5)
+        with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+            with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
+                with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
+                    with mock.patch("sys.stderr"):
+                        self.assertEqual(self.dispatch.main(), 5)
 
     def test_multiple_task_events_are_process_failure(self) -> None:
         stdout = json.dumps([final_task_event(), final_task_event("planner")])
@@ -137,31 +139,35 @@ class QueenDispatchTests(unittest.TestCase):
         for stdout in ("", "{", "not-json"):
             with self.subTest(stdout=stdout):
                 completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-                with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
-                    with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
-                        with mock.patch("sys.stderr"):
-                            self.assertEqual(self.dispatch.main(), 5)
+                with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+                    with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
+                        with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
+                            with mock.patch("sys.stderr"):
+                                self.assertEqual(self.dispatch.main(), 5)
 
     def test_nonzero_process_exit_code_is_process_failure(self) -> None:
         completed = subprocess.CompletedProcess(args=[], returncode=17, stdout="", stderr="boom")
-        with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
-            with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
-                with mock.patch("sys.stderr"):
-                    self.assertEqual(self.dispatch.main(), 4)
+        with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+            with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
+                with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
+                    with mock.patch("sys.stderr"):
+                        self.assertEqual(self.dispatch.main(), 4)
 
     def test_timeout_exit_code(self) -> None:
-        with mock.patch.object(self.dispatch, "run_opencode", side_effect=subprocess.TimeoutExpired("opencode", 1)):
-            with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go", "--timeout", "1"]):
-                with mock.patch("sys.stderr"):
-                    self.assertEqual(self.dispatch.main(), 3)
+        with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+            with mock.patch.object(self.dispatch, "run_opencode", side_effect=subprocess.TimeoutExpired("opencode", 1)):
+                with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go", "--timeout", "1"]):
+                    with mock.patch("sys.stderr"):
+                        self.assertEqual(self.dispatch.main(), 3)
 
     def test_invalid_contract_exit_code(self) -> None:
         event = final_task_event(task_result=json.dumps({"status": "completed"}))
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps([event]), stderr="")
-        with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
-            with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
-                with mock.patch("sys.stderr"):
-                    self.assertEqual(self.dispatch.main(), 6)
+        with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+            with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
+                with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
+                    with mock.patch("sys.stderr"):
+                        self.assertEqual(self.dispatch.main(), 6)
 
     def test_task_result_empty_truncated_and_non_json_rejected(self) -> None:
         cases = {"": 5, "{": 6, "not-json": 6}
@@ -169,10 +175,11 @@ class QueenDispatchTests(unittest.TestCase):
             with self.subTest(task_result=task_result):
                 event = real_opencode_task_event(task_result=task_result)
                 completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps([event]), stderr="")
-                with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
-                    with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
-                        with mock.patch("sys.stderr"):
-                            self.assertEqual(self.dispatch.main(), exit_code)
+                with mock.patch.object(self.dispatch, "resolve_opencode_executable", return_value="opencode"):
+                    with mock.patch.object(self.dispatch, "run_opencode", return_value=completed):
+                        with mock.patch.object(sys, "argv", ["run", "--role", "builder", "--repo-root", str(ROOT), "--prompt", "go"]):
+                            with mock.patch("sys.stderr"):
+                                self.assertEqual(self.dispatch.main(), exit_code)
 
     def test_fallback_selection_does_not_mask_native_child_failures(self) -> None:
         for state in ("native_timeout", "native_permission_denied", "native_invalid_output", "native_process_failed"):
@@ -185,7 +192,7 @@ class QueenDispatchTests(unittest.TestCase):
     def test_run_opencode_uses_shell_false_and_dispatcher_command(self) -> None:
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         with mock.patch.object(self.dispatch.subprocess, "run", return_value=completed) as run:
-            self.dispatch.run_opencode(ROOT, "prompt", 7)
+            self.dispatch.run_opencode(ROOT, "prompt", 7, executable="opencode")
         _args, kwargs = run.call_args
         self.assertEqual(kwargs["shell"], False)
         self.assertEqual(kwargs["timeout"], 7)

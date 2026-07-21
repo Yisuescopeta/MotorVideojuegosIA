@@ -18,25 +18,115 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout requested snapshot
+      - name: Validate validation_ref format
+        shell: pwsh
+        env:
+          VALIDATION_REF: ${{ inputs.validation_ref }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:VALIDATION_REF -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "validation_ref must be an exact 40-character commit SHA; got '$env:VALIDATION_REF'"
+          }
+
+      - name: Checkout workflow harness
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.validation_ref }}
+          ref: ${{ github.sha }}
+          path: harness
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify exact SHA
+      - name: Checkout functional snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.validation_ref }}
+          path: functional
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Configure validation evidence directory
+        shell: pwsh
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}\scene-manager-validation
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force $env:EVIDENCE_DIR | Out-Null
+          "EVIDENCE_DIR=$env:EVIDENCE_DIR" >> $env:GITHUB_ENV
+
+      - name: Verify snapshots and engine tree
+        shell: pwsh
+        env:
+          VALIDATION_REF: ${{ inputs.validation_ref }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expected = $env:VALIDATION_REF.ToLowerInvariant()
+          $harnessSha = (git -C harness rev-parse HEAD).Trim()
+          $functionalSha = (git -C functional rev-parse HEAD).Trim()
+          $harnessEngine = (git -C harness rev-parse "HEAD:engine").Trim()
+          $functionalEngine = (git -C functional rev-parse "HEAD:engine").Trim()
+
+          if ($functionalSha -ne $expected) {
+            throw "functional/ checked out $functionalSha instead of $expected"
+          }
+          if ($harnessEngine -ne $functionalEngine) {
+            throw "engine/ differs between the functional snapshot and the validation harness"
+          }
+
+          $lines = @(
+            "workflow harness SHA: $harnessSha",
+            "workflow github.sha: $env:GITHUB_SHA",
+            "functional validation SHA: $functionalSha",
+            "validation_ref: $expected",
+            "tree SHA engine/ harness: $harnessEngine",
+            "tree SHA engine/ functional: $functionalEngine",
+            "engine tree comparison: identical",
+            "functional status before overlay:"
+          )
+          $lines += @(git -C functional status --porcelain)
+          $lines | Tee-Object -FilePath (Join-Path $env:EVIDENCE_DIR 'snapshot-verification.log')
+
+      - name: Overlay controlled Queen test
         shell: pwsh
         run: |
-          $expected = "${{ inputs.validation_ref }}"
-          $actual = git rev-parse HEAD
-          git status --short
-          if ($expected -notmatch '^[0-9a-fA-F]{40}$') {
-            throw "validation_ref must be an exact 40-character commit SHA; got '$expected'"
+          $ErrorActionPreference = "Stop"
+          $source = Join-Path $PWD 'harness/tests/test_queen_dispatch.py'
+          $target = Join-Path $PWD 'functional/tests/test_queen_dispatch.py'
+          if (-not (Test-Path -LiteralPath $source)) {
+            throw "Harness test not found: $source"
           }
-          if ($actual -ne $expected.ToLowerInvariant()) {
-            throw "Checked out $actual instead of $expected"
+          if (-not (Test-Path -LiteralPath $target)) {
+            throw "Functional test not found: $target"
           }
+
+          Copy-Item -LiteralPath $source -Destination $target -Force
+
+          $changed = @(git -C functional diff --name-only | Where-Object { $_ })
+          $status = @(git -C functional status --porcelain | Where-Object { $_ })
+          $engineDiff = @(git -C functional diff --name-only -- engine | Where-Object { $_ })
+          $expectedChanged = 'tests/test_queen_dispatch.py'
+          $expectedStatus = ' M tests/test_queen_dispatch.py'
+
+          if ($changed.Count -ne 1 -or $changed[0] -ne $expectedChanged) {
+            $changed | Write-Error
+            throw "Validation harness modified files outside the authorized Queen test"
+          }
+          if ($status.Count -ne 1 -or $status[0] -ne $expectedStatus) {
+            $status | Write-Error
+            throw "Validation harness produced unexpected tracked or untracked changes"
+          }
+          if ($engineDiff.Count -ne 0) {
+            $engineDiff | Write-Error
+            throw "The validation harness modified engine/"
+          }
+
+          @(
+            "test file incorporated: $expectedChanged",
+            "exact modified files after incorporation:",
+            $changed,
+            "status --porcelain after incorporation:",
+            $status,
+            "engine diff after incorporation: none"
+          ) | Tee-Object -FilePath (Join-Path $env:EVIDENCE_DIR 'overlay-verification.log')
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -44,31 +134,27 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Configure validation evidence directory
-        shell: pwsh
-        env:
-          EVIDENCE_DIR: ${{ runner.temp }}\scene-manager-validation
-        run: |
-          "EVIDENCE_DIR=$env:EVIDENCE_DIR" >> $env:GITHUB_ENV
-
       - name: Install project
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
-          python -m pip install --upgrade "pip>=26.1.2" "setuptools>=78.1.1" "wheel>=0.46" "pytest>=9.0.3"
           python -m pip install -e .[dev]
-          New-Item -ItemType Directory -Force $env:EVIDENCE_DIR | Out-Null
-          $dirty = @(git status --short)
-          if ($dirty.Count -ne 0) {
-            $dirty | Write-Error
-            throw "Canonical installation mutated the validation snapshot"
+          $status = @(git status --porcelain | Where-Object { $_ })
+          $unexpected = @($status | Where-Object { $_ -ne ' M tests/test_queen_dispatch.py' })
+          if ($unexpected.Count -ne 0) {
+            $unexpected | Write-Error
+            throw "Project installation mutated files outside the authorized Queen test"
           }
 
       - name: Full test suite
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -77,21 +163,27 @@ jobs:
 
       - name: Restore tracked test side effects
         if: always()
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
           git restore --source="${{ inputs.validation_ref }}" -- projects/Fornite/settings/project_settings.json settings/project_settings.json
-          $remaining = @(git status --short)
-          if ($remaining.Count -ne 0) {
-            $remaining | Write-Error
+          $status = @(git status --porcelain | Where-Object { $_ })
+          $unexpected = @($status | Where-Object { $_ -ne ' M tests/test_queen_dispatch.py' })
+          if ($unexpected.Count -ne 0) {
+            $unexpected | Write-Error
             throw "Unexpected tracked or untracked changes after the full suite"
           }
+          $status | Tee-Object (Join-Path $env:EVIDENCE_DIR 'post-suite-status.log')
 
       - name: Ruff production
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -99,8 +191,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Ruff tests
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -108,8 +202,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Mypy
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -117,8 +213,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Scene architecture and import-cycle contracts
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -126,8 +224,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Benchmark round 1
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -135,8 +235,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Benchmark round 2
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
@@ -144,12 +246,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Diff check
+        working-directory: functional
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git rev-parse HEAD
           git status --short
           python --version
-          git diff --check
+          git diff --check 2>&1 | Tee-Object (Join-Path $env:EVIDENCE_DIR 'diff-check.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload validation evidence
         if: always()
@@ -157,5 +262,5 @@ jobs:
         with:
           name: scene-manager-refactor-validation-${{ inputs.validation_ref }}
           path: ${{ runner.temp }}/scene-manager-validation/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
