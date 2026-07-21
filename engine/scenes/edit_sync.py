@@ -3,6 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from engine.scenes.projection_integrity import (
+    AuthoringProjectionFingerprintService,
+    ProjectionIntegrityAction,
+    ProjectionIntegrityGuard,
+    ProjectionIntegrityReport,
+)
 from engine.scenes.scene_projection import SceneProjectionService
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 
@@ -31,6 +37,14 @@ class SceneEditSyncCoordinator:
     ) -> None:
         self._workspace = workspace
         self._projection = projection
+        self._integrity_guard = ProjectionIntegrityGuard(
+            AuthoringProjectionFingerprintService(projection.create_world)
+        )
+        self._last_integrity_report: ProjectionIntegrityReport | None = None
+
+    @property
+    def last_integrity_report(self) -> ProjectionIntegrityReport | None:
+        return self._last_integrity_report
 
     @staticmethod
     def has_pending_legacy(entry: SceneWorkspaceEntry) -> bool:
@@ -120,15 +134,14 @@ class SceneEditSyncCoordinator:
         if self.has_pending_transient(entry):
             self._workspace.rebuild_edit_world(entry)
             self.clear_pending(entry)
-            return True
         if self.has_pending_legacy(entry):
-            return self.flush_pending(entry, failure_context=failure_context)
-        if entry.edit_world.version != entry.edit_world_version:
-            if entry.is_playing:
-                return True
-            if not self._sync_or_reject(entry, failure_context=failure_context):
+            if not self.flush_pending(entry, failure_context=failure_context):
                 return False
-        return True
+        self._last_integrity_report = self._integrity_guard.inspect(
+            entry,
+            action=ProjectionIntegrityAction.SAVE,
+        )
+        return self._last_integrity_report.allowed
 
     def _sync_or_reject(
         self,

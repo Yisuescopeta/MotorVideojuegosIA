@@ -354,13 +354,13 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         assert self.entry.edit_world is not None
         self.entry.edit_world.touch_transform()
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.prepare_for_save(self.entry, failure_context="save_version")
         )
 
         self.assertEqual(
             self.entry.scene.find_entity("Actor")["components"]["Transform"]["x"],
-            72.0,
+            1.0,
         )
         self.assertFalse(self.entry.edit_world_sync_pending)
         self.assertFalse(self.entry.dirty)
@@ -371,7 +371,7 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         self.entry.edit_world.touch_transform()
         self.assertIsNotNone(self.workspace.enter_play())
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.prepare_for_save(self.entry, failure_context="save_play")
         )
 

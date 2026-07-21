@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from engine.components.transform import Transform
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import SceneManager
 
@@ -64,6 +65,26 @@ class SceneSaveIntegrityTests(unittest.TestCase):
             world = reloaded.load_scene_from_file(scene_path.as_posix())
             self.assertIsNotNone(world)
             self.assertEqual(len(reloaded.current_scene.entities_data), 2)
+
+    def test_direct_edit_world_mutation_is_rejected_without_touch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "direct_mutation_scene.json"
+            self.assertTrue(self.manager.save_scene_to_file(scene_path.as_posix()))
+            persisted_before = scene_path.read_text(encoding="utf-8")
+
+            edit_world = self.manager.get_edit_world()
+            entity = edit_world.get_entity_by_name("Entity_A")
+            assert entity is not None
+            transform = entity.get_component(Transform)
+            assert transform is not None
+            transform.x = 99.0
+
+            self.assertFalse(self.manager.save_scene_to_file(scene_path.as_posix()))
+            self.assertEqual(scene_path.read_text(encoding="utf-8"), persisted_before)
+            self.assertEqual(
+                self.manager.current_scene.find_entity("Entity_A")["components"]["Transform"]["x"],
+                0.0,
+            )
 
     def test_post_write_validation_failure_returns_false(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
