@@ -50,8 +50,10 @@ Antes de delegar:
 2. Inspeccionar rama, working tree y cambios locales que deban preservarse.
 3. Buscar planes activos relevantes.
 4. Detectar agentes personalizados realmente disponibles; no inventar ni simular agentes ausentes.
-5. Bloquear con `missing_required_agent` si falta un rol imprescindible.
-6. Detectar si el usuario pidió exclusivamente planificación.
+5. Si la tool nativa falta o desconoce el `agent_type`, intentar automaticamente el fallback OpenCode mapeado antes de declarar un rol ausente.
+6. Un rol cuenta como disponible si existe backend nativo o fallback OpenCode mapeado y usable.
+7. Bloquear con `missing_required_agent` solo si ningun backend puede crear el rol.
+8. Detectar si el usuario pidió exclusivamente planificación.
 
 Tratar los nombres de rol como dependencias futuras, no como prueba de agentes instalados. Comprobar disponibilidad antes de cada uso. Consultar [model-router.md](references/model-router.md) para seleccionar roles.
 
@@ -122,9 +124,32 @@ Si UPDATE PLAN decide `continue_next_phase`, continuar automáticamente sin resp
 - Actualizar documentación cuando cambien contratos, API, CLI, schema, arquitectura, instalación o flujos operativos.
 - Crear commit solo con autorización válida.
 
+## Fallback Codex/OpenCode
+
+- Politica: native first. Usar `.agents/skills/queen/scripts/run_opencode_subagent.py`
+  solo cuando la tool nativa de subagente no exista o el `agent_type` sea
+  desconocido para esa tool.
+- En esa condicion elegible, intentar automaticamente el fallback antes de
+  `missing_required_agent`. Prohibido reportar `No ejecuto fallback` si el rol
+  tenia fallback mapeado y no se intento.
+- Un rol cuenta como disponible si existe backend nativo o fallback OpenCode
+  mapeado y usable. Bloquear con `missing_required_agent` solo si ningun backend
+  puede crear el rol.
+- No activar fallback si ya existe un child nativo y falla por timeout,
+  permisos, salida invalida/no JSON o fallo de proceso; esos errores bloquean la
+  fase y no se enmascaran.
+- Los errores del fallback conservan su razon precisa (configuracion, timeout,
+  proceso, resultado ausente o contrato invalido). No reescribir errores del fallback como agente nativo ausente.
+- El fallback llama `opencode run --agent queen-codex-dispatch --format json
+  --dir <repo>` con `shell=False`; el dispatcher es primary sin herramientas
+  salvo `task`, invoca exactamente una task mapeada y devuelve el `task_result`
+  del child verbatim.
+- Mantener como maximo dos readers y un writer en paralelo; builders seriales
+  salvo write sets disjuntos y verificados.
+
 ## Roles futuros
 
-Comprobar que cada rol exista antes de invocarlo. Bloquear si falta uno imprescindible.
+Comprobar que cada rol exista antes de invocarlo. Bloquear si falta uno imprescindible despues de evaluar backend nativo y fallback OpenCode mapeado.
 
 - Reconocimiento: `context_recon`; realizar reconocimiento read-only de subsistemas, archivos críticos, tests autoridad, documentación, riesgos, alcance y cambios locales.
 - Estrategia de tests: `test_strategist_fast`, `test_strategist`, `test_strategist_deep`; crear TEST CONTRACT sin implementar ni hacer validación final.

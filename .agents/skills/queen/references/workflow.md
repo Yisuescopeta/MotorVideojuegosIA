@@ -43,6 +43,30 @@ Mantener plan como memoria operativa resumida: hechos, decisiones, evidencias, e
 
 Continuar automáticamente mientras exista siguiente fase válida. Una fase verde no completa tarea. Paralelizar lectura independiente; serializar escritura por defecto. Permitir builders concurrentes solo con write sets disjuntos. Reutilizar contexto de agentes en seguimientos y evitar reconocimientos repetidos.
 
+Presupuesto operativo: maximo dos readers y un writer simultaneos. Builders son
+seriales salvo write sets disjuntos, explicitos y verificados.
+
+## Fallback Codex/OpenCode
+
+Politica native first: usar subagente nativo siempre que la tool exista y conozca
+el `agent_type`. El fallback OpenCode solo aplica si falta la tool nativa o el
+rol es desconocido para esa tool. No enmascarar fallos de un child nativo ya
+existente: timeout, permisos, salida invalida/no JSON o fallo de proceso bloquean
+la fase y no activan fallback.
+
+En la condicion elegible (tool nativa ausente o `agent_type` desconocido), Queen
+debe intentar automaticamente el fallback antes de `missing_required_agent`. Un
+rol esta disponible con native OR mapped OpenCode fallback usable. Bloquear con
+`missing_required_agent` solo si ningun backend puede crear el rol. Los errores
+del fallback conservan su razon precisa y no se reescriben como agente nativo
+ausente; esta prohibido reportar `No ejecuto fallback` si habia fallback mapeado
+y no se intento.
+
+Cuando se use fallback, registrar evidencia de backend: `backend`, rol,
+`parent_session`, `child_session` y `model`. El runner debe devolver en `stdout`
+solo el JSON contractual compacto del child validado; metadata y errores van a
+`stderr`.
+
 ## Estados terminales no exitosos
 
 - `blocked`: impedimento externo, permiso o dato imprescindible impide continuar; registrar razón y desbloqueo requerido.

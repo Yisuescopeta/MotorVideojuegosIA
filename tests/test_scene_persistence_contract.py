@@ -6,8 +6,11 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from engine.components.transform import Transform
+from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes import scene_persistence
+from engine.scenes.edit_sync import LEGACY_AUTHORING_SYNC_REASON
 from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_SEPARATORS, SceneManager
 from engine.scenes.scene_persistence import (
     LoadedScenePayload,
@@ -16,6 +19,7 @@ from engine.scenes.scene_persistence import (
     SceneStorageReadError,
 )
 from engine.scenes.storage import SceneStorage
+from engine.scenes.workspace_lifecycle import SceneWorkspace
 
 
 def _scene_payload() -> dict:
@@ -86,6 +90,22 @@ class _PayloadStorage(SceneStorage):
         if self.load_error is not None:
             raise self.load_error
         return copy.deepcopy(self.payload)
+
+
+class _FailIfCalledStorage(SceneStorage):
+    def __init__(self) -> None:
+        self.save_calls = 0
+        self.load_calls = 0
+
+    def save(self, path: str | Path, payload: dict) -> None:
+        _ = path, payload
+        self.save_calls += 1
+        raise AssertionError("inactive pending save reached storage")
+
+    def load(self, path: str | Path) -> dict:
+        _ = path
+        self.load_calls += 1
+        raise AssertionError("inactive pending save reached storage")
 
 
 class ScenePersistenceContractTests(unittest.TestCase):
@@ -294,6 +314,97 @@ class ScenePersistenceContractTests(unittest.TestCase):
         self.assertEqual(callbacks, [])
         self._assert_failed_save_preserves_memory(manager, entry, memory_before, key_before)
 
+    def test_inactive_legacy_pending_save_rejects_before_projection_or_storage(self) -> None:
+        manager = SceneManager(create_default_registry())
+        history = UndoRedoManager()
+        manager.set_history_manager(history)
+        manager.load_scene(_scene_payload())
+        pending_key = manager.active_scene_key
+        pending_entry = manager.resolve_entry(pending_key)
+        assert pending_entry is not None and pending_entry.edit_world is not None
+        self.assertTrue(manager.set_selected_entity("Hero"))
+        pending_scene = pending_entry.scene
+        pending_world = pending_entry.edit_world
+        hero = pending_world.get_entity_by_name("Hero")
+        assert hero is not None
+        transform = hero.get_component(Transform)
+        assert transform is not None
+        transform.x = 42.0
+        self.assertTrue(manager.mark_edit_world_dirty(LEGACY_AUTHORING_SYNC_REASON))
+        scene_payload = copy.deepcopy(pending_scene.to_dict())
+        world_payload = copy.deepcopy(pending_world.serialize())
+        pending_state = (
+            pending_entry.dirty,
+            pending_entry.dirty_before_pending_edit_world_sync,
+            pending_entry.pending_edit_world_sync_reason,
+            pending_entry.selected_entity_name,
+            pending_entry.selected_entity_id,
+            pending_entry.edit_world_version,
+            pending_world.version,
+        )
+        manager.create_new_scene("Other", activate=True)
+        active_key = manager.active_scene_key
+        keys_before = tuple(item["key"] for item in manager.list_open_scenes())
+        source_path_before = pending_entry.source_path
+        callbacks: list[str] = []
+        manager.register_on_scene_saved(lambda path, _info: callbacks.append(path))
+        storage = _FailIfCalledStorage()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "inactive.scene"
+            with (
+                patch.object(manager._edit_sync, "flush_pending") as flush,
+                patch.object(manager._workspace, "rebuild_edit_world") as rebuild,
+                patch.object(manager._projection, "validate_payload") as validate,
+                patch.object(
+                    manager._persistence,
+                    "save",
+                    wraps=manager._persistence.save,
+                ) as persist,
+            ):
+                saved = manager.save_scene_to_file(
+                    target.as_posix(),
+                    key=pending_key,
+                    storage=storage,
+                )
+
+            self.assertFalse(saved)
+            self.assertFalse(target.exists())
+            flush.assert_not_called()
+            rebuild.assert_not_called()
+            validate.assert_not_called()
+            persist.assert_not_called()
+
+        self.assertEqual(storage.save_calls, 0)
+        self.assertEqual(storage.load_calls, 0)
+        self.assertEqual(callbacks, [])
+        self.assertFalse(history.can_undo())
+        self.assertFalse(history.can_redo())
+        self.assertEqual(manager.active_scene_key, active_key)
+        self.assertEqual(
+            tuple(item["key"] for item in manager.list_open_scenes()),
+            keys_before,
+        )
+        self.assertIs(manager.resolve_entry(pending_key), pending_entry)
+        self.assertEqual(pending_entry.key, pending_key)
+        self.assertEqual(pending_entry.source_path, source_path_before)
+        self.assertIs(pending_entry.scene, pending_scene)
+        self.assertIs(pending_entry.edit_world, pending_world)
+        self.assertEqual(pending_entry.scene.to_dict(), scene_payload)
+        self.assertEqual(pending_entry.edit_world.serialize(), world_payload)
+        self.assertEqual(
+            (
+                pending_entry.dirty,
+                pending_entry.dirty_before_pending_edit_world_sync,
+                pending_entry.pending_edit_world_sync_reason,
+                pending_entry.selected_entity_name,
+                pending_entry.selected_entity_id,
+                pending_entry.edit_world_version,
+                pending_entry.edit_world.version,
+            ),
+            pending_state,
+        )
+
     def test_post_replace_failures_preserve_memory_without_rolling_back_disk(self) -> None:
         failure_phases = ("readback", "migration", "validation", "entity_count", "install")
 
@@ -340,8 +451,8 @@ class ScenePersistenceContractTests(unittest.TestCase):
                         else:
                             stack.enter_context(
                                 patch.object(
-                                    manager,
-                                    "_install_scene_payload",
+                                    SceneWorkspace,
+                                    "install_entry_state",
                                     side_effect=ValueError("install failed"),
                                 )
                             )

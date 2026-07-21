@@ -58,6 +58,29 @@ class AuthoringTransactionsTests(unittest.TestCase):
         entity = self.api.get_entity("Rig")
         self.assertEqual(entity["tag"], "MainCamera")
 
+    def test_transaction_started_in_edit_can_commit_during_play_and_undo_after_stop(self) -> None:
+        self.assertTrue(self.api.begin_transaction("create-play-probe")["success"])
+        change = {"kind": "create_entity", "entity": "PlayProbe"}
+        self.assertTrue(self.api.apply_change(change)["success"])
+
+        self.api.play()
+        scene_manager = self.api.scene_manager
+        self.assertIsNotNone(scene_manager)
+        assert scene_manager is not None
+        self.assertTrue(scene_manager.is_playing)
+        committed = self.api.commit_transaction()
+
+        self.assertTrue(committed["success"])
+        self.assertEqual(committed["data"]["label"], "create-play-probe")
+        self.assertEqual(committed["data"]["changes"], [change])
+
+        self.api.stop()
+        self.assertFalse(scene_manager.is_playing)
+        self.assertEqual(self.api.get_entity("PlayProbe")["name"], "PlayProbe")
+        self.assertTrue(self.api.undo()["success"])
+        with self.assertRaises(Exception):
+            self.api.get_entity("PlayProbe")
+
     def test_transaction_rollback_restores_previous_scene_state(self) -> None:
         self.assertTrue(self.api.create_entity("Actor")["success"])
         self.assertTrue(self.api.begin_transaction("rollback-edit")["success"])

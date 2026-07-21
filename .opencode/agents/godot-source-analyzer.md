@@ -152,6 +152,7 @@ Al terminar el análisis de un subsistema, entrego:
 ```json
 {
   "analyzer_id": "godot-analyze-<date>",
+  "phase_status": "completed|blocked|failed",
   "godot_version": "4.x (detectado de version.h o SConstruct)",
   "godot_source_path": "ruta/detectada",
   "subsystems_analyzed": ["2d", "physics_2d"],
@@ -175,6 +176,9 @@ Al terminar el análisis de un subsistema, entrego:
   "notes": "Observaciones sobre la calidad/cobertura del análisis"
 }
 ```
+
+Usar `phase_status: completed` cuando el analisis finaliza con evidencia;
+`blocked|failed` cuando no puede completarse.
 
 ## Sub-agent Communication
 

@@ -1,9 +1,11 @@
+import inspect
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import engine.scenes.scene_manager as scene_manager_module
 from engine.components.recttransform import RectTransform
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform
@@ -178,8 +180,8 @@ class SceneManagerSyncTests(unittest.TestCase):
             wraps=self.scene_manager.apply_transform_state,
         ) as transform_mock, patch.object(
             self.scene_manager,
-            "_sync_entry_from_edit_world",
-            wraps=self.scene_manager._sync_entry_from_edit_world,
+            "sync_from_edit_world",
+            wraps=self.scene_manager.sync_from_edit_world,
         ) as sync_mock:
             updated = self.scene_manager.apply_edit_to_world("Player", "Transform", "y", 88.0)
 
@@ -236,8 +238,8 @@ class SceneManagerSyncTests(unittest.TestCase):
             wraps=self.scene_manager.apply_rect_transform_state,
         ) as rect_mock, patch.object(
             self.scene_manager,
-            "_sync_entry_from_edit_world",
-            wraps=self.scene_manager._sync_entry_from_edit_world,
+            "sync_from_edit_world",
+            wraps=self.scene_manager.sync_from_edit_world,
         ) as sync_mock:
             updated = self.scene_manager.apply_edit_to_world("Button", "RectTransform", "height", 96.0)
 
@@ -270,8 +272,8 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         with patch.object(
             self.scene_manager,
-            "_sync_entry_from_edit_world",
-            wraps=self.scene_manager._sync_entry_from_edit_world,
+            "sync_from_edit_world",
+            wraps=self.scene_manager.sync_from_edit_world,
         ) as sync_mock:
             updated = self.scene_manager.apply_transform_state("Player", {"x": 45.0, "y": 64.0})
 
@@ -289,11 +291,7 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.scene_manager.set_history_manager(history)
         scene = self.scene_manager.current_scene
 
-        with patch.object(scene, "to_dict", wraps=scene.to_dict) as to_dict_mock, patch.object(
-            self.scene_manager,
-            "_commit_serializable_scene_mutation",
-            wraps=self.scene_manager._commit_serializable_scene_mutation,
-        ) as commit_mock:
+        with patch.object(scene, "to_dict", wraps=scene.to_dict) as to_dict_mock:
             updated = self.scene_manager.apply_transform_state(
                 "Player",
                 {"x": 25.0},
@@ -303,7 +301,6 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         self.assertTrue(updated)
         self.assertEqual(to_dict_mock.call_count, 0)
-        self.assertEqual(commit_mock.call_count, 0)
         self.assertEqual(scene.find_entity("Player")["components"]["Transform"]["x"], 25.0)
         transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
         self.assertEqual(transform.x, 25.0)
@@ -450,8 +447,8 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         with patch.object(
             manager,
-            "_sync_entry_from_edit_world",
-            wraps=manager._sync_entry_from_edit_world,
+            "sync_from_edit_world",
+            wraps=manager.sync_from_edit_world,
         ) as sync_mock:
             updated = manager.apply_edit_to_world("Player", "Sprite", "height", 48)
 
@@ -1191,6 +1188,58 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.assertEqual(reloaded_world.selected_entity_name, "Player")
         self.assertEqual(persisted["entities"][0]["components"]["Transform"]["x"], 33.0)
         self.assertEqual(self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]["x"], 33.0)
+
+
+class SceneManagerIncrementalBoundaryTests(unittest.TestCase):
+    def test_manager_keeps_public_signatures_and_no_incremental_implementation(self) -> None:
+        source = inspect.getsource(scene_manager_module)
+
+        self.assertNotIn("from engine.components.transform import Transform", source)
+        self.assertNotIn("from engine.components.recttransform import RectTransform", source)
+        self.assertNotIn("AuthoringComponentDelta", source)
+        self.assertNotIn("AuthoringTransactionState", source)
+        self.assertNotIn("self._authoring_transaction", source)
+        for method_name in (
+            "_can_apply_direct_transform_state",
+            "_can_apply_direct_component_state",
+            "_apply_direct_transform_state",
+            "_apply_direct_component_state",
+            "_apply_transform_history_delta",
+            "_apply_component_history_delta",
+            "_apply_transform_properties_to_entry",
+            "_apply_component_properties_to_entry",
+            "_record_authoring_transaction_delta",
+            "_apply_authoring_transaction_deltas",
+            "_editable_fields_for_authoring_component",
+            "_apply_transform_properties_to_edit_world",
+            "_apply_component_properties_to_edit_world",
+        ):
+            self.assertNotIn(f"def {method_name}", source)
+
+        self.assertEqual(
+            tuple(inspect.signature(SceneManager.apply_transform_state).parameters),
+            ("self", "entity_name", "transform_state", "key_or_path", "record_history", "label"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(SceneManager.apply_rect_transform_state).parameters),
+            ("self", "entity_name", "rect_state", "key_or_path", "record_history", "label"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(SceneManager.begin_authoring_transaction).parameters),
+            ("self", "label", "key_or_path"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(SceneManager.update_authoring_transaction).parameters),
+            ("self", "entity_name", "component_name", "component_state", "key_or_path"),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(SceneManager.commit_authoring_transaction).parameters),
+            ("self",),
+        )
+        self.assertEqual(
+            tuple(inspect.signature(SceneManager.cancel_authoring_transaction).parameters),
+            ("self",),
+        )
 
 
 if __name__ == "__main__":

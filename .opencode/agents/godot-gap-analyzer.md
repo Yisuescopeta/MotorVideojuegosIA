@@ -162,6 +162,7 @@ Para cada gap priorizado `critical` o `high`, estimo:
 ```json
 {
   "gap_analysis_id": "gap-<date>",
+  "phase_status": "completed|blocked|failed",
   "catalog_source": "godot-analyze-<date> o 'manual'",
   "motor_capabilities": ["listado de motor capabilities"],
   "already_implemented": [
@@ -200,6 +201,9 @@ Para cada gap priorizado `critical` o `high`, estimo:
   "notes": "Observaciones sobre limitaciones o asunciones del análisis"
 }
 ```
+
+Usar `phase_status: completed` cuando el analisis finaliza con evidencia;
+`blocked|failed` cuando no puede completarse.
 
 ---
 

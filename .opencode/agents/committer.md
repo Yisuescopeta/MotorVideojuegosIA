@@ -68,6 +68,7 @@ Tipos permitidos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
 ```json
 {
   "status": "ok|blocked|failed",
+  "phase_status": "completed|blocked|failed",
   "commit_hash": "abc1234",
   "message": "docs(reina): endurecer contrato multiagente",
   "files_committed": ["AGENTS.md"],
@@ -75,3 +76,6 @@ Tipos permitidos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
   "blocked_reason": null
 }
 ```
+
+`status: ok` requiere `phase_status: completed`; `blocked|failed` requieren
+`phase_status` coincidente.

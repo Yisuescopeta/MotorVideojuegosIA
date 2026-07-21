@@ -85,4 +85,11 @@ def clone_world(source: World, *, world_factory: Callable[[], World]) -> World:
     new_world._adopt_entities(cloned_entities)
     _link_parent_transforms(new_world, pending_links)
     new_world.selected_entity_name = source.selected_entity_name
+    new_world._version = source._version
+    new_world._structure_version = source._structure_version
+    new_world._transform_version = source._transform_version
+    new_world._render_version = source._render_version
+    new_world._physics_version = source._physics_version
+    new_world._ui_layout_version = source._ui_layout_version
+    new_world._selection_version = source._selection_version
     return new_world

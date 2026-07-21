@@ -1,6 +1,6 @@
 name = "planner_deep"
 description = "Planifica cambios criticos sin escribir."
-model = "gpt-5.6"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 developer_instructions = """

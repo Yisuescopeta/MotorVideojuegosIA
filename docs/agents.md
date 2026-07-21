@@ -956,7 +956,7 @@ Autoridad durante transicion:
   canon OpenCode. Cambios comunes deben mantener ambas integraciones.
 
 Model Router clasifica `simple|normal|complex|critical` tras RECON. Fast usa
-`gpt-5.6-terra`/low; standard `gpt-5.6`/high; deep `gpt-5.6`/xhigh. TEST
+`gpt-5.6-terra`/low; standard `gpt-5.6-sol`/high; deep `gpt-5.6-sol`/xhigh. TEST
 CONTRACT precede implementacion y fija tests autoridad, tests nuevos, tests que
 no se relajan, comandos y aceptacion. Cada resultado JSON se valida con:
 
@@ -966,6 +966,26 @@ python .agents/skills/queen/scripts/validate_result.py <agent_type> --input resu
 
 Salida vacia, no JSON o incompatible bloquea. Planes largos viven en
 `docs/plans/active/`; `continue_next_phase` continua automaticamente.
+
+Fallback automatico Codex/OpenCode: politica native first. La sesion raiz usa el
+child nativo cuando existe; solo llama
+`.agents/skills/queen/scripts/run_opencode_subagent.py` si la tool nativa falta
+o el `agent_type` es desconocido. No enmascara timeouts, permisos, salida
+invalida/no JSON ni fallo de proceso de un child nativo ya existente. El runner
+lanza `opencode run --agent queen-codex-dispatch --format json --dir <repo>` con
+`shell=False`; el dispatcher es primary sin herramientas salvo `task`, permite
+solo roles mapeados, no reintenta y devuelve el `task_result` del child
+verbatim. Mantener maximo dos readers y un writer; builders seriales salvo write
+sets disjuntos.
+Codigos del runner: configuracion `2`, timeout `3`, proceso `4`, resultado
+ausente/inutilizable `5` y contrato invalido `6`.
+
+Antes de bloquear con `missing_required_agent`, Queen debe intentar
+automaticamente el fallback OpenCode mapeado cuando la tool nativa falte o no
+conozca el `agent_type`. Un rol cuenta como disponible si el backend nativo o el
+fallback mapeado es usable. Si el fallback falla, conservar su razon precisa; no
+reescribirla como agente nativo ausente ni reportar `No ejecuto fallback` cuando
+habia fallback elegible sin intentarlo.
 
 Configuracion tecnica solicitada: sandbox `read-only`/`workspace-write`,
 profundidad 1 y paralelismo 3. El parent/root runtime de Codex o la app puede

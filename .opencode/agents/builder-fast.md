@@ -109,6 +109,7 @@ schema:
 {
   "builder_id": "builder-<task_id>",
   "status": "completed|partial|blocked|failed",
+  "phase_status": "completed|blocked|failed",
   "files_changed": [],
   "tests_added_or_modified": [],
   "tests_deliberately_not_changed": [],
@@ -127,3 +128,5 @@ Rules:
 - `write_scope_violations` must be non-empty if any attempted or completed edit
   touched a forbidden file.
 - Empty output is invalid and must be treated by Queen as blocked.
+- `completed` requires `phase_status: completed`; `partial|blocked` require
+  `phase_status: blocked`; `failed` requires `phase_status: failed`.

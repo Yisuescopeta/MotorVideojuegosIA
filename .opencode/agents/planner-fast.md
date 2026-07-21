@@ -70,6 +70,7 @@ clarification.
 {
   "plan_id": "plan-<task_id>",
   "mode": "standard|correction|blocked",
+  "phase_status": "completed|blocked",
   "goal": "what this plan achieves",
   "test_contract_id": "test-contract-<task_id>",
   "test_contract_verdict": "sufficient|insufficient|not_applicable",
@@ -111,3 +112,5 @@ clarification.
 - Public authoring uses `EngineAPI` or `SceneManager`.
 - Mark critical files immediately.
 - Include docs updates when contracts change.
+- `mode: blocked` requires `phase_status: blocked`; executable modes require
+  `phase_status: completed`.

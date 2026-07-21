@@ -265,6 +265,61 @@ class SchemaValidationTests(unittest.TestCase):
         self.assertTrue(any(operation["op"] == "set_entity_property" for operation in overrides["operations"]))
         self.assertTrue(any(operation["op"] == "replace_component" for operation in overrides["operations"]))
 
+    def test_empty_prefab_override_shapes_are_canonicalized(self) -> None:
+        entities = [
+            {
+                "name": "ExplicitEmpty",
+                "components": {},
+                "prefab_instance": {"overrides": {}},
+            },
+            {
+                "name": "CanonicalEmpty",
+                "components": {},
+                "prefab_instance": {"overrides": {"operations": []}},
+            },
+            {
+                "name": "LegacyNonEmpty",
+                "components": {},
+                "prefab_instance": {"overrides": {"": {"tag": "Enemy"}}},
+            },
+        ]
+
+        scene = migrate_scene_data(
+            {
+                "name": "Override Shapes",
+                "entities": entities,
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        prefab = migrate_prefab_data(
+            {
+                "root_name": "ExplicitEmpty",
+                "entities": entities,
+            }
+        )
+
+        for payload in (scene, prefab):
+            for entity in payload["entities"][:2]:
+                self.assertEqual(
+                    entity["prefab_instance"]["overrides"],
+                    {"operations": []},
+                )
+            legacy_operations = payload["entities"][2]["prefab_instance"]["overrides"]
+            self.assertEqual(
+                legacy_operations,
+                {
+                    "operations": [
+                        {
+                            "op": "set_entity_property",
+                            "target": "",
+                            "field": "tag",
+                            "value": "Enemy",
+                        }
+                    ]
+                },
+            )
+
     def test_tilemap_payload_migrates_and_validates(self) -> None:
         legacy = {
             "name": "TilemapScene",

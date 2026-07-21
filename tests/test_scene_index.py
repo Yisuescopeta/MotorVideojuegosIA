@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 from engine.scenes.scene import Scene
@@ -104,6 +105,208 @@ class SceneIndexTests(unittest.TestCase):
         self.assertIsNone(scene.find_entity("Hero"))
         self.assertEqual([entity["name"] for entity in scene.entities_data], ["Enemy", "Pickup"])
 
+    def test_remove_entity_subtree_is_transitive_ordered_and_reindexes_all_keys(self) -> None:
+        scene = Scene(
+            data={
+                "name": "SubtreeIndex",
+                "entities": [
+                    {"id": "leaf-id", "name": "Leaf", "parent": "Branch", "components": {}},
+                    {"id": "keep-a-id", "name": "KeepA", "components": {}},
+                    {
+                        "id": "root-id",
+                        "name": "Root",
+                        "components": {"SceneEntryPoint": {"entry_id": "root-entry"}},
+                    },
+                    {"id": "keep-b-id", "name": "KeepB", "components": {}},
+                    {
+                        "id": "branch-id",
+                        "name": "Branch",
+                        "parent": "Root",
+                        "components": {"SceneEntryPoint": {"entry_id": "branch-entry"}},
+                    },
+                    {"id": "deep-id", "name": "Deep", "parent": "Leaf", "components": {}},
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        self.assertTrue(scene.remove_entity_subtree("Root"))
+
+        self.assertEqual(
+            [entity["name"] for entity in scene.entities_data],
+            ["KeepA", "KeepB"],
+        )
+        for name in ("Root", "Branch", "Leaf", "Deep"):
+            self.assertIsNone(scene.find_entity(name))
+        for entity_id in ("root-id", "branch-id", "leaf-id", "deep-id"):
+            self.assertIsNone(scene.find_entity_by_id(entity_id))
+        self.assertTrue(
+            scene.add_entity(
+                {
+                    "name": "ReplacementEntry",
+                    "components": {"SceneEntryPoint": {"entry_id": "branch-entry"}},
+                }
+            )
+        )
+
+    def test_remove_entity_subtree_missing_is_exact_noop(self) -> None:
+        scene = self._scene()
+        before = scene.to_dict()
+
+        self.assertFalse(scene.remove_entity_subtree("Missing"))
+
+        self.assertEqual(scene.to_dict(), before)
+
+    def test_scene_load_and_from_dict_canonicalize_empty_override_shape(self) -> None:
+        scene = Scene(
+            data={
+                "name": "OverrideShapes",
+                "entities": [
+                    {
+                        "name": "ExplicitEmpty",
+                        "prefab_instance": {
+                            "prefab_path": "empty.prefab",
+                            "root_name": "Root",
+                            "overrides": {},
+                        },
+                        "components": {},
+                    },
+                    {
+                        "name": "CanonicalEmpty",
+                        "prefab_instance": {
+                            "prefab_path": "canonical.prefab",
+                            "root_name": "Root",
+                            "overrides": {"operations": []},
+                        },
+                        "components": {},
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        round_tripped = Scene.from_dict(scene.to_dict())
+
+        for current_scene in (scene, round_tripped):
+            for entity_name in ("ExplicitEmpty", "CanonicalEmpty"):
+                self.assertEqual(
+                    current_scene.find_entity(entity_name)["prefab_instance"]["overrides"],
+                    {"operations": []},
+                )
+            for entity_data in current_scene.to_dict()["entities"]:
+                self.assertNotIn(
+                    "_preserve_empty_overrides",
+                    entity_data["prefab_instance"],
+                )
+
+    def test_scene_snapshot_restores_only_exact_empty_shapes_by_live_id(self) -> None:
+        scene = Scene(
+            data={
+                "name": "SnapshotOverrideShapes",
+                "entities": [
+                    {
+                        "id": "target-id",
+                        "name": "Target",
+                        "prefab_instance": {"overrides": {"operations": []}},
+                        "components": {},
+                    },
+                    {
+                        "id": "canonical-id",
+                        "name": "Canonical",
+                        "prefab_instance": {"overrides": {"operations": []}},
+                        "components": {},
+                    },
+                    {
+                        "id": "non-empty-id",
+                        "name": "NonEmpty",
+                        "prefab_instance": {
+                            "overrides": {
+                                "operations": [
+                                    {
+                                        "op": "set_entity_property",
+                                        "target": "",
+                                        "field": "tag",
+                                        "value": "Enemy",
+                                    }
+                                ]
+                            }
+                        },
+                        "components": {},
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        target_instance = copy.deepcopy(scene.find_entity("Target")["prefab_instance"])
+        target_instance["overrides"] = {}
+        self.assertTrue(
+            scene.update_entity_property_by_id(
+                "target-id",
+                "prefab_instance",
+                target_instance,
+            )
+        )
+
+        snapshot = scene.to_snapshot_dict()
+        self.assertEqual(snapshot["entities"][0]["prefab_instance"]["overrides"], {})
+        self.assertEqual(
+            snapshot["entities"][1]["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        rebuilt = Scene.from_dict(snapshot)
+        self.assertEqual(
+            rebuilt.find_entity_by_id("target-id")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        snapshot_before_restore = copy.deepcopy(snapshot)
+
+        rebuilt.restore_empty_prefab_override_shapes(snapshot)
+        rebuilt.restore_empty_prefab_override_shapes(snapshot)
+
+        self.assertEqual(snapshot, snapshot_before_restore)
+        self.assertEqual(
+            rebuilt.find_entity_by_id("target-id")["prefab_instance"]["overrides"],
+            {},
+        )
+        self.assertEqual(
+            rebuilt.find_entity_by_id("canonical-id")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        self.assertEqual(
+            rebuilt.find_entity_by_id("non-empty-id")["prefab_instance"]["overrides"],
+            snapshot["entities"][2]["prefab_instance"]["overrides"],
+        )
+
+        ignored = copy.deepcopy(snapshot)
+        ignored["entities"][0]["id"] = "missing-id"
+        ignored["entities"].append(
+            {
+                "id": "",
+                "name": "Invalid",
+                "prefab_instance": {"overrides": {}},
+                "components": {},
+            }
+        )
+        canonical = Scene.from_dict(snapshot)
+        canonical.restore_empty_prefab_override_shapes(ignored)
+        self.assertEqual(
+            canonical.find_entity_by_id("target-id")["prefab_instance"]["overrides"],
+            {"operations": []},
+        )
+        malicious = copy.deepcopy(snapshot)
+        malicious["entities"][2]["prefab_instance"]["overrides"] = {}
+        non_empty = Scene.from_dict(snapshot)
+        non_empty_before = copy.deepcopy(
+            non_empty.find_entity_by_id("non-empty-id")["prefab_instance"]["overrides"]
+        )
+        non_empty.restore_empty_prefab_override_shapes(malicious)
+        self.assertEqual(
+            non_empty.find_entity_by_id("non-empty-id")["prefab_instance"]["overrides"],
+            non_empty_before,
+        )
+
     def test_add_entity_rejects_duplicate_name_using_index(self) -> None:
         scene = self._scene()
 
@@ -111,6 +314,117 @@ class SceneIndexTests(unittest.TestCase):
 
         self.assertFalse(added)
         self.assertEqual(len(scene.entities_data), 3)
+
+    def test_update_component_properties_preserves_existing_payload(self) -> None:
+        scene = Scene(
+            data={
+                "name": "BatchUpdate",
+                "entities": [
+                    {
+                        "name": "Actor",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 1.0,
+                                "y": 2.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                                "editor_data": {"locked": True},
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        component = scene.find_entity("Actor")["components"]["Transform"]
+
+        updated = scene.update_component_properties(
+            "Actor",
+            "Transform",
+            {"x": 9.0, "rotation": 45.0},
+        )
+
+        self.assertTrue(updated)
+        stored = scene.find_entity("Actor")["components"]["Transform"]
+        self.assertIs(stored, component)
+        self.assertEqual(stored["x"], 9.0)
+        self.assertEqual(stored["rotation"], 45.0)
+        self.assertEqual(stored["y"], 2.0)
+        self.assertEqual(stored["editor_data"], {"locked": True})
+        self.assertFalse(scene.update_component_properties("Missing", "Transform", {"x": 1.0}))
+        self.assertFalse(scene.update_component_properties("Actor", "Missing", {"x": 1.0}))
+
+    def test_update_component_properties_reindexes_scene_entry_point(self) -> None:
+        scene = Scene(
+            data={
+                "name": "EntryIndex",
+                "entities": [
+                    {
+                        "name": "Gate",
+                        "components": {
+                            "SceneEntryPoint": {
+                                "enabled": True,
+                                "entry_id": "arrival",
+                                "label": "Arrival",
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        self.assertTrue(
+            scene.update_component_properties(
+                "Gate",
+                "SceneEntryPoint",
+                {"entry_id": "north_gate", "label": "North Gate"},
+            )
+        )
+        self.assertTrue(
+            scene.add_entity(
+                {
+                    "name": "OldArrival",
+                    "components": {"SceneEntryPoint": {"entry_id": "arrival"}},
+                }
+            )
+        )
+        self.assertFalse(
+            scene.add_entity(
+                {
+                    "name": "DuplicateNorth",
+                    "components": {"SceneEntryPoint": {"entry_id": "north_gate"}},
+                }
+            )
+        )
+        entry_point = scene.find_entity("Gate")["components"]["SceneEntryPoint"]
+        self.assertTrue(entry_point["enabled"])
+        self.assertEqual(entry_point["label"], "North Gate")
+
+    def test_remove_feature_metadata_removes_only_requested_key(self) -> None:
+        scene = Scene(
+            data={
+                "name": "FeatureMetadata",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {
+                    "scene_flow": {"next": "levels/next.json"},
+                    "signals": {"connections": []},
+                },
+            }
+        )
+
+        self.assertTrue(scene.remove_feature_metadata("scene_flow"))
+        self.assertNotIn("scene_flow", scene.feature_metadata)
+        self.assertEqual(
+            scene.feature_metadata["signals"],
+            {"connections": []},
+        )
+        self.assertFalse(scene.remove_feature_metadata("scene_flow"))
 
 
 if __name__ == "__main__":

@@ -109,6 +109,7 @@ Reportar hallazgo con `must_fix: true` si ocurre cualquiera:
 {
   "review_id": "review-<task_id>",
   "mode": "standard|final_review",
+  "phase_status": "completed|blocked|failed",
   "task_goal": "original task in final_review",
   "test_contract_id": "test-contract-<task_id>",
   "files_reviewed": ["ruta/al/archivo.py"],
@@ -135,5 +136,7 @@ Reportar hallazgo con `must_fix: true` si ocurre cualquiera:
 - `approved`: zero `must_fix`.
 - `changes_requested`: one or more `must_fix`.
 - `rejected`: design is fundamentally wrong.
+- `approved` requiere `phase_status: completed`; `changes_requested` requiere
+  `phase_status: blocked`; `rejected` requiere `phase_status: failed`.
 
 In final review, every `must_fix` blocks Queen.

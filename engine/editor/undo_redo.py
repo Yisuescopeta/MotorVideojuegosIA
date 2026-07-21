@@ -15,6 +15,12 @@ class UndoRedoOperation:
     redo: Callable[[], None]
 
 
+@dataclass(frozen=True)
+class _UndoRedoCheckpoint:
+    _undo_stack: tuple[UndoRedoOperation, ...]
+    _redo_stack: tuple[UndoRedoOperation, ...]
+
+
 class UndoRedoManager:
     """Historial de operaciones serializables aplicadas desde editor o servicios."""
 
@@ -25,6 +31,18 @@ class UndoRedoManager:
     def push(self, label: str, undo: Callable[[], None], redo: Callable[[], None]) -> None:
         self._undo_stack.append(UndoRedoOperation(label=label, undo=undo, redo=redo))
         self._redo_stack.clear()
+
+    def capture_checkpoint(self) -> object:
+        return _UndoRedoCheckpoint(
+            tuple(self._undo_stack),
+            tuple(self._redo_stack),
+        )
+
+    def restore_checkpoint(self, checkpoint: object) -> None:
+        if not isinstance(checkpoint, _UndoRedoCheckpoint):
+            raise TypeError("checkpoint was not created by UndoRedoManager")
+        self._undo_stack = list(checkpoint._undo_stack)
+        self._redo_stack = list(checkpoint._redo_stack)
 
     def can_undo(self) -> bool:
         return bool(self._undo_stack)

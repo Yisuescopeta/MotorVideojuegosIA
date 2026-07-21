@@ -42,6 +42,7 @@ Schema:
 {
   "recon_id": "recon-<task_id>",
   "status": "completed|partial|blocked|failed",
+  "phase_status": "completed|blocked|failed",
   "files_reviewed": [],
   "subsystems": [],
   "expected_agents": [],
@@ -62,6 +63,8 @@ Rules:
 - Empty output is invalid.
 - Non-parseable output is invalid.
 - Missing required fields are invalid.
+- `status: completed` requires `phase_status: completed`; `partial` requires
+  `phase_status: blocked`; `blocked|failed` require matching `phase_status`.
 - If you cannot inspect files, return `blocked` or `partial` and set
   `blocked_reason`.
 - Always return visible output to Queen.

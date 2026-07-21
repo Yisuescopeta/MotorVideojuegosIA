@@ -82,6 +82,19 @@ class TestReparentPreservesWorldPosition(unittest.TestCase):
         # Parent link should be set
         self.assertEqual(b.parent_name, "A")
 
+    def test_reparent_uses_parent_transform_flushed_from_pending_world(self) -> None:
+        world = self.sm.get_edit_world()
+        parent_transform = world.get_entity_by_name("A").get_component(Transform)
+        parent_transform.local_x = 150.0
+        self.assertTrue(self.sm.mark_edit_world_dirty())
+
+        self.assertTrue(self.sm.set_entity_parent("B", "A"))
+
+        world = self.sm.get_edit_world()
+        child_transform = world.get_entity_by_name("B").get_component(Transform)
+        self.assertAlmostEqual(child_transform.x, 200.0, places=3)
+        self.assertAlmostEqual(child_transform.local_x, 50.0, places=3)
+
 
 class TestUnparentPreservesWorldPosition(unittest.TestCase):
     def setUp(self) -> None:
@@ -187,6 +200,29 @@ class TestDeleteParentOrphansChildren(unittest.TestCase):
         # Local should be relative to Grand: 35-10=25
         self.assertAlmostEqual(t.local_x, 25.0, places=3)
         self.assertAlmostEqual(t.local_y, 25.0, places=3)
+
+    def test_delete_middle_uses_pending_world_transform_for_reparent(self) -> None:
+        self.sm.load_scene({
+            "name": "PendingDelete",
+            "entities": [
+                _make_entity("Grand", x=10.0, y=10.0),
+                _make_entity("Mid", x=20.0, y=20.0, parent="Grand"),
+                _make_entity("Leaf", x=5.0, y=5.0, parent="Mid"),
+            ],
+            "rules": [],
+            "feature_metadata": {},
+        })
+        world = self.sm.get_edit_world()
+        world.get_entity_by_name("Mid").get_component(Transform).local_x = 50.0
+        self.assertTrue(self.sm.mark_edit_world_dirty())
+
+        self.assertTrue(self.sm.remove_entity("Mid"))
+
+        leaf = self.sm.get_edit_world().get_entity_by_name("Leaf")
+        transform = leaf.get_component(Transform)
+        self.assertEqual(leaf.parent_name, "Grand")
+        self.assertAlmostEqual(transform.x, 65.0, places=3)
+        self.assertAlmostEqual(transform.local_x, 55.0, places=3)
 
 
 class TestCyclePrevention(unittest.TestCase):
@@ -303,6 +339,24 @@ class TestMoveParentMovesChildren(unittest.TestCase):
 
 
 class TestHierarchyAuthoringScenarios(unittest.TestCase):
+    def test_create_child_with_missing_parent_leaves_created_entity_unparented(self) -> None:
+        sm = SceneManager(create_default_registry())
+        sm.load_scene(
+            {
+                "name": "MissingParent",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        created = sm.create_child_entity("Missing", "Orphan")
+
+        self.assertFalse(created)
+        orphan = sm.find_entity_data("Orphan")
+        self.assertIsNotNone(orphan)
+        self.assertIsNone(orphan["parent"])
+
     def test_create_child_entity_uses_local_transform_payload(self) -> None:
         sm = SceneManager(create_default_registry())
         sm.load_scene(

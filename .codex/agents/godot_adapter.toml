@@ -1,6 +1,6 @@
 name = "godot_adapter"
 description = "Adapta conceptos Godot con write set."
-model = "gpt-5.6"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 developer_instructions = """

@@ -96,6 +96,7 @@ Return exactly:
 {
   "validation_id": "validation-<task_id>",
   "scope": "focused|regression|global",
+  "phase_status": "completed|blocked|failed",
   "test_contract_id": "test-contract-<task_id>",
   "commands_run": ["cmd1", "cmd2"],
   "results": "pass|fail|partial|not_run|blocked",
@@ -109,3 +110,7 @@ Return exactly:
   "risk_assessment": "summary of remaining risks"
 }
 ```
+
+`results: pass` requiere `phase_status: completed`; `fail` requiere
+`phase_status: failed`; `partial|not_run|blocked` requieren
+`phase_status: blocked`.

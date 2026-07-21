@@ -26,6 +26,7 @@ GOVERNANCE_COMMAND = (
 )
 TEST_CONTRACT_FIELDS = [
     "test_contract_id",
+    "phase_status",
     "task_type",
     "subsystems",
     "existing_tests_authority",
@@ -44,6 +45,7 @@ TEST_CONTRACT_FIELDS = [
 CONTEXT_RECON_FIELDS = [
     "recon_id",
     "status",
+    "phase_status",
     "files_reviewed",
     "subsystems",
     "expected_agents",
@@ -188,6 +190,14 @@ class QueenAgentContractTests(unittest.TestCase):
 
     def test_each_configured_agent_has_prompt_file(self) -> None:
         missing = sorted(name for name in self.agent_config if not (AGENTS_DIR / f"{name}.md").exists())
+        self.assertEqual(missing, [])
+
+    def test_each_queen_subagent_prompt_declares_phase_status(self) -> None:
+        missing = sorted(
+            name
+            for name in EXPECTED_SUBAGENTS
+            if '"phase_status"' not in read_text(AGENTS_DIR / f"{name}.md")
+        )
         self.assertEqual(missing, [])
 
     def test_context_recon_path_and_permissions_are_read_only(self) -> None:

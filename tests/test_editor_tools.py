@@ -408,7 +408,9 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         self.assertEqual(self.game.editor_layout.active_tab, "SCENE")
 
     def test_autosave_preserves_live_scene_selection_and_camera(self) -> None:
-        self.game._scene_manager.load_scene(
+        scene_manager = self.game._scene_manager
+        assert scene_manager is not None
+        scene_manager.load_scene(
             {
                 "name": "AutosaveProbe",
                 "entities": [
@@ -436,9 +438,9 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         )
         self.game.editor_layout.editor_camera.target = rl.Vector2(125.0, -75.0)
         self.game.editor_layout.editor_camera.zoom = 1.75
-        self.game._scene_manager.set_selected_entity("Player")
-        self.game._scene_manager.set_scene_view_state(
-            self.game._scene_manager.active_scene_key,
+        scene_manager.set_selected_entity("Player")
+        scene_manager.set_scene_view_state(
+            scene_manager.active_scene_key,
             {
                 "selected_entity": None,
                 "camera_target": {"x": 0.0, "y": 0.0},
@@ -446,12 +448,14 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
             },
         )
 
-        entry = self.game._scene_manager._resolve_entry(self.game._scene_manager.active_scene_key)  # type: ignore[attr-defined]
-        entry.dirty = True
+        self.assertTrue(scene_manager.set_feature_metadata("autosave_probe", True))
+        self.assertTrue(scene_manager.is_dirty)
 
         self.game._autosave_dirty_scenes()
 
-        self.assertEqual(self.game._scene_manager.get_edit_world().selected_entity_name, "Player")
+        edit_world = scene_manager.get_edit_world()
+        assert edit_world is not None
+        self.assertEqual(edit_world.selected_entity_name, "Player")
         self.assertEqual(self.game.editor_layout.editor_camera.target.x, 125.0)
         self.assertEqual(self.game.editor_layout.editor_camera.target.y, -75.0)
         self.assertEqual(self.game.editor_layout.editor_camera.zoom, 1.75)

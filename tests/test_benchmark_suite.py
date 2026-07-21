@@ -20,10 +20,20 @@ def _fake_report(**kwargs):
         "static_count": int(kwargs.get("static_count", 0)),
         "columns": int(kwargs.get("columns", 0)),
     }
+    repeated_operation = {
+        "ms": 1.0,
+        "median_ms": 1.0,
+        "mad_ms": 0.0,
+        "noise_floor_ms": 0.0001,
+        "p95_ms": 1.0,
+        "samples_ms": [1.0] * 7,
+        "classification": "repeated_gate",
+        "warmup": 1,
+    }
     operations = {
         "load_level": {"ms": 1.0},
-        "edit_to_play": {"ms": 1.0},
-        "play_to_edit": {"ms": 1.0},
+        "edit_to_play": dict(repeated_operation),
+        "play_to_edit": dict(repeated_operation),
         "render_preparation": {
             "ms": 1.0,
             "stats": {
@@ -34,7 +44,7 @@ def _fake_report(**kwargs):
     }
     if scenario == "transform_edit_stress":
         operations["transform_edit"] = {
-            "ms": 1.0,
+            **repeated_operation,
             "success": True,
             "target_entity": f"Entity_{int(kwargs.get('entity_count', 1)) - 1}",
             "field": "Transform.x",
@@ -44,6 +54,7 @@ def _fake_report(**kwargs):
         "mode": kwargs["mode"],
         "frames_requested": kwargs["frames"],
         "profiler_frames_recorded": kwargs["frames"],
+        "measurement": {"warmup": 1, "repeats": 7},
         "parameters": parameters,
         "operations": operations,
         "summary": {"frame_max_ms": 1.0},
@@ -68,6 +79,18 @@ class BenchmarkSuiteTests(unittest.TestCase):
         self.assertEqual(by_scenario["many_static_colliders"]["static_count"], 1000)
         self.assertEqual(by_scenario["many_sprite_entities"]["entity_count"], 2000)
         self.assertEqual(report["status"], "passed")
+
+    def test_suite_preserves_repeated_gate_samples_from_runner(self) -> None:
+        report = benchmark_suite.run_suite(quick=True, benchmark_runner=_fake_report)
+
+        for result in report["results"]:
+            benchmark_report = result["report"]
+            self.assertEqual(benchmark_report["measurement"], {"warmup": 1, "repeats": 7})
+            for operation_name in ("edit_to_play", "play_to_edit"):
+                operation = benchmark_report["operations"][operation_name]
+                self.assertEqual(operation["classification"], "repeated_gate")
+                self.assertEqual(len(operation["samples_ms"]), 7)
+                self.assertEqual(operation["warmup"], 1)
 
     def test_soft_threshold_warning_does_not_fail_by_default(self) -> None:
         def runner(**kwargs):

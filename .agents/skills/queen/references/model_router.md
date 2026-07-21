@@ -19,4 +19,4 @@ activa reviewer deep. Builder no deep que detecte complejidad critica bloquea y
 pide replanificacion deep. Recalcular route al inicio de cada fase larga.
 
 Modelos Codex configurados: fast `gpt-5.6-terra`/low; standard
-`gpt-5.6`/high; deep `gpt-5.6`/xhigh. No reutilizar IDs OpenCode.
+`gpt-5.6-sol`/high; deep `gpt-5.6-sol`/xhigh. No reutilizar IDs OpenCode.
