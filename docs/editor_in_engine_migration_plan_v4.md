@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G2 — `PR-G20-03` pendiente; `EditorSession` ya concentra selección, escena activa, modo y pestaña.
+- Gate actual: G2 — `PR-G20-04` pendiente; queries de jerarquía ya entregan read models ID-first e inmutables.
 
 ### Commits
 
@@ -2057,6 +2057,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g10): migrate prefab and scene references to ids` | G1 / `PR-G10-07` | Completado | 326 tests de escenas OK + 94 tests de prefab/schema/componentes OK; v3 conserva IDs locales en reglas, señales y SceneLink, y overrides de prefab persisten `target_id`. |
 | `feat(g10): add name-first compatibility facade` | G1 / `PR-G10-08` | Completado | 41 tests enfocados OK; fachada aislada, resolución única a `EntityRef`, errores tipados y métricas de llamadas/resolución/no encontrado/ambigüedad. |
 | `feat(g20): add editor session authority` | G2 / `PR-G20-02` | Completado | 7 tests enfocados OK; `EditorSession` mantiene una única selección `EntityRef`, activa escenas por `OpenSceneRef`, limpia selección cruzada y centraliza modo/pestaña. |
+| `feat(g20): add hierarchy query read models` | G2 / `PR-G20-03` | Completado | 30 tests enfocados OK; `HierarchyQueries` construye nodos, raíces, padres, hijos, componentes y búsqueda desde vistas inmutables de `Scene`, sin `World` mutable. |
 
 ### Actualizaciones
 
@@ -2081,3 +2082,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G10-07` migra referencias locales resolubles a IDs durante la canonicalización v3, actualiza únicamente los hints al renombrar y añade operaciones de prefab por `target_id`, incluyendo hijos expandidos.
 - 2026-07-22: `PR-G10-08` encapsula la compatibilidad name-first en `engine.scenes.compat.name_first`; cada resolución produce `EntityRef` o `Result` de error y actualiza contadores de retiro.
 - 2026-07-22: `PR-G20-02` añade `EditorSession` como autoridad única de selección y estado de sesión; una selección de otra escena se rechaza y cambiar de escena limpia la selección anterior.
+- 2026-07-22: `PR-G20-03` añade read models de jerarquía con `EntityRef`, `parent_id`, raíces ordenadas, profundidad, componentes y búsqueda; la consulta no escribe sobre la escena.
