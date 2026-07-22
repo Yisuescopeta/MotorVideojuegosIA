@@ -408,7 +408,15 @@ class Scene:
             self._rebuild_entity_index()
             self._bump_revision()
             return True
-        entity_data[property_name] = value
+        if property_name == "parent":
+            parent_name = value if isinstance(value, str) and value.strip() else None
+            parent = self._find_entity_mutable(parent_name) if parent_name is not None else None
+            if parent_name is not None and parent is None:
+                return False
+            entity_data["parent"] = parent_name
+            entity_data["parent_id"] = parent.get("id") if parent is not None else None
+        else:
+            entity_data[property_name] = value
         self._bump_revision()
         return True
 
@@ -538,8 +546,14 @@ class Scene:
         entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
-        entity_name = entity_data.get("name")
-        return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
+        entities = self._entities_data()
+        for index, candidate in enumerate(entities):
+            if candidate is entity_data:
+                del entities[index]
+                self._rebuild_entity_index()
+                self._bump_revision()
+                return True
+        return False
 
     def add_component(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
         entity_data = self._find_entity_mutable(entity_name)
@@ -585,8 +599,19 @@ class Scene:
         entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
-        entity_name = entity_data.get("name")
-        return self.remove_component(entity_name, component_name) if isinstance(entity_name, str) else False
+        components = entity_data.setdefault("components", {})
+        if component_name not in components:
+            return False
+        if component_name == "SceneEntryPoint":
+            self._deindex_scene_entry(entity_data)
+        del components[component_name]
+        component_metadata = entity_data.get("component_metadata", {})
+        if isinstance(component_metadata, dict):
+            component_metadata.pop(component_name, None)
+            if not component_metadata:
+                entity_data.pop("component_metadata", None)
+        self._bump_revision()
+        return True
 
     def set_feature_metadata(self, key: str, value: Any) -> None:
         self._feature_metadata()[key] = value
@@ -629,10 +654,80 @@ class Scene:
         entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
-        entity_name = entity_data.get("name")
-        if isinstance(entity_name, str):
-            return self.update_entity_property(entity_name, property_name, value)
-        return False
+        if property_name == "name":
+            return self.rename_entity_by_id(entity_id, value)
+        if property_name == "parent_id":
+            return self.reparent_entity_by_id(entity_id, value)
+        if property_name == "parent":
+            parent_name = value if isinstance(value, str) and value.strip() else None
+            parent = self._find_entity_mutable(parent_name) if parent_name is not None else None
+            return self.reparent_entity_by_id(
+                entity_id,
+                parent.get("id") if parent is not None else None,
+            )
+        if property_name == "groups":
+            normalized_groups = list(normalize_entity_groups(value))
+            if normalized_groups:
+                entity_data["groups"] = normalized_groups
+            else:
+                entity_data.pop("groups", None)
+        else:
+            entity_data[property_name] = value
+        self._bump_revision()
+        return True
+
+    def rename_entity_by_id(self, entity_id: str, new_name: Any) -> bool:
+        entity_data = self._find_entity_by_id_mutable(entity_id)
+        if entity_data is None or not isinstance(new_name, str) or not new_name:
+            return False
+        old_name = entity_data.get("name")
+        if not isinstance(old_name, str):
+            return False
+        if old_name == new_name:
+            return True
+        existing = self._find_entity_mutable(new_name)
+        if existing is not None and existing is not entity_data:
+            return False
+        entity_data["name"] = new_name
+        self._rename_entity_references(old_name, new_name, entity_id)
+        self._rebuild_entity_index()
+        self._bump_revision()
+        return True
+
+    def reparent_entity_by_id(self, entity_id: str, parent_id: Any) -> bool:
+        entity_data = self._find_entity_by_id_mutable(entity_id)
+        if entity_data is None:
+            return False
+        normalized_parent_id = parent_id.strip() if isinstance(parent_id, str) else None
+        parent = (
+            self._find_entity_by_id_mutable(normalized_parent_id)
+            if normalized_parent_id
+            else None
+        )
+        if normalized_parent_id and parent is None:
+            return False
+        if normalized_parent_id == entity_id:
+            return False
+        visited = {entity_id}
+        current_id = normalized_parent_id
+        while current_id:
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+            current = self._find_entity_by_id_mutable(current_id)
+            if current is None:
+                return False
+            raw_parent_id = current.get("parent_id")
+            if isinstance(raw_parent_id, str) and raw_parent_id.strip():
+                current_id = raw_parent_id.strip()
+                continue
+            raw_parent_name = current.get("parent")
+            parent_by_name = self._find_entity_mutable(raw_parent_name) if isinstance(raw_parent_name, str) else None
+            current_id = str(parent_by_name.get("id")) if parent_by_name is not None else None
+        entity_data["parent_id"] = normalized_parent_id
+        entity_data["parent"] = parent.get("name") if parent is not None else None
+        self._bump_revision()
+        return True
 
     def replace_component_data_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
         entity_data = self._find_entity_by_id_mutable(entity_id)

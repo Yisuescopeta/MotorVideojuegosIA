@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G1 — `PR-G10-06` pendiente; el runtime GUI usa `EngineCompositionRoot` para construir `RuntimeHost` explícito sin distribuir el root.
+- Gate actual: G1 — `PR-G10-06` pendiente; operaciones estructurales ID-first y `parent_id` ya están registradas.
 
 ### Commits
 
@@ -2051,7 +2051,8 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g10): migrate scene persistence to schema v3` | G1 / `PR-G10-02` | Completado | 79 tests de schema/persistence OK; reader v2/v3, writer v3, `parent_id` determinista, informe reproducible y backup `.bak` antes de sobrescritura. |
 | `feat(g10): add typed scene results` | G1 / `PR-G10-03` | Completado | 42 tests enfocados OK; `Ok`/`Err` discriminados, errores tipados, metadata de mutación y adapters temporales para callers legacy. |
 | `feat(g10): encapsulate scene read surfaces` | G1 / `PR-G10-04` | Completado | 321 tests de escenas OK; snapshots/views profundamente inmutables, getters legacy devuelven copias y advierten, revision de escena y rollback sin reconstrucción accidental. |
-| `feat(g10): isolate engine composition root` | G1 / `PR-G10-05` | Completado | 2 tests enfocados OK; `EngineCompositionRoot`, `RuntimeHost` y `EditorHost` congelados, construcción GUI migrada al root y sin resolver/service locator genérico. |
+| `feat(g10): migrate structural mutations to id-first` | G1 / `PR-G10-05` | Completado | 54 tests enfocados OK; rename/reparent/delete/property update por ID no resuelven nuevamente a nombre y sincronizan `parent_id` con el hint `parent`. |
+| `feat(g10): isolate engine composition root` | G2 / `PR-G20-01` | Completado | 2 tests enfocados OK; `EngineCompositionRoot`, `RuntimeHost` y `EditorHost` congelados, construcción GUI migrada al root y sin resolver/service locator genérico. |
 
 ### Actualizaciones
 
@@ -2070,4 +2071,5 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G10-02` sube el writer a schema v3, migra `parent` a `parent_id` sin reescribir IDs duplicados, expone `SceneMigrationReport` y guarda `.bak` antes de sobrescribir archivos existentes.
 - 2026-07-22: `PR-G10-03` añade resultados discriminados `Ok`/`Err` para contratos nuevos y un adapter explícito de compatibilidad bool/optional sin introducir command bus genérico.
 - 2026-07-22: `PR-G10-04` encapsula `Scene` con `SceneSnapshot`, `EntityView`, `RuleView` y `FeatureMetadataView`; las superficies legacy dejan de exponer referencias internas y las restauraciones de transacción conservan evidencia sin forzar una reconstrucción.
-- 2026-07-22: `PR-G10-05` introduce el composition root explícito y migra el arranque GUI para consumir únicamente el `RuntimeHost` construido; no se distribuye el root ni se añade service locator.
+- 2026-07-22: `PR-G10-05` corrige las operaciones estructurales ID-first de `Scene`: rename, reparent, delete y property update conservan identidad estable, validan ciclos por ID y mantienen `parent` únicamente como hint.
+- 2026-07-22: `PR-G20-01` introduce el composition root explícito y migra el arranque GUI para consumir únicamente el `RuntimeHost` construido; no se distribuye el root ni se añade service locator.
