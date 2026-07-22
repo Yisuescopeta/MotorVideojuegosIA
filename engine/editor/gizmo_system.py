@@ -21,7 +21,10 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
+from engine.editor.transform_preview import TransformPreviewState
 from engine.resources.texture_manager import TextureManager
+from engine.scenes.refs import EntityRef
+from engine.scenes.result import Err
 from engine.utils.device_profiles import resolve_preview_size
 from engine.utils.viewport import resolve_effective_camera2d
 
@@ -52,6 +55,8 @@ class CompletedGizmoDrag:
     before_state: dict[str, Any]
     after_state: dict[str, Any]
     label: str
+    entity_id: str | None = None
+    preview_handle: Any | None = None
 
 
 class GizmoSystem:
@@ -96,12 +101,16 @@ class GizmoSystem:
         self.drag_start_scale: Tuple[float, float] = (1.0, 1.0)
         self.drag_origin: Tuple[float, float] = (0.0, 0.0)
         self.drag_entity_name: str = ""
+        self.drag_entity_id: str | None = None
         self.drag_component_name: str = ""
         self.drag_before_state: dict[str, Any] | None = None
         self.drag_start_rect: dict[str, float] | None = None
         self.drag_parent_rect: dict[str, float] | None = None
         self.drag_start_camera: dict[str, Any] | None = None
         self._completed_drag: CompletedGizmoDrag | None = None
+        self._transform_preview_commands: Any | None = None
+        self._transform_preview_scene_ref: Any | None = None
+        self._transform_preview_handle: Any | None = None
         self._collider_preview: dict[str, Any] | None = None
         self._tilemap_preview: dict[str, Any] | None = None
         self._tilemap_texture_manager = TextureManager()
@@ -111,6 +120,14 @@ class GizmoSystem:
 
     def set_tilemap_preview(self, preview: dict[str, Any] | None) -> None:
         self._tilemap_preview = copy.deepcopy(preview) if preview is not None else None
+
+    def set_transform_preview_context(self, commands: Any | None, scene_ref: Any | None) -> None:
+        self._transform_preview_commands = commands
+        self._transform_preview_scene_ref = scene_ref
+
+    @property
+    def has_typed_transform_preview(self) -> bool:
+        return self._transform_preview_handle is not None
 
     def update(
         self,
@@ -879,8 +896,17 @@ class GizmoSystem:
         self.drag_start_scale = (transform.scale_x, transform.scale_y)
         self.drag_origin = (origin_x, origin_y)
         self.drag_entity_name = entity.name
+        self.drag_entity_id = getattr(entity, "serialized_id", None)
         self.drag_component_name = "Transform"
         self.drag_before_state = self._capture_transform_state(transform)
+        commands = self._transform_preview_commands
+        scene_ref = self._transform_preview_scene_ref
+        if commands is not None and scene_ref is not None and self.drag_entity_id:
+            started = commands.begin(EntityRef(scene_ref, self.drag_entity_id))
+            if isinstance(started, Err):
+                self._clear_state(keep_completed_drag=False)
+                return
+            self._transform_preview_handle = started.value
 
     def _start_rect_drag(
         self,
@@ -909,6 +935,7 @@ class GizmoSystem:
         }
         self.drag_parent_rect = dict(parent_rect) if parent_rect is not None else None
         self.drag_entity_name = entity.name
+        self.drag_entity_id = getattr(entity, "serialized_id", None)
         self.drag_component_name = "RectTransform"
         self.drag_before_state = self._capture_rect_transform_state(rect_transform)
 
@@ -958,6 +985,7 @@ class GizmoSystem:
             "center_y": float(frame["center_y"]),
         }
         self.drag_entity_name = entity.name
+        self.drag_entity_id = getattr(entity, "serialized_id", None)
         self.drag_component_name = "Camera2D"
         self.drag_before_state = self._capture_camera_profile_overrides(camera)
 
@@ -1023,6 +1051,19 @@ class GizmoSystem:
                 new_scale_y = self._snap(new_scale_y, self.snap_settings.scale_step)
             transform.scale_x = max(self.MIN_SCALE, new_scale_x)
             transform.scale_y = max(self.MIN_SCALE, new_scale_y)
+        if self._transform_preview_handle is not None and self._transform_preview_commands is not None:
+            updated = self._transform_preview_commands.update(
+                self._transform_preview_handle,
+                TransformPreviewState(
+                    x=transform.x,
+                    y=transform.y,
+                    rotation=transform.rotation,
+                    scale_x=transform.scale_x,
+                    scale_y=transform.scale_y,
+                ),
+            )
+            if isinstance(updated, Err):
+                self._transform_preview_handle = None
 
     def _handle_rect_drag(
         self,
@@ -1255,6 +1296,8 @@ class GizmoSystem:
                     before_state=dict(self.drag_before_state),
                     after_state=after_state,
                     label=label,
+                    entity_id=self.drag_entity_id,
+                    preview_handle=self._transform_preview_handle,
                 )
         self._clear_state(keep_completed_drag=True)
 
@@ -1266,10 +1309,12 @@ class GizmoSystem:
         self.hover_mode = GizmoMode.NONE
         self.drag_before_state = None
         self.drag_entity_name = ""
+        self.drag_entity_id = None
         self.drag_component_name = ""
         self.drag_start_rect = None
         self.drag_parent_rect = None
         self.drag_start_camera = None
+        self._transform_preview_handle = None
 
     def _capture_transform_state(self, transform: Transform) -> dict[str, float]:
         return {

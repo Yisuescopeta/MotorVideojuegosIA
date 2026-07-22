@@ -28,6 +28,7 @@ from engine.scenes.legacy_world_authoring_adapter import LegacyWorldAuthoringAda
 from engine.scenes.prefab_overrides import PrefabOverrideService
 from engine.scenes.post_commit import ScenePostCommitEventPublisher
 from engine.scenes.projection_integrity import ProjectionIntegrityAction
+from engine.scenes.refs import OpenSceneRef
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_persistence import (
@@ -681,6 +682,32 @@ class SceneManager:
             record_history=record_history,
             label=label or f"transform:{entity_name}",
         )
+
+    def apply_transform_state_by_id(
+        self,
+        entity_id: str,
+        transform_state: Dict[str, Any],
+        key_or_path: Optional[str] = None,
+        *,
+        record_history: bool = False,
+        label: str | None = None,
+    ) -> bool:
+        entry = self._resolve_entry(key_or_path)
+        if entry is None:
+            return False
+        return self._incremental_authoring.apply_state_by_id(
+            entry,
+            entity_id,
+            "Transform",
+            transform_state,
+            record_history=record_history,
+            label=label or f"transform:entity_id:{entity_id}",
+        )
+
+    @property
+    def active_scene_ref(self) -> OpenSceneRef | None:
+        entry = self._get_active_entry()
+        return entry.open_scene_ref if entry is not None else None
 
     def apply_rect_transform_state(
         self,

@@ -298,6 +298,7 @@ class Game:
 
         # Gestión de escenas
         self._scene_manager: Optional["SceneManager"] = None
+        self._transform_preview_commands: Any | None = None
         self._external_scene_loader: Optional[Callable[[str], bool]] = None
         self._external_scene_flow_loader: Optional[Callable[[str], bool]] = None
 
@@ -508,6 +509,7 @@ class Game:
                 get_history_manager=lambda: self._history_manager,
                 get_current_scene_viewport_size=self._current_scene_viewport_size,
                 get_current_viewport_size=self._current_viewport_size,
+                get_transform_preview_commands=lambda: self._transform_preview_commands,
                 get_animator_collider_preview=(
                     lambda world: self.animator_panel.get_frame_collider_preview_snapshot(world)
                     if self.animator_panel is not None
@@ -846,6 +848,7 @@ class Game:
         self._scene_manager = manager
         self._scene_manager.set_history_manager(self._history_manager)
         self._scene_manager.set_runtime_signal_compiler(self._compile_runtime_signal_connections)
+        self._configure_transform_preview_commands(manager)
         self._sync_editor_shell()
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
@@ -860,6 +863,44 @@ class Game:
             self._script_behaviour_system.set_scene_manager(manager)
         if self.editor_layout is not None:
             self.editor_layout.set_scene_tabs(manager.list_open_scenes(), manager.active_scene_key)
+
+    def _configure_transform_preview_commands(self, manager: "SceneManager") -> None:
+        self._transform_preview_commands = None
+        if not self.editor_enabled:
+            return
+        from engine.editor.transform_preview import TransformPreviewCoordinator
+        from engine.scenes.preview_leases import PreviewLeaseRegistry
+        from engine.scenes.projection_integrity import AuthoringProjectionFingerprintService
+
+        leases = PreviewLeaseRegistry(
+            AuthoringProjectionFingerprintService(manager._projection.create_world),
+            history=manager._change_history,
+            restore_snapshot=lambda key, payload: manager._serializable_mutations.restore_scene_data(
+                key,
+                payload,
+            ),
+        )
+
+        def commit_transform(target, state) -> bool:
+            return manager.apply_transform_state_by_id(
+                target.entity_id,
+                {
+                    "x": state.x,
+                    "y": state.y,
+                    "rotation": state.rotation,
+                    "scale_x": state.scale_x,
+                    "scale_y": state.scale_y,
+                },
+                key_or_path=manager.active_scene_key,
+                record_history=False,
+                label=f"transform:entity_id:{target.entity_id}",
+            )
+
+        self._transform_preview_commands = TransformPreviewCoordinator(
+            manager._workspace,
+            leases,
+            commit_transform,
+        )
 
     def set_selection_system(self, system: "SelectionSystem") -> None:
         self._selection_system = system

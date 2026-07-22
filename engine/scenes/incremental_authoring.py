@@ -144,6 +144,65 @@ class SceneIncrementalAuthoring:
             )
         return True
 
+    def apply_state_by_id(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+        component_name: str,
+        component_state: dict[str, Any],
+        *,
+        record_history: bool,
+        label: str,
+    ) -> bool:
+        """Apply an incremental component state without resolving the target by name."""
+        if not self.can_apply_by_id(entry, entity_id, component_name):
+            return False
+        entity_data = entry.scene._find_entity_by_id_mutable(entity_id)
+        if entity_data is None:
+            return False
+        entity_name = str(entity_data.get("name", "") or "")
+        old_properties, new_properties = self._apply_properties_to_entry_by_id(
+            entry,
+            entity_id,
+            entity_name,
+            component_name,
+            component_state,
+        )
+        if not new_properties:
+            return True
+        if self._record_transaction_delta(
+            entry,
+            entity_name,
+            component_name,
+            old_properties,
+            new_properties,
+        ):
+            return True
+        if record_history:
+            key = entry.key
+            old_snapshot = copy.deepcopy(old_properties)
+            new_snapshot = copy.deepcopy(new_properties)
+            self._history.record_differential_change(
+                label=label,
+                undo=lambda: self._apply_history_delta(key, entity_name, component_name, old_snapshot),
+                redo=lambda: self._apply_history_delta(key, entity_name, component_name, new_snapshot),
+            )
+        return True
+
+    @staticmethod
+    def can_apply_by_id(
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+        component_name: str,
+    ) -> bool:
+        if entry.is_playing or component_name not in _EDITABLE_FIELDS:
+            return False
+        entity_data = entry.scene._find_entity_by_id_mutable(entity_id)
+        if entity_data is None:
+            return False
+        component_data = entity_data.get("components", {}).get(component_name)
+        return isinstance(component_data, dict)
+
     def begin_transaction(self, entry: SceneWorkspaceEntry, label: str) -> bool:
         if entry.is_playing or self._transaction is not None:
             return False
@@ -251,6 +310,41 @@ class SceneIncrementalAuthoring:
         component_state: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         entity_data = entry.scene._find_entity_mutable(entity_name)
+        return self._apply_properties_to_entry_data(
+            entry,
+            entity_data,
+            entity_name,
+            component_name,
+            component_state,
+        )
+
+    def _apply_properties_to_entry_by_id(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+        entity_name: str,
+        component_name: str,
+        component_state: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self._apply_properties_to_entry_data(
+            entry,
+            entry.scene._find_entity_by_id_mutable(entity_id),
+            entity_name,
+            component_name,
+            component_state,
+            entity_id=entity_id,
+        )
+
+    def _apply_properties_to_entry_data(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_data: dict[str, Any] | None,
+        entity_name: str,
+        component_name: str,
+        component_state: dict[str, Any],
+        *,
+        entity_id: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         if entity_data is None:
             return {}, {}
         component_data = entity_data.get("components", {}).get(component_name)
@@ -271,13 +365,25 @@ class SceneIncrementalAuthoring:
 
         if not new_properties:
             return old_properties, new_properties
-        if not entry.scene.update_component_properties(
-            entity_name,
-            component_name,
-            new_properties,
-        ):
+        changed = (
+            entry.scene.update_component_properties_by_id(
+                entity_id,
+                component_name,
+                new_properties,
+            )
+            if entity_id is not None
+            else entry.scene.update_component_properties(
+                entity_name,
+                component_name,
+                new_properties,
+            )
+        )
+        if not changed:
             return {}, {}
-        self._workspace.select_entity(entry, entity_name=entity_name)
+        if entity_id is not None:
+            self._workspace.select_entity(entry, entity_id=entity_id)
+        else:
+            self._workspace.select_entity(entry, entity_name=entity_name)
         self._workspace.mark_dirty(entry)
         self._edit_sync.clear_pending(entry)
         self._apply_properties_to_edit_world(
@@ -285,6 +391,7 @@ class SceneIncrementalAuthoring:
             entity_name,
             component_name,
             component_data,
+            entity_id=entity_id,
         )
         if entry.edit_world is not None:
             self._workspace.install_entry_state(entry, entry.scene, entry.edit_world)
@@ -348,10 +455,16 @@ class SceneIncrementalAuthoring:
         entity_name: str,
         component_name: str,
         properties: dict[str, Any],
+        *,
+        entity_id: str | None = None,
     ) -> None:
         if entry.edit_world is None:
             return
-        entity = entry.edit_world.get_entity_by_name(entity_name)
+        entity = (
+            entry.edit_world.get_entity_by_serialized_id(entity_id)
+            if entity_id is not None
+            else entry.edit_world.get_entity_by_name(entity_name)
+        )
         if entity is None:
             return
         if component_name == "Transform":

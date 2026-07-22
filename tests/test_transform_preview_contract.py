@@ -80,10 +80,8 @@ class TransformPreviewContractTests(unittest.TestCase):
     def _commit_transform(self, target: EntityRef, state: TransformPreviewState) -> bool:
         entry = self.manager.resolve_entry(self.entry.key)
         assert entry is not None
-        entity = entry.scene.find_entity_by_id(target.entity_id)
-        assert entity is not None
-        return self.manager.apply_transform_state(
-            entity["name"],
+        return self.manager.apply_transform_state_by_id(
+            target.entity_id,
             {
                 "x": state.x,
                 "y": state.y,

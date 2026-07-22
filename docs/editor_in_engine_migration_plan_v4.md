@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G3 — `PR-G30-02` pendiente; `PR-G30-01` dejó el contrato tipado de transform sobre leases y revisión base.
+- Gate actual: G3 — `PR-G30-03` pendiente; el gizmo de Transform ya publica y confirma previews tipados por `EntityRef`.
 
 ### Commits
 
@@ -2061,6 +2061,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g20): replace scene-tab request flags with typed actions` | G2 / `PR-G20-04` | Completado | 63 tests enfocados OK; `EditorShellActionInbox` cubre activar/cerrar pestañas, el layout publica acciones y el controller las consume antes de los flags legacy. |
 | `feat(g20): publish post-commit scene events` | G2 / `PR-G20-05` | Completado | 57 tests G2 enfocados OK + `py_compile`; `ScenePostCommitEventPublisher` publica solo tras commits exitosos y `HierarchyQueryCache` invalida read models por `OpenDocumentId`. |
 | `feat(g30): add typed transform preview contract` | G3 / `PR-G30-01` | Completado | 9 tests de preview/lease OK + `py_compile`; `TransformPreviewState` inmutable, handle con revisión base, begin/update/commit/cancel tipados y commit snapshot único. |
+| `feat(g30): cut over transform gizmo to typed previews` | G3 / `PR-G30-02` | Completado | 108 tests enfocados OK + `py_compile`; drag de Transform conserva `EntityRef`/handle, actualiza el preview y confirma por `apply_transform_state_by_id`; RectTransform/cámara siguen temporales. |
 
 ### Actualizaciones
 
@@ -2089,3 +2090,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G20-04` sustituye el flujo de interacción de pestañas por un inbox tipado específico; los flags `request_activate_scene_key` y `request_close_scene_key` quedan únicamente como fallback de compatibilidad.
 - 2026-07-22: `PR-G20-05` añade eventos tipados posteriores al commit en la frontera serializable común; los eventos incluyen revisión y entidades afectadas, no ejecutan mutaciones implícitas, y `HierarchyQueryCache` invalida todas las búsquedas del documento abierto afectado.
 - 2026-07-22: `PR-G30-01` añade `TransformPreviewCommands`, `TransformPreviewState`, `TransformPreviewHandle` y `TransformPreviewCoordinator`; el overlay vive fuera de `Scene`, el conflicto cancela el lease y el commit delegado produce una única entrada snapshot.
+- 2026-07-22: `PR-G30-02` conecta el gizmo de Transform al coordinator tipado, añade `entity_id`/handle al drag, introduce la ruta incremental `apply_transform_state_by_id` y conserva RectTransform/cámara en compatibilidad temporal hasta sus paquetes G3.

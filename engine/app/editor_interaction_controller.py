@@ -10,6 +10,7 @@ from engine.components.transform import Transform
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
+from engine.editor.transform_preview import TransformPreviewState
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -34,6 +35,7 @@ class EditorInteractionController:
         get_current_scene_viewport_size: Callable[[], tuple[float, float]],
         get_current_viewport_size: Callable[[], tuple[float, float]],
         get_animator_collider_preview: Optional[Callable[[Any], Any]] = None,
+        get_transform_preview_commands: Optional[Callable[[], Any]] = None,
     ) -> None:
         self._get_state = get_state
         self._get_editor_layout = get_editor_layout
@@ -48,6 +50,7 @@ class EditorInteractionController:
         self._get_current_scene_viewport_size = get_current_scene_viewport_size
         self._get_current_viewport_size = get_current_viewport_size
         self._get_animator_collider_preview = get_animator_collider_preview
+        self._get_transform_preview_commands = get_transform_preview_commands
         self._camera_drag_state: dict[str, Any] | None = None
 
     def _resolve_collider_preview_snapshot(self, world: "World") -> Any:
@@ -77,6 +80,26 @@ class EditorInteractionController:
     def commit_gizmo_drag(self, drag: Any) -> None:
         scene_manager = self._get_scene_manager()
         if scene_manager is None:
+            return
+        preview_handle = getattr(drag, "preview_handle", None)
+        preview_commands = (
+            self._get_transform_preview_commands()
+            if self._get_transform_preview_commands is not None
+            else None
+        )
+        if (
+            getattr(drag, "component_name", "") == "Transform"
+            and preview_handle is not None
+            and preview_commands is not None
+        ):
+            state = TransformPreviewState(
+                x=drag.after_state.get("x", 0.0),
+                y=drag.after_state.get("y", 0.0),
+                rotation=drag.after_state.get("rotation", 0.0),
+                scale_x=drag.after_state.get("scale_x", 1.0),
+                scale_y=drag.after_state.get("scale_y", 1.0),
+            )
+            preview_commands.commit(preview_handle, state)
             return
         if getattr(drag, "component_name", "") == "Camera2D":
             scene_manager.apply_edit_to_world(
@@ -260,6 +283,14 @@ class EditorInteractionController:
                 transform_space = layout.transform_space if layout is not None else TransformSpace.WORLD
                 pivot_mode = layout.pivot_mode if layout is not None else PivotMode.PIVOT
                 snap_settings = layout.snap_settings if layout is not None else None
+                if self._get_transform_preview_commands is not None and hasattr(
+                    gizmo_system,
+                    "set_transform_preview_context",
+                ):
+                    gizmo_system.set_transform_preview_context(
+                        self._get_transform_preview_commands(),
+                        getattr(scene_manager, "active_scene_ref", None),
+                    )
                 gizmo_system.update(
                     active_world,
                     mouse_world,

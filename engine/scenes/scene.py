@@ -393,6 +393,27 @@ class Scene:
         self._bump_revision()
         return True
 
+    def update_component_properties_by_id(
+        self,
+        entity_id: str,
+        component_name: str,
+        properties: Dict[str, Any],
+    ) -> bool:
+        entity_data = self._find_entity_by_id_mutable(entity_id)
+        if entity_data is None:
+            return False
+        components = entity_data.get("components", {})
+        component_data = components.get(component_name) if isinstance(components, dict) else None
+        if not isinstance(component_data, dict):
+            return False
+        if component_name == "SceneEntryPoint":
+            self._deindex_scene_entry(entity_data)
+        component_data.update(properties)
+        if component_name == "SceneEntryPoint":
+            self._index_scene_entry(entity_data)
+        self._bump_revision()
+        return True
+
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
         if property_name == "groups":
             return self.set_entity_groups(entity_name, value)

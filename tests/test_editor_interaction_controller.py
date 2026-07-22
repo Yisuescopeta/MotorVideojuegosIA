@@ -266,6 +266,31 @@ class EditorInteractionControllerTests(unittest.TestCase):
             label="Move Entity",
         )
 
+    def test_commit_typed_transform_drag_uses_preview_commands(self) -> None:
+        preview_commands = Mock()
+        preview_handle = object()
+        self.controller._get_transform_preview_commands = lambda: preview_commands
+        drag = SimpleNamespace(
+            label="Move Entity",
+            entity_name="Player",
+            before_state={"x": 0.0},
+            after_state={
+                "x": 10.0,
+                "y": 12.0,
+                "rotation": 5.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+            },
+            component_name="Transform",
+            preview_handle=preview_handle,
+        )
+
+        self.controller.commit_gizmo_drag(drag)
+
+        preview_commands.commit.assert_called_once()
+        self.assertIs(preview_commands.commit.call_args.args[0], preview_handle)
+        self.scene_manager.apply_transform_state.assert_not_called()
+
     def test_commit_gizmo_drag_persists_camera_profile_overrides(self) -> None:
         drag = SimpleNamespace(
             label="camera_frame:Camera",
