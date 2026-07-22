@@ -8,6 +8,7 @@ from engine.scenes.edit_sync import SceneEditSyncCoordinator
 from engine.scenes.entity_authoring import SceneEntityAuthoring
 from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_projection import SceneProjectionService
+from engine.scenes.post_commit import PostCommitEventPublisher
 from engine.scenes.serializable_mutation import SerializableMutationCoordinator
 from engine.scenes.serializable_pipeline import SceneSerializableAuthoringPipeline
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
@@ -29,6 +30,7 @@ class SceneSerializableAuthoring:
         prefab_overrides: PrefabOverridePort,
         flow_policy: SceneFlowPolicy,
         registry: "ComponentRegistry",
+        post_commit_publisher: PostCommitEventPublisher | None = None,
     ) -> None:
         self._pipeline = SceneSerializableAuthoringPipeline(
             workspace,
@@ -36,6 +38,7 @@ class SceneSerializableAuthoring:
             mutations,
             history,
         )
+        self._pipeline.set_post_commit_publisher(post_commit_publisher)
         self._component_authoring = SceneComponentAuthoring(
             workspace,
             self._pipeline,

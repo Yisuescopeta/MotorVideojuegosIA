@@ -6,6 +6,11 @@ from typing import Any
 from engine.core.runtime_logging import log_err
 from engine.scenes.contracts import SceneHistoryPort
 from engine.scenes.edit_sync import SceneEditSyncCoordinator
+from engine.scenes.post_commit import (
+    DomainEvent,
+    PostCommitEventPublisher,
+    changed_entity_refs,
+)
 from engine.scenes.serializable_mutation import SerializableMutationCoordinator
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 
@@ -24,6 +29,14 @@ class SceneSerializableAuthoringPipeline:
         self._edit_sync = edit_sync
         self._mutations = mutations
         self._history = history
+        self._post_commit_publisher: PostCommitEventPublisher | None = None
+
+    def set_post_commit_publisher(
+        self,
+        publisher: PostCommitEventPublisher | None,
+    ) -> None:
+        """Attach the editor notification output without exposing a bus."""
+        self._post_commit_publisher = publisher
 
     def flush_pending(
         self,
@@ -132,6 +145,14 @@ class SceneSerializableAuthoringPipeline:
                     f"{label}: {exc}"
                 )
                 return False
+        after_snapshot = self._mutations.snapshot_entry_scene_data(entry)
+        if before != after_snapshot:
+            self._publish_commit(
+                entry,
+                label=label,
+                before=before,
+                after=after_snapshot,
+            )
         return True
 
     def commit_incremental(
@@ -148,4 +169,37 @@ class SceneSerializableAuthoringPipeline:
         ):
             return False
         self._workspace.mark_dirty(entry)
+        before_snapshot = self._mutations.snapshot_scene_data(token)
+        after_snapshot = self._mutations.snapshot_entry_scene_data(entry)
+        if before_snapshot != after_snapshot:
+            self._publish_commit(
+                entry,
+                label=failure_context,
+                before=before_snapshot,
+                after=after_snapshot,
+            )
         return True
+
+    def _publish_commit(
+        self,
+        entry: SceneWorkspaceEntry,
+        *,
+        label: str,
+        before: dict[str, Any],
+        after: dict[str, Any],
+    ) -> None:
+        publisher = self._post_commit_publisher
+        if publisher is None:
+            return
+        publisher.publish(
+            DomainEvent(
+                scene=entry.open_scene_ref,
+                scene_revision=entry.scene_revision,
+                label=str(label or "scene_commit"),
+                changed_entities=changed_entity_refs(
+                    entry.open_scene_ref,
+                    before,
+                    after,
+                ),
+            )
+        )

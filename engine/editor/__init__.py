@@ -3,6 +3,7 @@ from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_session import EditorMode, EditorSession, EditorSessionSnapshot
 from engine.editor.hierarchy_queries import HierarchyNode, HierarchyQueries, HierarchySnapshot
+from engine.editor.hierarchy_query_cache import HierarchyQueryCache
 from engine.editor.editor_shell_actions import (
     EditorShellActionInbox,
     SceneTabAction,
@@ -22,6 +23,7 @@ __all__ = [
     "HierarchyNode",
     "HierarchyQueries",
     "HierarchySnapshot",
+    "HierarchyQueryCache",
     "EditorShellActionInbox",
     "SceneTabAction",
     "SceneTabActionKind",

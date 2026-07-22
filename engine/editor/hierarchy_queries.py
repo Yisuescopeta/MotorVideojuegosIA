@@ -43,6 +43,10 @@ class HierarchyQueries:
         self._scene = scene
         self._scene_ref = scene_ref
 
+    @property
+    def scene_ref(self) -> OpenSceneRef:
+        return self._scene_ref
+
     def snapshot(self, search: str = "") -> HierarchySnapshot:
         normalized_search = str(search or "").strip().casefold()
         views = self._scene.list_entity_views()

@@ -26,6 +26,7 @@ from engine.scenes.edit_sync import (
 from engine.scenes.incremental_authoring import SceneIncrementalAuthoring
 from engine.scenes.legacy_world_authoring_adapter import LegacyWorldAuthoringAdapter
 from engine.scenes.prefab_overrides import PrefabOverrideService
+from engine.scenes.post_commit import ScenePostCommitEventPublisher
 from engine.scenes.projection_integrity import ProjectionIntegrityAction
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
@@ -70,6 +71,7 @@ class SceneManager:
             self._projection,
             self._edit_sync,
         )
+        self._post_commit_events = ScenePostCommitEventPublisher()
         self._persistence = ScenePersistenceService()
         self._change_history = SceneChangeCoordinator()
         self._incremental_authoring = SceneIncrementalAuthoring(
@@ -87,6 +89,7 @@ class SceneManager:
             self._prefab_overrides,
             self._flow_policy,
             self._registry,
+            self._post_commit_events,
         )
         self._structural_authoring = SceneStructuralAuthoring(
             self._workspace,
@@ -148,6 +151,11 @@ class SceneManager:
 
     def set_history_manager(self, history: Any) -> None:
         self._change_history.set_history_manager(history)
+
+    @property
+    def post_commit_events(self) -> ScenePostCommitEventPublisher:
+        """Editor post-commit notifications; never a mutation authority."""
+        return self._post_commit_events
 
     def set_runtime_signal_compiler(
         self,

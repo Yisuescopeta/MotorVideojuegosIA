@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G2 — `PR-G20-05` pendiente; pestañas de escenas ya publican acciones tipadas con compatibilidad legacy temporal.
+- Gate actual: G3 — `PR-G30-01` pendiente; G2 cerró sus paquetes iniciales con eventos post-commit e invalidación de caché por documento.
 
 ### Commits
 
@@ -2059,6 +2059,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g20): add editor session authority` | G2 / `PR-G20-02` | Completado | 7 tests enfocados OK; `EditorSession` mantiene una única selección `EntityRef`, activa escenas por `OpenSceneRef`, limpia selección cruzada y centraliza modo/pestaña. |
 | `feat(g20): add hierarchy query read models` | G2 / `PR-G20-03` | Completado | 30 tests enfocados OK; `HierarchyQueries` construye nodos, raíces, padres, hijos, componentes y búsqueda desde vistas inmutables de `Scene`, sin `World` mutable. |
 | `feat(g20): replace scene-tab request flags with typed actions` | G2 / `PR-G20-04` | Completado | 63 tests enfocados OK; `EditorShellActionInbox` cubre activar/cerrar pestañas, el layout publica acciones y el controller las consume antes de los flags legacy. |
+| `feat(g20): publish post-commit scene events` | G2 / `PR-G20-05` | Completado | 57 tests G2 enfocados OK + `py_compile`; `ScenePostCommitEventPublisher` publica solo tras commits exitosos y `HierarchyQueryCache` invalida read models por `OpenDocumentId`. |
 
 ### Actualizaciones
 
@@ -2085,3 +2086,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G20-02` añade `EditorSession` como autoridad única de selección y estado de sesión; una selección de otra escena se rechaza y cambiar de escena limpia la selección anterior.
 - 2026-07-22: `PR-G20-03` añade read models de jerarquía con `EntityRef`, `parent_id`, raíces ordenadas, profundidad, componentes y búsqueda; la consulta no escribe sobre la escena.
 - 2026-07-22: `PR-G20-04` sustituye el flujo de interacción de pestañas por un inbox tipado específico; los flags `request_activate_scene_key` y `request_close_scene_key` quedan únicamente como fallback de compatibilidad.
+- 2026-07-22: `PR-G20-05` añade eventos tipados posteriores al commit en la frontera serializable común; los eventos incluyen revisión y entidades afectadas, no ejecutan mutaciones implícitas, y `HierarchyQueryCache` invalida todas las búsquedas del documento abierto afectado.
