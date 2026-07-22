@@ -28,6 +28,7 @@ SERIALIZABLE_METHOD_OWNERS = {
     "upsert_component_for_scene": "_component_authoring",
     "remove_component_for_scene": "_component_authoring",
     "apply_edit_to_world": "_component_authoring",
+    "apply_edit_to_world_by_id": "_component_authoring",
     "replace_component_data": "_component_authoring",
     "replace_component_data_by_id": "_component_authoring",
     "add_component_to_entity": "_component_authoring",

@@ -130,6 +130,30 @@ class PrefabOverridePort(Protocol):
         component_name: str,
     ) -> bool: ...
 
+    def update_component_property_by_id(
+        self,
+        entry: "SceneWorkspaceEntry",
+        entity_id: str,
+        component_name: str,
+        property_name: str,
+        value: Any,
+    ) -> bool: ...
+
+    def replace_component_by_id(
+        self,
+        entry: "SceneWorkspaceEntry",
+        entity_id: str,
+        component_name: str,
+        component_data: Dict[str, Any],
+    ) -> bool: ...
+
+    def remove_component_by_id(
+        self,
+        entry: "SceneWorkspaceEntry",
+        entity_id: str,
+        component_name: str,
+    ) -> bool: ...
+
 
 class SceneRuntimePort(Protocol):
     @property

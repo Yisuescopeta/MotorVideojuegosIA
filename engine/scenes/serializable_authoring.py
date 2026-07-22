@@ -144,6 +144,20 @@ class SceneSerializableAuthoring:
             value,
         )
 
+    def apply_edit_to_world_by_id(
+        self,
+        entity_id: str,
+        component_name: str,
+        property_name: str,
+        value: Any,
+    ) -> bool:
+        return self._component_authoring.apply_edit_to_world_by_id(
+            entity_id,
+            component_name,
+            property_name,
+            value,
+        )
+
     def replace_component_data(
         self,
         entity_name: str,

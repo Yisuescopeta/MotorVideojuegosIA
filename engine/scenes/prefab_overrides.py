@@ -128,6 +128,85 @@ class PrefabOverrideService:
             prefab_instance,
         )
 
+    def replace_component_by_id(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+        component_name: str,
+        component_data: dict[str, Any],
+    ) -> bool:
+        resolved = self._resolve_target_by_id(entry, entity_id)
+        if resolved is None:
+            return False
+        root_id, root_name, prefab_instance, target_path = resolved
+        overrides = self._ensure_operations(prefab_instance)
+        self._upsert_operation(
+            overrides,
+            {
+                "op": "replace_component",
+                "target": target_path,
+                "target_id": entity_id,
+                "component": component_name,
+                "data": copy.deepcopy(component_data),
+            },
+            match_keys=("op", "target", "component"),
+        )
+        return self._install_prefab_instance(entry, root_id, root_name, prefab_instance)
+
+    def update_component_property_by_id(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+        component_name: str,
+        property_name: str,
+        value: Any,
+    ) -> bool:
+        resolved = self._resolve_target_by_id(entry, entity_id)
+        if resolved is None:
+            return False
+        root_id, root_name, prefab_instance, target_path = resolved
+        overrides = self._ensure_operations(prefab_instance)
+        self._upsert_operation(
+            overrides,
+            {
+                "op": "set_field",
+                "target": target_path,
+                "target_id": entity_id,
+                "component": component_name,
+                "field": property_name,
+                "value": copy.deepcopy(value),
+            },
+            match_keys=("op", "target", "component", "field"),
+        )
+        return self._install_prefab_instance(entry, root_id, root_name, prefab_instance)
+
+    def remove_component_by_id(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+        component_name: str,
+    ) -> bool:
+        resolved = self._resolve_target_by_id(entry, entity_id)
+        if resolved is None:
+            return False
+        root_id, root_name, prefab_instance, target_path = resolved
+        overrides = self._ensure_operations(prefab_instance)
+        self._remove_operations(
+            overrides,
+            target=target_path,
+            target_id=entity_id,
+            component=component_name,
+        )
+        overrides.setdefault("operations", []).append(
+            {
+                "op": "remove_component",
+                "target": target_path,
+                "target_id": entity_id,
+                "component": component_name,
+            }
+        )
+        return self._install_prefab_instance(entry, root_id, root_name, prefab_instance)
+
     @staticmethod
     def _ensure_operations(prefab_instance: dict[str, Any]) -> dict[str, Any]:
         overrides = prefab_instance.setdefault("overrides", {})
@@ -205,6 +284,7 @@ class PrefabOverrideService:
         overrides: dict[str, Any],
         *,
         target: str,
+        target_id: str | None = None,
         component: str | None = None,
     ) -> None:
         operations = overrides.setdefault("operations", [])
@@ -213,7 +293,9 @@ class PrefabOverrideService:
             if not isinstance(operation, dict):
                 filtered.append(operation)
                 continue
-            if operation.get("target") != target:
+            if operation.get("target") != target and (
+                target_id is None or operation.get("target_id") != target_id
+            ):
                 filtered.append(operation)
                 continue
             if component is not None and operation.get("component") != component:
@@ -229,6 +311,23 @@ class PrefabOverrideService:
         if entry.edit_world is None:
             return None
         entity = entry.edit_world.get_entity_by_name(entity_name)
+        return PrefabOverrideService._resolve_target_for_entity(entry, entity)
+
+    @staticmethod
+    def _resolve_target_by_id(
+        entry: SceneWorkspaceEntry,
+        entity_id: str,
+    ) -> tuple[str | None, str, dict[str, Any], str] | None:
+        if entry.edit_world is None:
+            return None
+        entity = entry.edit_world.get_entity_by_serialized_id(entity_id)
+        return PrefabOverrideService._resolve_target_for_entity(entry, entity)
+
+    @staticmethod
+    def _resolve_target_for_entity(
+        entry: SceneWorkspaceEntry,
+        entity: Any,
+    ) -> tuple[str | None, str, dict[str, Any], str] | None:
         if entity is None or entity.prefab_root_name is None:
             return None
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)

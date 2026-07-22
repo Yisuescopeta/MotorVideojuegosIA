@@ -24,6 +24,7 @@ COMPONENT_METHODS = {
     "upsert_component_for_scene",
     "remove_component_for_scene",
     "apply_edit_to_world",
+    "apply_edit_to_world_by_id",
     "replace_component_data",
     "replace_component_data_by_id",
     "add_component_to_entity",

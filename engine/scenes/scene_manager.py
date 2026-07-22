@@ -586,12 +586,11 @@ class SceneManager:
         )
 
     def apply_edit_to_world_by_id(self, entity_id: str, component_name: str, property_name: str, value: Any) -> bool:
-        entity_data = self.find_entity_data_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return (
-            self.apply_edit_to_world(entity_name, component_name, property_name, value)
-            if isinstance(entity_name, str)
-            else False
+        return self._serializable_authoring.apply_edit_to_world_by_id(
+            entity_id,
+            component_name,
+            property_name,
+            value,
         )
 
     def replace_component_data_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:

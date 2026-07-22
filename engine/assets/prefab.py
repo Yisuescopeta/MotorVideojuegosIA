@@ -83,19 +83,29 @@ def _apply_override_operations(entities: list[dict[str, Any]], overrides: dict[s
     normalized = _normalize_legacy_overrides(overrides)
     operations = normalized.get("operations", [])
     by_name = {entity["name"]: entity for entity in entities}
+    by_id = {
+        str(entity.get("id")): entity
+        for entity in entities
+        if isinstance(entity, dict) and str(entity.get("id", "") or "").strip()
+    }
     for operation in operations:
         if not isinstance(operation, dict):
             continue
         op_name = str(operation.get("op", "")).strip()
         target = operation.get("target", "")
+        target_id = str(operation.get("target_id", "") or "").strip()
         target_name: str | None = None
+        entity_payload = by_id.get(target_id) if target_id else None
         for entity_name, source_entity_payload in by_name.items():
+            if entity_payload is not None:
+                break
             if source_entity_payload.get("prefab_source_path", "") == target:
                 target_name = entity_name
                 break
         if target_name is None and target in ("", None):
             target_name = next((entity["name"] for entity in entities if entity.get("prefab_source_path", "") == ""), None)
-        entity_payload: dict[str, Any] | None = by_name.get(target_name) if target_name is not None else None
+        if entity_payload is None:
+            entity_payload = by_name.get(target_name) if target_name is not None else None
         if op_name == "reorder_child":
             _reorder_entities(
                 entities,

@@ -47,7 +47,7 @@ def _entry(
             "feature_metadata": {},
         },
     )
-    root_scene_data = scene.find_entity(serialized_root_name)
+    root_scene_data = scene._find_entity_mutable(serialized_root_name)
     assert root_scene_data is not None
 
     world = World()
@@ -368,6 +368,9 @@ class PrefabOverrideServiceTests(unittest.TestCase):
                 "update_entity_property",
                 "replace_component",
                 "remove_component",
+                "update_component_property_by_id",
+                "replace_component_by_id",
+                "remove_component_by_id",
             },
         )
         for forbidden in (

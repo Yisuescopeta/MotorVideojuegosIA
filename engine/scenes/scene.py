@@ -314,8 +314,12 @@ class Scene:
             if entity_data.get("parent") == old_name:
                 entity_data["parent"] = new_name
             scene_link = entity_data.get("components", {}).get("SceneLink")
-            if isinstance(scene_link, dict) and scene_link.get("target_entity_name") == old_name:
-                scene_link["target_entity_name"] = new_name
+            if isinstance(scene_link, dict):
+                target_id = str(scene_link.get("target_entity_id", "") or "").strip()
+                if (entity_id and target_id == entity_id) or scene_link.get("target_entity_name") == old_name:
+                    scene_link["target_entity_name"] = new_name
+                    if not target_id and entity_id:
+                        scene_link["target_entity_id"] = entity_id
 
         for rule in self._rules_data():
             if not isinstance(rule, dict):
@@ -324,8 +328,13 @@ class Scene:
             if not isinstance(actions, list):
                 continue
             for action in actions:
-                if isinstance(action, dict) and action.get("entity") == old_name:
+                if not isinstance(action, dict):
+                    continue
+                action_id = str(action.get("entity_id", "") or "").strip()
+                if (entity_id and action_id == entity_id) or action.get("entity") == old_name:
                     action["entity"] = new_name
+                    if not action_id and entity_id:
+                        action["entity_id"] = entity_id
 
         signals = self._feature_metadata().get("signals", {})
         connections = signals.get("connections", []) if isinstance(signals, dict) else []
@@ -334,17 +343,18 @@ class Scene:
         for connection in connections:
             if not isinstance(connection, dict):
                 continue
-            target = connection.get("target")
-            if not (
-                isinstance(target, dict)
-                and str(target.get("kind", "") or "").strip().lower() == "entity"
-            ):
-                continue
-            target_id = str(target.get("id", "") or "").strip()
-            if entity_id and target_id == entity_id:
-                target["name"] = new_name
-            elif target.get("name") == old_name:
-                target["name"] = new_name
+            for endpoint_key in ("source", "target"):
+                endpoint = connection.get(endpoint_key)
+                if not (
+                    isinstance(endpoint, dict)
+                    and str(endpoint.get("kind", "") or "").strip().lower() == "entity"
+                ):
+                    continue
+                endpoint_id = str(endpoint.get("id", "") or "").strip()
+                if (entity_id and endpoint_id == entity_id) or endpoint.get("name") == old_name:
+                    endpoint["name"] = new_name
+                    if not endpoint_id and entity_id:
+                        endpoint["id"] = entity_id
 
     def update_component(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
         entity_data = self._find_entity_mutable(entity_name)

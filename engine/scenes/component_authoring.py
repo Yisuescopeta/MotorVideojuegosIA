@@ -239,7 +239,7 @@ class SceneComponentAuthoring:
             return False
         token, before = transaction
         try:
-            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None:
+            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None and not self._world_has_entity_id(entry, entity_id):
                 self._pipeline.rollback(entry, token)
                 return False
             payload = self._prepare_component(entry, component_name, component_data)
@@ -248,6 +248,10 @@ class SceneComponentAuthoring:
                 component_name,
                 payload,
             )
+            if not changed:
+                replace_by_id = getattr(self._prefab_overrides, "replace_component_by_id", None)
+                if callable(replace_by_id):
+                    changed = replace_by_id(entry, entity_id, component_name, payload)
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False
@@ -528,7 +532,7 @@ class SceneComponentAuthoring:
             return False
         token, before = transaction
         try:
-            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None:
+            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None and not self._world_has_entity_id(entry, entity_id):
                 self._pipeline.rollback(entry, token)
                 return False
             payload = self._prepare_component(
@@ -549,6 +553,10 @@ class SceneComponentAuthoring:
                     component_name,
                     payload,
                 )
+            if not changed and entity_id is not None:
+                replace_by_id = getattr(self._prefab_overrides, "replace_component_by_id", None)
+                if callable(replace_by_id):
+                    changed = replace_by_id(entry, entity_id, component_name, payload)
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False
@@ -587,7 +595,7 @@ class SceneComponentAuthoring:
             return False
         token, before = transaction
         try:
-            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None:
+            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None and not self._world_has_entity_id(entry, entity_id):
                 self._pipeline.rollback(entry, token)
                 return False
             changed = (
@@ -601,6 +609,10 @@ class SceneComponentAuthoring:
                     entity_name,
                     component_name,
                 )
+            if not changed and entity_id is not None:
+                remove_by_id = getattr(self._prefab_overrides, "remove_component_by_id", None)
+                if callable(remove_by_id):
+                    changed = remove_by_id(entry, entity_id, component_name)
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False
@@ -614,6 +626,50 @@ class SceneComponentAuthoring:
             before,
             label=label,
         )
+
+    def apply_edit_to_world_by_id(
+        self,
+        entity_id: str,
+        component_name: str,
+        property_name: str,
+        value: Any,
+    ) -> bool:
+        entry = self._workspace.get_active_entry()
+        if entry is None or entry.edit_world is None:
+            return False
+        label = f"entity_id:{entity_id}.{component_name}.{property_name}"
+        transaction = self._pipeline.begin(entry, failure_context=label)
+        if transaction is None:
+            return False
+        token, before = transaction
+        try:
+            if entry.scene.find_entity_by_id(entity_id) is None and not self._world_has_entity_id(entry, entity_id):
+                self._pipeline.rollback(entry, token)
+                return False
+            changed = entry.scene.update_component_by_id(
+                entity_id,
+                component_name,
+                property_name,
+                copy.deepcopy(value),
+            )
+            if not changed:
+                update_by_id = getattr(self._prefab_overrides, "update_component_property_by_id", None)
+                if callable(update_by_id):
+                    changed = update_by_id(
+                        entry,
+                        entity_id,
+                        component_name,
+                        property_name,
+                        value,
+                    )
+            if not changed:
+                self._pipeline.rollback(entry, token)
+                return False
+            self._sync_scene_link(entry, component_name)
+        except Exception:
+            self._pipeline.rollback(entry, token)
+            return False
+        return self._pipeline.commit_snapshot(entry, token, before, label=label)
 
     def _load_authoring_component_state(
         self,
@@ -638,6 +694,13 @@ class SceneComponentAuthoring:
             return None
         component_data = component.to_dict()
         return copy.deepcopy(component_data) if isinstance(component_data, dict) else None
+
+    @staticmethod
+    def _world_has_entity_id(entry: SceneWorkspaceEntry, entity_id: str) -> bool:
+        return (
+            entry.edit_world is not None
+            and entry.edit_world.get_entity_by_serialized_id(entity_id) is not None
+        )
 
     def _prepare_component(
         self,

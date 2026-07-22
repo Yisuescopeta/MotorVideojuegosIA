@@ -126,6 +126,80 @@ def _ensure_entity_ids(data: dict[str, Any]) -> None:
         generated_ids.add(candidate)
 
 
+def _migrate_local_entity_references(data: dict[str, Any]) -> None:
+    """Add stable local IDs while retaining names as presentation hints."""
+    entities = data.get("entities", [])
+    if not isinstance(entities, list):
+        return
+    ids_by_name = {
+        str(entity.get("name")).strip(): str(entity.get("id")).strip()
+        for entity in entities
+        if isinstance(entity, dict)
+        and isinstance(entity.get("name"), str)
+        and entity.get("name").strip()
+        and isinstance(entity.get("id"), str)
+        and entity.get("id").strip()
+    }
+
+    rules = data.get("rules", [])
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            actions = rule.get("do", [])
+            if not isinstance(actions, list):
+                continue
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                entity_id = action.get("entity_id")
+                if isinstance(entity_id, str) and entity_id.strip():
+                    action["entity_id"] = entity_id.strip()
+                    continue
+                entity_name = action.get("entity")
+                resolved_id = ids_by_name.get(entity_name.strip()) if isinstance(entity_name, str) else None
+                if resolved_id is not None:
+                    action["entity_id"] = resolved_id
+
+    feature_metadata = data.get("feature_metadata", {})
+    signals = feature_metadata.get("signals") if isinstance(feature_metadata, dict) else None
+    connections = signals.get("connections") if isinstance(signals, dict) else None
+    if isinstance(connections, list):
+        for connection in connections:
+            if not isinstance(connection, dict):
+                continue
+            for endpoint_key in ("source", "target"):
+                endpoint = connection.get(endpoint_key)
+                if not isinstance(endpoint, dict) or str(endpoint.get("kind", "") or "").strip().lower() != "entity":
+                    continue
+                entity_id = endpoint.get("id")
+                if isinstance(entity_id, str) and entity_id.strip():
+                    endpoint["id"] = entity_id.strip()
+                    continue
+                entity_name = endpoint.get("name")
+                resolved_id = ids_by_name.get(entity_name.strip()) if isinstance(entity_name, str) else None
+                if resolved_id is not None:
+                    endpoint["id"] = resolved_id
+
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        components = entity.get("components", {})
+        scene_link = components.get("SceneLink") if isinstance(components, dict) else None
+        if not isinstance(scene_link, dict):
+            continue
+        if str(scene_link.get("target_path", "") or "").strip():
+            continue
+        entity_id = scene_link.get("target_entity_id")
+        if isinstance(entity_id, str) and entity_id.strip():
+            scene_link["target_entity_id"] = entity_id.strip()
+            continue
+        entity_name = scene_link.get("target_entity_name")
+        resolved_id = ids_by_name.get(entity_name.strip()) if isinstance(entity_name, str) else None
+        if resolved_id is not None:
+            scene_link["target_entity_id"] = resolved_id
+
+
 def _normalize_prefab_override_map(overrides: dict[str, Any]) -> dict[str, Any]:
     if "operations" in overrides:
         return copy.deepcopy(overrides)
@@ -337,6 +411,7 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
     elif component_name == "SceneLink":
         target_path = payload.get("target_path")
         target_entity_name = payload.get("target_entity_name")
+        target_entity_id = payload.get("target_entity_id")
         flow_key = payload.get("flow_key")
         preview_label = payload.get("preview_label")
         link_mode = payload.get("link_mode")
@@ -344,6 +419,13 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
         payload["target_path"] = "" if target_path is None else target_path.strip() if isinstance(target_path, str) else target_path
         payload["target_entity_name"] = (
             "" if target_entity_name is None else target_entity_name.strip() if isinstance(target_entity_name, str) else target_entity_name
+        )
+        payload["target_entity_id"] = (
+            ""
+            if target_entity_id is None
+            else target_entity_id.strip()
+            if isinstance(target_entity_id, str)
+            else target_entity_id
         )
         payload["flow_key"] = "" if flow_key is None else flow_key.strip() if isinstance(flow_key, str) else flow_key
         payload["preview_label"] = (
@@ -540,6 +622,7 @@ def _canonicalize_scene_v3(data: dict[str, Any]) -> dict[str, Any]:
     migrated["schema_version"] = 3
     _default_scene_fields(migrated)
     _ensure_entity_ids(migrated)
+    _migrate_local_entity_references(migrated)
     entities = migrated.get("entities", [])
     if isinstance(entities, list):
         migrated = _migrate_scene_v2_to_v3(migrated) if any(
@@ -1314,6 +1397,8 @@ def _validate_scene_link(data: dict[str, Any], *, path: str) -> list[str]:
         _expect_string(data["target_path"], path=f"{path}.target_path", errors=errors)
     if "target_entity_name" in data:
         _expect_string(data["target_entity_name"], path=f"{path}.target_entity_name", errors=errors)
+    if "target_entity_id" in data:
+        _expect_string(data["target_entity_id"], path=f"{path}.target_entity_id", errors=errors)
     if "flow_key" in data:
         _expect_string(data["flow_key"], path=f"{path}.flow_key", errors=errors)
     if "preview_label" in data:
@@ -1688,12 +1773,12 @@ def _validate_rule_action(action: Any, *, path: str) -> list[str]:
         errors.append(f"{path}.action: unsupported action '{action_name}'")
         return errors
     if action_name == "set_animation":
-        if not str(payload.get("entity", "")).strip():
+        if not str(payload.get("entity", "") or payload.get("entity_id", "")).strip():
             errors.append(f"{path}.entity: expected non-empty string")
         if not str(payload.get("state", "")).strip():
             errors.append(f"{path}.state: expected non-empty string")
     elif action_name == "set_position":
-        if not str(payload.get("entity", "")).strip():
+        if not str(payload.get("entity", "") or payload.get("entity_id", "")).strip():
             errors.append(f"{path}.entity: expected non-empty string")
         if payload.get("x") is None and payload.get("y") is None:
             errors.append(f"{path}: expected x or y")
@@ -1702,7 +1787,7 @@ def _validate_rule_action(action: Any, *, path: str) -> list[str]:
         if "y" in payload and payload.get("y") is not None:
             _expect_number(payload.get("y"), path=f"{path}.y", errors=errors)
     elif action_name == "destroy_entity":
-        if not str(payload.get("entity", "")).strip():
+        if not str(payload.get("entity", "") or payload.get("entity_id", "")).strip():
             errors.append(f"{path}.entity: expected non-empty string")
     elif action_name == "spawn_entity":
         if not str(payload.get("name", "")).strip():
@@ -1861,7 +1946,8 @@ def _validate_signal_target_metadata(value: Any, *, path: str) -> tuple[list[str
     if normalized_kind and normalized_kind not in {"entity", "event_bus", "service"}:
         errors.append(f"{path}.kind: expected one of ['entity', 'event_bus', 'service']")
     if normalized_kind == "entity":
-        _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
+        if not str(payload.get("name", "") or payload.get("id", "")).strip():
+            errors.append(f"{path}.id: expected non-empty entity reference")
         if "component" in payload:
             component = _expect_string(payload.get("component"), path=f"{path}.component", errors=errors, non_empty=True)
             if isinstance(component, str) and component.strip() != "ScriptBehaviour":
@@ -1872,7 +1958,7 @@ def _validate_signal_target_metadata(value: Any, *, path: str) -> tuple[list[str
     elif normalized_kind == "service":
         _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
     for key, item in payload.items():
-        if key not in {"kind", "name", "component", "event"}:
+        if key not in {"kind", "id", "name", "component", "event"}:
             _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
     return errors, normalized_kind
 
