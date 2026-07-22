@@ -10,6 +10,7 @@ from engine.scenes.projection_integrity import (
     AuthoringProjectionFingerprintService,
     ProjectionIntegrityEvidence,
 )
+from engine.scenes.refs import OpenDocumentId, OpenSceneRef
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_projection import SceneProjectionService
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 class SceneWorkspaceEntry:
     key: str
     scene: Scene
+    open_document_id: OpenDocumentId = field(default_factory=OpenDocumentId.new)
     edit_world: Optional["World"] = None
     runtime_world: Optional["World"] = None
     is_playing: bool = False
@@ -46,6 +48,10 @@ class SceneWorkspaceEntry:
     @property
     def edit_world_sync_pending(self) -> bool:
         return self.pending_edit_world_sync_reason is not None
+
+    @property
+    def open_scene_ref(self) -> OpenSceneRef:
+        return OpenSceneRef(self.open_document_id)
 
 
 @dataclass(frozen=True)
