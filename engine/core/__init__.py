@@ -14,11 +14,17 @@ from importlib import import_module
 __all__ = [
     "Game",
     "TimeManager",
+    "EditorHost",
+    "EngineCompositionRoot",
+    "RuntimeHost",
 ]
 
 _MODULE_BY_EXPORT = {
     "Game": "engine.core.game",
     "TimeManager": "engine.core.time_manager",
+    "EditorHost": "engine.core.composition_root",
+    "EngineCompositionRoot": "engine.core.composition_root",
+    "RuntimeHost": "engine.core.composition_root",
 }
 
 

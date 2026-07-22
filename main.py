@@ -22,14 +22,11 @@ from pathlib import Path
 import pyray as rl
 from cli.runner import CLIRunner
 from cli.script_executor import ScriptExecutor
-from engine.app.runtime_system_factory import create_runtime_system_bundle
 from engine.core.game import Game
+from engine.core.composition_root import EngineCompositionRoot
 from engine.events.event_bus import EventBus
 from engine.inspector.inspector_system import InspectorSystem
-from engine.levels.component_registry import create_default_registry
 from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
-from engine.project.project_service import ProjectService
-from engine.scenes.scene_manager import SceneManager
 from engine.systems.selection_system import SelectionSystem
 
 
@@ -146,15 +143,16 @@ def main() -> None:
 
     ensure_sprite_sheet()
 
-    # Crear registro de componentes
-    registry = create_default_registry()
-    project_service = ProjectService(os.getcwd(), auto_ensure=False)
-
-    # Crear SceneManager
-    scene_manager = SceneManager(registry)
-
-    # Crear sistemas runtime compartidos entre editor PLAY y export
-    runtime_systems = create_runtime_system_bundle(gravity=600)
+    composition_root = EngineCompositionRoot.compose_runtime(
+        os.getcwd(),
+        gravity=600,
+        auto_ensure_project=False,
+    )
+    runtime_host = composition_root.runtime_host
+    assert runtime_host is not None
+    project_service = runtime_host.project_service
+    scene_manager = runtime_host.scene_manager
+    runtime_systems = runtime_host.runtime_systems
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
 
