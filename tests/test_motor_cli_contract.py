@@ -598,7 +598,7 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         scene_path = self.project / "levels" / "level_1.json"
         self.assertTrue(scene_path.exists())
         scene = json.loads(scene_path.read_text(encoding="utf-8"))
-        self.assertEqual(scene["schema_version"], 2)
+        self.assertEqual(scene["schema_version"], 3)
         names = {entity["name"] for entity in scene["entities"]}
         self.assertIn("Player", names)
         self.assertIn("Ground", names)
@@ -999,7 +999,7 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
 
         scene_path = self.project / "levels" / "level_1.json"
         scene = json.loads(scene_path.read_text(encoding="utf-8"))
-        self.assertEqual(scene["schema_version"], 2)
+        self.assertEqual(scene["schema_version"], 3)
         by_name = {entity["name"]: entity for entity in scene["entities"]}
 
         self.assertIn("MovingPlatform2D", by_name["Lift_A"]["components"])

@@ -779,7 +779,10 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
 
         self.api.game.save_current_scene()
         raw = json.loads(first_path.read_text(encoding="utf-8"))
-        self.assertEqual(raw["feature_metadata"]["scene_flow"]["next_scene"], "levels/second.json")
+        self.assertEqual(
+            raw["feature_metadata"]["scene_flow"]["next_scene"]["path_hint"],
+            "levels/second.json",
+        )
 
         load_result = self.api.load_next_scene()
 
@@ -868,7 +871,10 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
         load_result = self.api.load_menu_scene()
 
         self.assertTrue(set_result["success"])
-        self.assertEqual(raw_platformer["feature_metadata"]["scene_flow"]["menu_scene"], "levels/main_menu_scene.json")
+        self.assertEqual(
+            raw_platformer["feature_metadata"]["scene_flow"]["menu_scene"]["path_hint"],
+            "levels/main_menu_scene.json",
+        )
         self.assertTrue(load_result["success"])
         self.assertEqual(self.api.scene_manager.scene_name, "Main Menu Scene")
         self.assertTrue(self.api.game.current_scene_path.endswith("levels/main_menu_scene.json"))

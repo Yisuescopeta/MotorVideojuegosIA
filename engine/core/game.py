@@ -1344,9 +1344,9 @@ class Game:
     def get_scene_flow(self) -> dict:
         if self._scene_manager is None:
             return {}
-        metadata = self._scene_manager.get_feature_metadata()
-        scene_flow = metadata.get("scene_flow", {})
-        return dict(scene_flow) if isinstance(scene_flow, dict) else {}
+        # SceneManager owns GUID-first metadata resolution and exposes the
+        # presentation path hints required by runtime navigation.
+        return dict(self._scene_manager.get_scene_flow())
 
     def load_scene_flow_target(self, key: str) -> bool:
         return self._scene_workflow_controller.load_scene_flow_target(key)

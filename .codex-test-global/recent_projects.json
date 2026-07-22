@@ -1,227 +1,227 @@
 {
     "projects": [
         {
-            "name": "TestGame",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpgbssci9j/TestGame",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpgbssci9j/TestGame/project.json",
-            "last_opened_utc": "2026-07-22T20:49:40.657203+00:00",
-            "engine_version": "2026.03"
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpm5jz1_0m/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpm5jz1_0m/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:09.883891+00:00",
+            "engine_version": "2026.06"
         },
         {
-            "name": "TestGame",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpzx63sdze/TestGame",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpzx63sdze/TestGame/project.json",
-            "last_opened_utc": "2026-07-22T20:33:04.517740+00:00",
-            "engine_version": "2026.03"
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpzamk74kd/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpzamk74kd/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:09.783645+00:00",
+            "engine_version": "2026.06"
         },
         {
-            "name": "TestGame",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmps4huh8ux/TestGame",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmps4huh8ux/TestGame/project.json",
-            "last_opened_utc": "2026-07-22T20:32:38.519875+00:00",
-            "engine_version": "2026.03"
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp6ewqtc7q/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp6ewqtc7q/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:09.699091+00:00",
+            "engine_version": "2026.06"
         },
         {
-            "name": "TestGame",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpgrzju__0/TestGame",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpgrzju__0/TestGame/project.json",
-            "last_opened_utc": "2026-07-22T20:32:10.791229+00:00",
-            "engine_version": "2026.03"
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp9rt9qeqj/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp9rt9qeqj/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:09.489125+00:00",
+            "engine_version": "2026.06"
         },
         {
-            "name": "TestGame",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp_kijpre6/TestGame",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp_kijpre6/TestGame/project.json",
-            "last_opened_utc": "2026-07-22T20:28:06.331015+00:00",
-            "engine_version": "2026.03"
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpwf0kcmcc/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpwf0kcmcc/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:09.385204+00:00",
+            "engine_version": "2026.06"
         },
         {
-            "name": "TestGame",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpm1w03xz0/TestGame",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpm1w03xz0/TestGame/project.json",
-            "last_opened_utc": "2026-07-22T20:27:35.647317+00:00",
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpbqauj1ea/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpbqauj1ea/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:09.063705+00:00",
+            "engine_version": "2026.06"
+        },
+        {
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpohxehbor/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpohxehbor/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:08.961115+00:00",
+            "engine_version": "2026.06"
+        },
+        {
+            "name": "project",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpuj_8gl95/project",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpuj_8gl95/project/project.json",
+            "last_opened_utc": "2026-07-22T21:11:08.807709+00:00",
+            "engine_version": "2026.06"
+        },
+        {
+            "name": "RecipeProject",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpexbs84jm/RecipeProject",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpexbs84jm/RecipeProject/project.json",
+            "last_opened_utc": "2026-07-22T21:04:01.304625+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "RecipeProject",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp4d08zsv5/RecipeProject",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp4d08zsv5/RecipeProject/project.json",
-            "last_opened_utc": "2026-07-22T19:38:47.193551+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpbndca3j_/RecipeProject",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpbndca3j_/RecipeProject/project.json",
+            "last_opened_utc": "2026-07-22T21:03:58.594714+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "RecipeProject",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpbmzitba7/RecipeProject",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpbmzitba7/RecipeProject/project.json",
-            "last_opened_utc": "2026-07-22T19:38:42.650859+00:00",
-            "engine_version": "2026.03"
-        },
-        {
-            "name": "RecipeProject",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpzetbaurz/RecipeProject",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpzetbaurz/RecipeProject/project.json",
-            "last_opened_utc": "2026-07-22T19:38:41.389834+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmptewbwhw9/RecipeProject",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmptewbwhw9/RecipeProject/project.json",
+            "last_opened_utc": "2026-07-22T21:03:55.755122+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "Test",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp3dnvj55v/Test",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp3dnvj55v/Test/project.json",
-            "last_opened_utc": "2026-07-22T19:38:27.845844+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpv__tkxxn/Test",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpv__tkxxn/Test/project.json",
+            "last_opened_utc": "2026-07-22T21:03:41.565508+00:00",
             "engine_version": "2026.06"
         },
         {
             "name": "TestProject",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpnlsxdhmd/TestProject",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpnlsxdhmd/TestProject/project.json",
-            "last_opened_utc": "2026-07-22T19:38:22.837995+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpftu7ayyd/TestProject",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpftu7ayyd/TestProject/project.json",
+            "last_opened_utc": "2026-07-22T21:03:38.804579+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "RuntimeCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpc_62mmrp/RuntimeCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpc_62mmrp/RuntimeCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:38:02.979896+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpsd47akwu/RuntimeCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpsd47akwu/RuntimeCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:25.424093+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "RuntimeCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpuxodyu0p/RuntimeCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpuxodyu0p/RuntimeCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:38:02.067191+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpg6t4yyoq/RuntimeCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpg6t4yyoq/RuntimeCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:24.770511+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "RuntimeCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpjq4w748g/RuntimeCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpjq4w748g/RuntimeCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:38:01.400110+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp717_1zex/RuntimeCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp717_1zex/RuntimeCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:24.071390+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpb52krk1d/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpb52krk1d/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:42.953565+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmprz_4kj3m/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmprz_4kj3m/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:07.443908+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp87y8ths_/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp87y8ths_/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:41.297778+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpdpv7mfwf/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpdpv7mfwf/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:06.519609+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp_q4en3sv/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp_q4en3sv/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:40.097839+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpr0g7mm7m/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpr0g7mm7m/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:05.735792+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp6ojwoo8d/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp6ojwoo8d/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:38.405126+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpy_ub9gsu/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpy_ub9gsu/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:04.655426+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpvycr72li/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpvycr72li/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:36.923689+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp5kr5pr0h/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp5kr5pr0h/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:03.495672+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp1_nbhf5c/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp1_nbhf5c/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:35.469649+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpa6mqum8p/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpa6mqum8p/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:02.549465+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PrefabCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp_7iwv3hl/PrefabCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp_7iwv3hl/PrefabCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:35.389077+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpqxtwawu5/PrefabCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpqxtwawu5/PrefabCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:02.418664+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp_kjafl4o/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp_kjafl4o/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:34.820581+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpuvvfcxiw/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpuvvfcxiw/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:01.909750+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpjlrd4xkj/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpjlrd4xkj/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:33.664662+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpd0kwvu55/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpd0kwvu55/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:01.130336+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpc903tt99/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpc903tt99/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:32.513808+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpnoalie8q/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpnoalie8q/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:03:00.242774+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpuoqonzaa/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpuoqonzaa/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:29.623361+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpyjzeyq79/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpyjzeyq79/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:02:58.605396+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpn0s2drud/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpn0s2drud/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:26.210856+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpwlga92l1/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpwlga92l1/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:02:56.162775+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmptgdb_3so/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmptgdb_3so/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:24.924672+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp2rh0e9kz/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp2rh0e9kz/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:02:55.354491+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpvvv37pef/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpvvv37pef/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:23.805905+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp0w09drit/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp0w09drit/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:02:54.527909+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmp0b9mmtn7/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp0b9mmtn7/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:22.627907+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmp7sxzfy3z/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmp7sxzfy3z/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:02:53.776958+00:00",
             "engine_version": "2026.03"
         },
         {
             "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpa3wextll/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpa3wextll/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:21.610777+00:00",
-            "engine_version": "2026.03"
-        },
-        {
-            "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmprrqlqjhd/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmprrqlqjhd/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:20.145778+00:00",
-            "engine_version": "2026.03"
-        },
-        {
-            "name": "PlatformerCLI",
-            "path": "C:/Users/usuario/AppData/Local/Temp/tmpuhhysv93/PlatformerCLI",
-            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpuhhysv93/PlatformerCLI/project.json",
-            "last_opened_utc": "2026-07-22T19:37:18.998581+00:00",
+            "path": "C:/Users/usuario/AppData/Local/Temp/tmpc41eu1hd/PlatformerCLI",
+            "manifest_path": "C:/Users/usuario/AppData/Local/Temp/tmpc41eu1hd/PlatformerCLI/project.json",
+            "last_opened_utc": "2026-07-22T21:02:53.000462+00:00",
             "engine_version": "2026.03"
         }
     ]

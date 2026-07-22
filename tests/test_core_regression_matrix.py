@@ -302,7 +302,9 @@ class CoreRegressionMatrixTests(unittest.TestCase):
         self.assertNotIn("runtime_only", api.scene_manager.current_scene.feature_metadata)
 
         self.assertTrue(self.api_result(api.save_scene(path=scene_path.as_posix())))
-        self.assertEqual(self._read_json(scene_path), baseline_payload)
+        # Save emits the canonical v3 representation (including GUID-first
+        # cross-scene references), so compare against the post-save Scene.
+        self.assertEqual(self._read_json(scene_path), api.scene_manager.current_scene.to_dict())
 
     def test_api_and_direct_authoring_routes_produce_equivalent_scene_payloads(self) -> None:
         api = self._make_api()

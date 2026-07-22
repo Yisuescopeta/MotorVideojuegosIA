@@ -1629,7 +1629,10 @@ class InspectorCoreTests(unittest.TestCase):
 
         entity = self.api.get_entity("PortalButton")
         self.assertEqual(entity["components"]["UIButton"]["on_click"]["type"], "run_scene_transition")
-        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_scene_path"], "levels/transition_target.json")
+        self.assertEqual(
+            entity["components"]["SceneTransitionAction"]["target_scene_path"],
+            "levels/transition_target.json",
+        )
         self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "arrival")
 
         self.assertTrue(self.api.undo()["success"])
@@ -1646,7 +1649,10 @@ class InspectorCoreTests(unittest.TestCase):
 
         entity = self.api.get_entity("PortalButton")
         self.assertEqual(entity["components"]["UIButton"]["on_click"]["type"], "run_scene_transition")
-        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_scene_path"], "levels/transition_target.json")
+        self.assertEqual(
+            entity["components"]["SceneTransitionAction"]["target_scene"]["path_hint"],
+            "levels/transition_target.json",
+        )
         self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "arrival")
 
     def test_inspector_scene_transition_trigger_presets_materialize_expected_components(self) -> None:
