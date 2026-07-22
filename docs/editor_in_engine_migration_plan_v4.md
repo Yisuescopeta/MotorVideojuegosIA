@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G1 — `PR-G10-06` pendiente; operaciones estructurales ID-first y `parent_id` ya están registradas.
+- Gate actual: G1 — `PR-G10-07` pendiente; mutaciones de componentes ID-first ya están registradas.
 
 ### Commits
 
@@ -2053,6 +2053,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g10): encapsulate scene read surfaces` | G1 / `PR-G10-04` | Completado | 321 tests de escenas OK; snapshots/views profundamente inmutables, getters legacy devuelven copias y advierten, revision de escena y rollback sin reconstrucción accidental. |
 | `feat(g10): migrate structural mutations to id-first` | G1 / `PR-G10-05` | Completado | 54 tests enfocados OK; rename/reparent/delete/property update por ID no resuelven nuevamente a nombre y sincronizan `parent_id` con el hint `parent`. |
 | `feat(g10): isolate engine composition root` | G2 / `PR-G20-01` | Completado | 2 tests enfocados OK; `EngineCompositionRoot`, `RuntimeHost` y `EditorHost` congelados, construcción GUI migrada al root y sin resolver/service locator genérico. |
+| `feat(g10): migrate component mutations to id-first` | G1 / `PR-G10-06` | Completado | 74 tests enfocados OK; replace/add/remove y metadata operan por `entity_id`, mantienen los fallbacks de prefab solo en rutas name-first y preservan el ID tras renombre. |
 
 ### Actualizaciones
 
@@ -2073,3 +2074,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G10-04` encapsula `Scene` con `SceneSnapshot`, `EntityView`, `RuleView` y `FeatureMetadataView`; las superficies legacy dejan de exponer referencias internas y las restauraciones de transacción conservan evidencia sin forzar una reconstrucción.
 - 2026-07-22: `PR-G10-05` corrige las operaciones estructurales ID-first de `Scene`: rename, reparent, delete y property update conservan identidad estable, validan ciclos por ID y mantienen `parent` únicamente como hint.
 - 2026-07-22: `PR-G20-01` introduce el composition root explícito y migra el arranque GUI para consumir únicamente el `RuntimeHost` construido; no se distribuye el root ni se añade service locator.
+- 2026-07-22: `PR-G10-06` migra replace/add/remove de componentes y la metadata de alta a operaciones directas por ID; las rutas ID-first no convierten a nombre ni consultan el puerto de prefab.

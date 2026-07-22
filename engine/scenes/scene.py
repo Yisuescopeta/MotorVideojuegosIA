@@ -501,6 +501,30 @@ class Scene:
         self._bump_revision()
         return True
 
+    def set_component_metadata_by_id(
+        self,
+        entity_id: str,
+        component_name: str,
+        metadata: Dict[str, Any],
+    ) -> bool:
+        entity_data = self._find_entity_by_id_mutable(entity_id)
+        if entity_data is None:
+            return False
+        if component_name not in entity_data.setdefault("components", {}):
+            return False
+        entity_metadata = entity_data.setdefault("component_metadata", {})
+        if not isinstance(entity_metadata, dict):
+            entity_metadata = {}
+            entity_data["component_metadata"] = entity_metadata
+        if metadata:
+            entity_metadata[component_name] = copy.deepcopy(metadata)
+        else:
+            entity_metadata.pop(component_name, None)
+        if not entity_metadata:
+            entity_data.pop("component_metadata", None)
+        self._bump_revision()
+        return True
+
     def remove_entity(self, entity_name: str) -> bool:
         if self._find_entity_mutable(entity_name) is None:
             return False

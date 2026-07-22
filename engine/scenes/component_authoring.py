@@ -36,7 +36,7 @@ class SceneComponentAuthoring:
 
     def get_feature_metadata(self) -> dict[str, Any]:
         entry = self._workspace.get_active_entry()
-        return copy.deepcopy(entry.scene.feature_metadata) if entry is not None else {}
+        return entry.scene.feature_metadata_view().to_dict() if entry is not None else {}
 
     def get_component_data(
         self,
@@ -233,32 +233,21 @@ class SceneComponentAuthoring:
         entry = self._workspace.get_active_entry()
         if entry is None or entry.edit_world is None:
             return False
-        entity_name = self._entity_name_by_id_after_flush(
-            entry,
-            entity_id,
-            failure_context=f"replace_component_id:{entity_id}.{component_name}",
-        )
-        if entity_name is None:
-            return False
-        label = f"{entity_name}.{component_name}"
+        label = f"entity_id:{entity_id}.{component_name}"
         transaction = self._pipeline.begin(entry, failure_context=label)
         if transaction is None:
             return False
         token, before = transaction
         try:
+            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None:
+                self._pipeline.rollback(entry, token)
+                return False
             payload = self._prepare_component(entry, component_name, component_data)
             changed = entry.scene.replace_component_data_by_id(
                 entity_id,
                 component_name,
                 payload,
             )
-            if not changed:
-                changed = self._prefab_overrides.replace_component(
-                    entry,
-                    entity_name,
-                    component_name,
-                    payload,
-                )
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False
@@ -299,16 +288,9 @@ class SceneComponentAuthoring:
         entry = self._workspace.get_active_entry()
         if entry is None:
             return False
-        entity_name = self._entity_name_by_id_after_flush(
-            entry,
-            entity_id,
-            failure_context=f"add_component_id:{entity_id}.{component_name}",
-        )
-        if entity_name is None:
-            return False
         return self._add_component_for_entry(
             entry,
-            entity_name,
+            None,
             entity_id,
             component_name,
             component_data,
@@ -337,16 +319,9 @@ class SceneComponentAuthoring:
         entry = self._workspace.get_active_entry()
         if entry is None:
             return False
-        entity_name = self._entity_name_by_id_after_flush(
-            entry,
-            entity_id,
-            failure_context=f"remove_component_id:{entity_id}.{component_name}",
-        )
-        if entity_name is None:
-            return False
         return self._remove_component_for_entry(
             entry,
-            entity_name,
+            None,
             entity_id,
             component_name,
         )
@@ -541,17 +516,21 @@ class SceneComponentAuthoring:
     def _add_component_for_entry(
         self,
         entry: SceneWorkspaceEntry,
-        entity_name: str,
+        entity_name: Optional[str],
         entity_id: Optional[str],
         component_name: str,
         component_data: Optional[dict[str, Any]],
     ) -> bool:
-        label = f"add_component:{entity_name}.{component_name}"
+        target_label = entity_name or f"entity_id:{entity_id}"
+        label = f"add_component:{target_label}.{component_name}"
         transaction = self._pipeline.begin(entry, failure_context=label)
         if transaction is None:
             return False
         token, before = transaction
         try:
+            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None:
+                self._pipeline.rollback(entry, token)
+                return False
             payload = self._prepare_component(
                 entry,
                 component_name,
@@ -563,7 +542,7 @@ class SceneComponentAuthoring:
                 else entry.scene.add_component(entity_name, component_name, payload)
             )
             changed = changed_directly
-            if not changed_directly:
+            if not changed_directly and entity_name is not None:
                 changed = self._prefab_overrides.replace_component(
                     entry,
                     entity_name,
@@ -573,13 +552,16 @@ class SceneComponentAuthoring:
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False
-            if changed_directly and not entry.scene.set_component_metadata(
-                entity_name,
-                component_name,
-                {"origin": self._registry.get_origin(component_name)},
-            ):
-                self._pipeline.rollback(entry, token)
-                return False
+            if changed_directly:
+                metadata = {"origin": self._registry.get_origin(component_name)}
+                metadata_changed = (
+                    entry.scene.set_component_metadata_by_id(entity_id, component_name, metadata)
+                    if entity_id is not None
+                    else entry.scene.set_component_metadata(entity_name, component_name, metadata)
+                )
+                if not metadata_changed:
+                    self._pipeline.rollback(entry, token)
+                    return False
             self._sync_scene_link(entry, component_name)
         except Exception:
             self._pipeline.rollback(entry, token)
@@ -594,22 +576,26 @@ class SceneComponentAuthoring:
     def _remove_component_for_entry(
         self,
         entry: SceneWorkspaceEntry,
-        entity_name: str,
+        entity_name: Optional[str],
         entity_id: Optional[str],
         component_name: str,
     ) -> bool:
-        label = f"remove_component:{entity_name}.{component_name}"
+        target_label = entity_name or f"entity_id:{entity_id}"
+        label = f"remove_component:{target_label}.{component_name}"
         transaction = self._pipeline.begin(entry, failure_context=label)
         if transaction is None:
             return False
         token, before = transaction
         try:
+            if entity_id is not None and entry.scene.find_entity_by_id(entity_id) is None:
+                self._pipeline.rollback(entry, token)
+                return False
             changed = (
                 entry.scene.remove_component_by_id(entity_id, component_name)
                 if entity_id is not None
                 else entry.scene.remove_component(entity_name, component_name)
             )
-            if not changed:
+            if not changed and entity_name is not None:
                 changed = self._prefab_overrides.remove_component(
                     entry,
                     entity_name,
@@ -652,22 +638,6 @@ class SceneComponentAuthoring:
             return None
         component_data = component.to_dict()
         return copy.deepcopy(component_data) if isinstance(component_data, dict) else None
-
-    def _entity_name_by_id_after_flush(
-        self,
-        entry: SceneWorkspaceEntry,
-        entity_id: str,
-        *,
-        failure_context: str,
-    ) -> Optional[str]:
-        if entry.is_playing or not self._pipeline.flush_pending(
-            entry,
-            failure_context=failure_context,
-        ):
-            return None
-        entity_data = entry.scene.find_entity_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return entity_name if isinstance(entity_name, str) else None
 
     def _prepare_component(
         self,
