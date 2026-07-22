@@ -8,6 +8,7 @@ from engine.editor.editor_control_adapter import ConsolePanelEditorControlAdapte
 from engine.editor.export_panel import ExportPanel
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.scene_flow_panel import SceneFlowPanel
+from engine.editor.editor_shell_actions import EditorShellActionInbox
 
 
 @dataclass(slots=True)
@@ -29,6 +30,7 @@ class EditorShellState:
 
     active_tab: str = "SCENE"
     active_bottom_tab: str = "PROJECT"
+    actions: EditorShellActionInbox = field(default_factory=EditorShellActionInbox, repr=False)
     request_play: bool = False
     request_stop: bool = False
     request_pause: bool = False

@@ -254,6 +254,23 @@ class SceneWorkflowController:
         if scene_manager is None or editor_layout is None:
             return
 
+        actions = getattr(editor_layout, "shell_actions", None)
+        drain_actions = getattr(actions, "drain_scene_tab_actions", None)
+        if callable(drain_actions):
+            for action in drain_actions():
+                if getattr(action, "kind", None).value == "ACTIVATE":
+                    self.activate_scene_workspace_tab(action.scene_key)
+                elif getattr(action, "kind", None).value == "CLOSE":
+                    entry = scene_manager.resolve_entry(action.scene_key)
+                    if entry is None:
+                        continue
+                    if entry.dirty:
+                        editor_layout.pending_scene_close_key = entry.key
+                        editor_layout.dirty_modal_context = "close_scene"
+                        editor_layout.show_project_dirty_modal = True
+                    else:
+                        self.close_scene_workspace_tab(entry.key, discard_changes=True)
+
         if editor_layout.request_activate_scene_key:
             target_key = editor_layout.request_activate_scene_key
             editor_layout.request_activate_scene_key = ""

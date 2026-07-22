@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 from engine.app.scene_workflow_controller import SceneWorkflowController
 from engine.core.engine_state import EngineState
+from engine.editor.editor_shell_actions import EditorShellActionInbox
 from engine.project.project_service import ProjectService
 
 
@@ -80,6 +81,7 @@ class SceneWorkflowControllerTests(unittest.TestCase):
         self.scene_manager = _FakeSceneManager()
         self.layout = SimpleNamespace(
             active_tab="GAME",
+            shell_actions=EditorShellActionInbox(),
             request_activate_scene_key="",
             request_close_scene_key="",
             pending_scene_close_key="",
@@ -201,6 +203,15 @@ class SceneWorkflowControllerTests(unittest.TestCase):
         self.assertTrue(self.layout.show_create_scene_modal)
         self.assertEqual(self.layout.scene_create_name, "New Scene")
         self.assertTrue(self.layout.scene_create_name_focused)
+
+    def test_scene_tab_actions_are_consumed_before_legacy_flags(self) -> None:
+        self.scene_manager.add_entry(key="target-key", name="Target")
+        self.layout.shell_actions.activate_scene_tab("target-key")
+
+        self.controller.handle_scene_tab_requests()
+
+        self.assertEqual(self.scene_manager.active_scene_key, "target-key")
+        self.assertEqual(self.layout.shell_actions.drain_scene_tab_actions(), ())
 
 
 if __name__ == "__main__":

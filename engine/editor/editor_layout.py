@@ -407,6 +407,10 @@ class EditorLayout:
     def panel_slots(self) -> EditorPanelSlots:
         return self._panel_slots
 
+    @property
+    def shell_actions(self):
+        return self._shell_state.actions
+
     def bind_shell(self, state: EditorShellState, panel_slots: EditorPanelSlots) -> None:
         self._shell_state = state
         self._panel_slots = panel_slots
@@ -2535,9 +2539,9 @@ class EditorLayout:
 
             if rl.check_collision_point_rec(mouse, rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 if close_hover:
-                    self.request_close_scene_key = key
+                    self.shell_actions.close_scene_tab(key)
                 else:
-                    self.request_activate_scene_key = key
+                    self.shell_actions.activate_scene_tab(key)
                     self.active_scene_tab_key = key
 
             tab_x += int(tab_w + 4)

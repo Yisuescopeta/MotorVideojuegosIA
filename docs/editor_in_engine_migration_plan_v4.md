@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G2 — `PR-G20-04` pendiente; queries de jerarquía ya entregan read models ID-first e inmutables.
+- Gate actual: G2 — `PR-G20-05` pendiente; pestañas de escenas ya publican acciones tipadas con compatibilidad legacy temporal.
 
 ### Commits
 
@@ -2058,6 +2058,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g10): add name-first compatibility facade` | G1 / `PR-G10-08` | Completado | 41 tests enfocados OK; fachada aislada, resolución única a `EntityRef`, errores tipados y métricas de llamadas/resolución/no encontrado/ambigüedad. |
 | `feat(g20): add editor session authority` | G2 / `PR-G20-02` | Completado | 7 tests enfocados OK; `EditorSession` mantiene una única selección `EntityRef`, activa escenas por `OpenSceneRef`, limpia selección cruzada y centraliza modo/pestaña. |
 | `feat(g20): add hierarchy query read models` | G2 / `PR-G20-03` | Completado | 30 tests enfocados OK; `HierarchyQueries` construye nodos, raíces, padres, hijos, componentes y búsqueda desde vistas inmutables de `Scene`, sin `World` mutable. |
+| `feat(g20): replace scene-tab request flags with typed actions` | G2 / `PR-G20-04` | Completado | 63 tests enfocados OK; `EditorShellActionInbox` cubre activar/cerrar pestañas, el layout publica acciones y el controller las consume antes de los flags legacy. |
 
 ### Actualizaciones
 
@@ -2083,3 +2084,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G10-08` encapsula la compatibilidad name-first en `engine.scenes.compat.name_first`; cada resolución produce `EntityRef` o `Result` de error y actualiza contadores de retiro.
 - 2026-07-22: `PR-G20-02` añade `EditorSession` como autoridad única de selección y estado de sesión; una selección de otra escena se rechaza y cambiar de escena limpia la selección anterior.
 - 2026-07-22: `PR-G20-03` añade read models de jerarquía con `EntityRef`, `parent_id`, raíces ordenadas, profundidad, componentes y búsqueda; la consulta no escribe sobre la escena.
+- 2026-07-22: `PR-G20-04` sustituye el flujo de interacción de pestañas por un inbox tipado específico; los flags `request_activate_scene_key` y `request_close_scene_key` quedan únicamente como fallback de compatibilidad.
