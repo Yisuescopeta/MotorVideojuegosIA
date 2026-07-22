@@ -80,7 +80,7 @@ class SceneIncrementalAuthoring:
     ) -> bool:
         if entry.is_playing or component_name not in _EDITABLE_FIELDS:
             return False
-        entity_data = entry.scene.find_entity(entity_name)
+        entity_data = entry.scene._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         component_data = entity_data.get("components", {}).get(component_name)
@@ -250,7 +250,7 @@ class SceneIncrementalAuthoring:
         component_name: str,
         component_state: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        entity_data = entry.scene.find_entity(entity_name)
+        entity_data = entry.scene._find_entity_mutable(entity_name)
         if entity_data is None:
             return {}, {}
         component_data = entity_data.get("components", {}).get(component_name)

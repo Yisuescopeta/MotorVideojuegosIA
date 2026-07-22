@@ -5,6 +5,7 @@ engine/scenes/scene.py - Escena con datos originales del nivel
 from __future__ import annotations
 
 import copy
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -14,6 +15,15 @@ from engine.serialization.schema import (
     canonicalize_scene_entity,
     migrate_scene_data,
     validate_scene_entity_for_add,
+)
+from engine.scenes.scene_views import (
+    EntityView,
+    FeatureMetadataView,
+    RuleView,
+    SceneSnapshot,
+    entity_view,
+    freeze_json,
+    thaw_json,
 )
 
 if TYPE_CHECKING:
@@ -39,6 +49,7 @@ class Scene:
         self._data.setdefault("rules", [])
         self._data.setdefault("feature_metadata", {})
         self._source_path: Optional[str] = source_path
+        self._revision: int = 0
         self._entity_index: Dict[str, Dict[str, Any]] = {}
         self._entity_id_index: Dict[str, Dict[str, Any]] = {}
         self._scene_entry_id_index: Dict[str, Dict[str, Any]] = {}
@@ -49,27 +60,102 @@ class Scene:
         return self._name
 
     @property
+    def revision(self) -> int:
+        return self._revision
+
+    def _warn_legacy_surface(self, surface: str) -> None:
+        warnings.warn(
+            f"Scene.{surface} is deprecated; use snapshots/views or Scene authoring methods.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    @property
     def data(self) -> Dict[str, Any]:
-        return self._data
+        self._warn_legacy_surface("data")
+        return copy.deepcopy(self._data)
 
     @property
     def entities_data(self) -> list:
-        return self._data.get("entities", [])
+        self._warn_legacy_surface("entities_data")
+        return copy.deepcopy(self._entities_data())
 
     @property
     def rules_data(self) -> list:
-        return self._data.get("rules", [])
+        self._warn_legacy_surface("rules_data")
+        return copy.deepcopy(self._rules_data())
 
     @property
     def feature_metadata(self) -> Dict[str, Any]:
-        return self._data.setdefault("feature_metadata", {})
+        self._warn_legacy_surface("feature_metadata")
+        return copy.deepcopy(self._feature_metadata())
+
+    def snapshot(self) -> SceneSnapshot:
+        frozen = freeze_json(self.to_snapshot_dict())
+        if not isinstance(frozen, dict) and not hasattr(frozen, "items"):
+            raise TypeError("Scene snapshot must be a JSON object")
+        return SceneSnapshot(
+            name=self._name,
+            revision=self._revision,
+            data=frozen,
+        )
+
+    def find_entity_view(self, entity_id: str) -> EntityView | None:
+        entity_data = self._find_entity_by_id_mutable(entity_id)
+        return entity_view(entity_data) if entity_data is not None else None
+
+    def list_entity_views(self) -> tuple[EntityView, ...]:
+        return tuple(
+            entity_view(entity_data)
+            for entity_data in self._entities_data()
+            if isinstance(entity_data, dict)
+        )
+
+    def rules_view(self) -> tuple[RuleView, ...]:
+        return tuple(
+            RuleView(data=frozen)
+            for rule in self._rules_data()
+            if isinstance((frozen := freeze_json(rule)), dict)
+            or hasattr(frozen, "items")
+        )
+
+    def feature_metadata_view(self) -> FeatureMetadataView:
+        frozen = freeze_json(self._feature_metadata())
+        if not hasattr(frozen, "items"):
+            raise TypeError("Scene feature metadata must be a JSON object")
+        return FeatureMetadataView(data=frozen)
+
+    def _entities_data(self) -> list[dict[str, Any]]:
+        entities = self._data.setdefault("entities", [])
+        return entities if isinstance(entities, list) else []
+
+    def _rules_data(self) -> list[dict[str, Any]]:
+        rules = self._data.setdefault("rules", [])
+        return rules if isinstance(rules, list) else []
+
+    def _feature_metadata(self) -> Dict[str, Any]:
+        metadata = self._data.setdefault("feature_metadata", {})
+        return metadata if isinstance(metadata, dict) else {}
+
+    def _find_entity_mutable(self, entity_name: str) -> Optional[Dict[str, Any]]:
+        if not isinstance(entity_name, str):
+            return None
+        return self._entity_index.get(entity_name)
+
+    def _find_entity_by_id_mutable(self, entity_id: str) -> Optional[Dict[str, Any]]:
+        if not isinstance(entity_id, str):
+            return None
+        return self._entity_id_index.get(entity_id)
+
+    def _bump_revision(self) -> None:
+        self._revision += 1
 
     def get_signal_metadata(self) -> Dict[str, Any]:
-        signals = self.feature_metadata.get("signals", {})
+        signals = self._feature_metadata().get("signals", {})
         return copy.deepcopy(signals) if isinstance(signals, dict) else {}
 
     def list_signal_connections(self) -> list[Dict[str, Any]]:
-        signals = self.feature_metadata.get("signals", {})
+        signals = self._feature_metadata().get("signals", {})
         if not isinstance(signals, dict):
             return []
         connections = signals.get("connections", [])
@@ -86,8 +172,8 @@ class Scene:
         from engine.ecs.world import World
 
         world = World()
-        world.feature_metadata = clone_json_value(self.feature_metadata)
-        for entity_data in self.entities_data:
+        world.feature_metadata = clone_json_value(self._feature_metadata())
+        for entity_data in self._entities_data():
             self.materialize_entity(world, registry, entity_data)
         self._link_world_hierarchy(world, list(world.iter_all_entities()))
         return world
@@ -188,7 +274,7 @@ class Scene:
         self._entity_index.clear()
         self._entity_id_index.clear()
         self._scene_entry_id_index.clear()
-        for entity_data in self.entities_data:
+        for entity_data in self._entities_data():
             if not isinstance(entity_data, dict):
                 continue
             entity_name = entity_data.get("name")
@@ -212,7 +298,7 @@ class Scene:
             self._scene_entry_id_index.pop(entry_id, None)
 
     def _canonicalize_entity_for_add(self, entity_data: Dict[str, Any]) -> Dict[str, Any]:
-        entities = self.entities_data
+        entities = self._entities_data()
         canonical_entity = canonicalize_scene_entity(
             entity_data,
             scene_name=str(self._data.get("name", self._name) or self._name),
@@ -222,7 +308,7 @@ class Scene:
         return canonical_entity
 
     def _rename_entity_references(self, old_name: str, new_name: str, entity_id: str | None = None) -> None:
-        for entity_data in self.entities_data:
+        for entity_data in self._entities_data():
             if not isinstance(entity_data, dict):
                 continue
             if entity_data.get("parent") == old_name:
@@ -231,7 +317,7 @@ class Scene:
             if isinstance(scene_link, dict) and scene_link.get("target_entity_name") == old_name:
                 scene_link["target_entity_name"] = new_name
 
-        for rule in self.rules_data:
+        for rule in self._rules_data():
             if not isinstance(rule, dict):
                 continue
             actions = rule.get("do", [])
@@ -241,7 +327,7 @@ class Scene:
                 if isinstance(action, dict) and action.get("entity") == old_name:
                     action["entity"] = new_name
 
-        signals = self.feature_metadata.get("signals", {})
+        signals = self._feature_metadata().get("signals", {})
         connections = signals.get("connections", []) if isinstance(signals, dict) else []
         if not isinstance(connections, list):
             return
@@ -261,7 +347,7 @@ class Scene:
                 target["name"] = new_name
 
     def update_component(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         components = entity_data.get("components", {})
@@ -271,6 +357,7 @@ class Scene:
             components[component_name][property_name] = value
             if component_name == "SceneEntryPoint":
                 self._index_scene_entry(entity_data)
+            self._bump_revision()
             print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
             return True
         return False
@@ -281,7 +368,7 @@ class Scene:
         component_name: str,
         properties: Dict[str, Any],
     ) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         components = entity_data.get("components", {})
@@ -293,12 +380,13 @@ class Scene:
         component_data.update(properties)
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
+        self._bump_revision()
         return True
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
         if property_name == "groups":
             return self.set_entity_groups(entity_name, value)
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         if property_name == "name":
@@ -307,7 +395,7 @@ class Scene:
                 return False
             if new_name == entity_name:
                 return True
-            existing = self.find_entity(new_name)
+            existing = self._find_entity_mutable(new_name)
             if existing is not None and existing is not entity_data:
                 return False
             entity_id = entity_data.get("id")
@@ -318,18 +406,20 @@ class Scene:
                 entity_id.strip() if isinstance(entity_id, str) else None,
             )
             self._rebuild_entity_index()
+            self._bump_revision()
             return True
         entity_data[property_name] = value
+        self._bump_revision()
         return True
 
     def get_entity_groups(self, entity_name: str) -> list[str]:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return []
         return list(normalize_entity_groups(entity_data.get("groups", ())))
 
     def set_entity_groups(self, entity_name: str, groups: Any) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         normalized_groups = list(normalize_entity_groups(groups))
@@ -337,10 +427,11 @@ class Scene:
             entity_data["groups"] = normalized_groups
         else:
             entity_data.pop("groups", None)
+        self._bump_revision()
         return True
 
     def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
@@ -351,10 +442,11 @@ class Scene:
         components[component_name] = component_data
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
+        self._bump_revision()
         return True
 
     def get_component_metadata(self, entity_name: str, component_name: str) -> Dict[str, Any]:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return {}
         metadata = entity_data.get("component_metadata", {})
@@ -364,7 +456,7 @@ class Scene:
         return copy.deepcopy(value) if isinstance(value, dict) else {}
 
     def set_component_metadata(self, entity_name: str, component_name: str, metadata: Dict[str, Any]) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         if component_name not in entity_data.setdefault("components", {}):
@@ -385,7 +477,7 @@ class Scene:
         canonical_entity = self._canonicalize_entity_for_add(entity_data)
         errors = validate_scene_entity_for_add(
             canonical_entity,
-            index=len(self.entities_data),
+            index=len(self._entities_data()),
             existing_names=self._entity_index,
             existing_ids=self._entity_id_index,
             existing_entry_ids=self._scene_entry_id_index,
@@ -394,32 +486,34 @@ class Scene:
             return False
         entity_name = canonical_entity["name"]
         entity_id = canonical_entity["id"]
-        self._data.setdefault("entities", []).append(canonical_entity)
+        self._entities_data().append(canonical_entity)
         self._entity_index[entity_name] = canonical_entity
         self._entity_id_index[entity_id] = canonical_entity
         self._index_scene_entry(canonical_entity)
+        self._bump_revision()
         return True
 
     def remove_entity(self, entity_name: str) -> bool:
-        if self.find_entity(entity_name) is None:
+        if self._find_entity_mutable(entity_name) is None:
             return False
         entities = self._data.get("entities", [])
         for index, entity_data in enumerate(entities):
             if entity_data.get("name") == entity_name:
                 del entities[index]
                 self._rebuild_entity_index()
+                self._bump_revision()
                 return True
         return False
 
     def remove_entity_subtree(self, entity_name: str) -> bool:
         """Remove one serialized entity and every transitive child in one publish."""
-        if self.find_entity(entity_name) is None:
+        if self._find_entity_mutable(entity_name) is None:
             return False
         names_to_remove = {entity_name}
         changed = True
         while changed:
             changed = False
-            for entity_data in self.entities_data:
+            for entity_data in self._entities_data():
                 if not isinstance(entity_data, dict):
                     continue
                 child_name = entity_data.get("name")
@@ -432,42 +526,45 @@ class Scene:
                     changed = True
         self._data["entities"] = [
             entity_data
-            for entity_data in self.entities_data
+            for entity_data in self._entities_data()
             if not isinstance(entity_data, dict)
             or entity_data.get("name") not in names_to_remove
         ]
         self._rebuild_entity_index()
+        self._bump_revision()
         return True
 
     def remove_entity_by_id(self, entity_id: str) -> bool:
-        entity_data = self.find_entity_by_id(entity_id)
+        entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
         entity_name = entity_data.get("name")
         return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
 
     def add_component(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
         components[component_name] = component_data
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
+        self._bump_revision()
         return True
 
     def add_component_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        entity_data = self.find_entity_by_id(entity_id)
+        entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
         components[component_name] = component_data
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
+        self._bump_revision()
         return True
 
     def remove_component(self, entity_name: str, component_name: str) -> bool:
-        entity_data = self.find_entity(entity_name)
+        entity_data = self._find_entity_mutable(entity_name)
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
@@ -481,36 +578,39 @@ class Scene:
             component_metadata.pop(component_name, None)
             if not component_metadata:
                 entity_data.pop("component_metadata", None)
+        self._bump_revision()
         return True
 
     def remove_component_by_id(self, entity_id: str, component_name: str) -> bool:
-        entity_data = self.find_entity_by_id(entity_id)
+        entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
         entity_name = entity_data.get("name")
         return self.remove_component(entity_name, component_name) if isinstance(entity_name, str) else False
 
     def set_feature_metadata(self, key: str, value: Any) -> None:
-        self.feature_metadata[key] = value
+        self._feature_metadata()[key] = value
+        self._bump_revision()
 
     def remove_feature_metadata(self, key: str) -> bool:
-        if key not in self.feature_metadata:
+        if key not in self._feature_metadata():
             return False
-        del self.feature_metadata[key]
+        del self._feature_metadata()[key]
+        self._bump_revision()
         return True
 
     def find_entity(self, entity_name: str) -> Optional[Dict[str, Any]]:
-        if not isinstance(entity_name, str):
-            return None
-        return self._entity_index.get(entity_name)
+        self._warn_legacy_surface("find_entity")
+        entity_data = self._find_entity_mutable(entity_name)
+        return copy.deepcopy(entity_data) if entity_data is not None else None
 
     def find_entity_by_id(self, entity_id: str) -> Optional[Dict[str, Any]]:
-        if not isinstance(entity_id, str):
-            return None
-        return self._entity_id_index.get(entity_id)
+        self._warn_legacy_surface("find_entity_by_id")
+        entity_data = self._find_entity_by_id_mutable(entity_id)
+        return copy.deepcopy(entity_data) if entity_data is not None else None
 
     def update_component_by_id(self, entity_id: str, component_name: str, property_name: str, value: Any) -> bool:
-        entity_data = self.find_entity_by_id(entity_id)
+        entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
         components = entity_data.get("components", {})
@@ -520,12 +620,13 @@ class Scene:
             components[component_name][property_name] = value
             if component_name == "SceneEntryPoint":
                 self._index_scene_entry(entity_data)
+            self._bump_revision()
             print(f"[EDIT] Scene: {entity_id}.{component_name}.{property_name} = {value}")
             return True
         return False
 
     def update_entity_property_by_id(self, entity_id: str, property_name: str, value: Any) -> bool:
-        entity_data = self.find_entity_by_id(entity_id)
+        entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
         entity_name = entity_data.get("name")
@@ -534,7 +635,7 @@ class Scene:
         return False
 
     def replace_component_data_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
-        entity_data = self.find_entity_by_id(entity_id)
+        entity_data = self._find_entity_by_id_mutable(entity_id)
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
@@ -545,6 +646,7 @@ class Scene:
         components[component_name] = component_data
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
+        self._bump_revision()
         return True
 
     def to_dict(self) -> Dict[str, Any]:
@@ -555,7 +657,7 @@ class Scene:
         snapshot = self.to_dict()
         empty_override_ids = {
             entity_id.strip()
-            for entity_data in self.entities_data
+            for entity_data in self._entities_data()
             if isinstance(entity_data, dict)
             and isinstance((entity_id := entity_data.get("id")), str)
             and entity_id.strip()
@@ -596,7 +698,7 @@ class Scene:
                 or snapshot_prefab_instance.get("overrides") != {}
             ):
                 continue
-            entity_data = self.find_entity_by_id(entity_id.strip())
+            entity_data = self._find_entity_by_id_mutable(entity_id.strip())
             if entity_data is None:
                 continue
             prefab_instance = entity_data.get("prefab_instance")
@@ -612,5 +714,5 @@ class Scene:
         return cls(name=name, data=data, source_path=source_path)
 
     def __repr__(self) -> str:
-        entity_count = len(self.entities_data)
+        entity_count = len(self._entities_data())
         return f"Scene(name='{self._name}', entities={entity_count})"

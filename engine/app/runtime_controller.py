@@ -275,7 +275,7 @@ class RuntimeController:
                 rule_system.set_world(runtime_world)
                 scene = scene_runtime.current_scene
                 if scene is not None:
-                    rule_system.load_rules(scene.rules_data)
+                    rule_system.load_rules([rule.to_dict() for rule in scene.rules_view()])
 
             script_behaviour_system = self._get_script_behaviour_system()
             if script_behaviour_system is not None:

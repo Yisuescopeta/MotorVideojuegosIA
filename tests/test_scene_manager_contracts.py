@@ -413,6 +413,10 @@ class SceneManagerContractsTests(unittest.TestCase):
             self.assertTrue(self.manager.mark_edit_world_dirty())
             self.manager.clear_dirty()
             self.assertIsNotNone(self.manager.activate_scene(primary_key))
+            # Recreate a pending inactive entry after the lifecycle guard has
+            # correctly flushed the previous pending state during activation.
+            entry.pending_edit_world_sync_reason = LEGACY_AUTHORING_SYNC_REASON
+            entry.dirty_before_pending_edit_world_sync = False
             entry.edit_world_version = 777
             scene_before = copy.deepcopy(entry.scene.to_dict())
             original_install = SceneWorkspace.install_entry_state
@@ -423,7 +427,7 @@ class SceneManagerContractsTests(unittest.TestCase):
                 install_calls += 1
                 if install_calls == 1:
                     raise ValueError("reject mutation")
-                return original_install(*args, **kwargs)
+                return original_install(_workspace, *args, **kwargs)
 
             with patch.object(
                 SceneWorkspace,

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from engine.core.runtime_logging import log_err
 from engine.scenes.edit_sync import SceneEditSyncCoordinator, SceneEditSyncSnapshot
+from engine.scenes.projection_integrity import ProjectionIntegrityEvidence
 from engine.scenes.scene_projection import SceneProjectionService
 from engine.scenes.workspace_lifecycle import (
     SceneSelectionSnapshot,
@@ -26,12 +27,16 @@ class _MutationState:
         selection: SceneSelectionSnapshot,
         dirty: bool,
         edit_sync_snapshot: SceneEditSyncSnapshot,
+        scene_revision: int,
+        projection_integrity_evidence: ProjectionIntegrityEvidence | None,
     ) -> None:
         self.scene = scene
         self.world = world
         self.selection = selection
         self.dirty = dirty
         self.edit_sync_snapshot = edit_sync_snapshot
+        self.scene_revision = scene_revision
+        self.projection_integrity_evidence = projection_integrity_evidence
 
 
 class SerializableMutationCoordinator:
@@ -72,6 +77,8 @@ class SerializableMutationCoordinator:
             selection=self._workspace.capture_selection(entry),
             dirty=entry.dirty,
             edit_sync_snapshot=self._edit_sync.capture_snapshot(entry),
+            scene_revision=entry.scene_revision,
+            projection_integrity_evidence=entry.projection_integrity_evidence,
         )
 
     def snapshot_scene_data(self, snapshot: object) -> dict[str, Any]:
@@ -105,7 +112,13 @@ class SerializableMutationCoordinator:
         snapshot: object,
     ) -> None:
         state = self._state(snapshot)
-        self._workspace.install_entry_state(entry, state.scene, state.world)
+        self._workspace.restore_entry_state(
+            entry,
+            state.scene,
+            state.world,
+            scene_revision=state.scene_revision,
+            projection_integrity_evidence=state.projection_integrity_evidence,
+        )
         self._workspace.restore_selection(entry, state.selection)
         self._workspace.restore_dirty(entry, state.dirty)
         self._edit_sync.restore_snapshot(entry, state.edit_sync_snapshot)
@@ -151,6 +164,7 @@ class SerializableMutationCoordinator:
                 entry,
                 entry.scene,
                 entry.edit_world,
+                rebuild_projection=False,
             )
         except Exception as exc:
             self.restore_snapshot(entry, snapshot)

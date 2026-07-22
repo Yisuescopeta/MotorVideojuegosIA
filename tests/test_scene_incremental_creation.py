@@ -55,7 +55,8 @@ class SceneIncrementalCreationTests(unittest.TestCase):
             self.assertTrue(manager.create_entity("Added", components={"Transform": _transform()}))
 
         self.assertIs(manager.get_edit_world(), world)
-        self.assertIs(scene.entities_data[0], first_entity_data)
+        self.assertIsNot(scene.entities_data[0], first_entity_data)
+        self.assertEqual(scene.entities_data[0], first_entity_data)
         self.assertEqual(len(scene.entities_data), 2001)
         self.assertIsNotNone(world.get_entity_by_name("Added"))
 

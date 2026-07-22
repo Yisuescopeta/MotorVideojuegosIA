@@ -64,11 +64,12 @@ class SceneProjectionService:
         scene: Scene,
         world_snapshot: dict[str, Any],
     ) -> dict[str, Any]:
+        scene_snapshot = scene.snapshot().to_dict()
         return build_canonical_scene_payload(
             scene_name=scene.name,
             world_snapshot=copy.deepcopy(world_snapshot),
-            rules_data=scene.rules_data,
-            feature_metadata=scene.feature_metadata,
+            rules_data=scene_snapshot.get("rules", []),
+            feature_metadata=scene_snapshot.get("feature_metadata", {}),
         )
 
     def add_entity(
@@ -80,7 +81,10 @@ class SceneProjectionService:
         entity_name = str(entity_data.get("name", "") or "")
         if not scene.add_entity(entity_data):
             return None
-        canonical_entity = scene.find_entity(entity_name)
+        canonical_entity = next(
+            (view.to_dict() for view in scene.list_entity_views() if view.name == entity_name),
+            None,
+        )
         if canonical_entity is None:
             return None
         try:

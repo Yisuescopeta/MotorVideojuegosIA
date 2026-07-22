@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -12,8 +13,8 @@ class SceneFlowPolicy:
 
     @staticmethod
     def _metadata_flow(scene: "Scene") -> dict[str, str]:
-        metadata = scene.feature_metadata.get("scene_flow", {})
-        if not isinstance(metadata, dict):
+        metadata = scene.feature_metadata_view().get("scene_flow", {})
+        if not isinstance(metadata, Mapping):
             return {}
         return {
             str(key): str(value)
@@ -110,9 +111,8 @@ class SceneFlowPolicy:
 
     def sync_links_from_metadata(self, scene: "Scene") -> None:
         metadata = self._metadata_flow(scene)
-        for entity_data in scene.entities_data:
-            if not isinstance(entity_data, dict):
-                continue
+        for entity in scene.list_entity_views():
+            entity_data = entity.to_dict()
             components = entity_data.get("components", {})
             scene_link = components.get("SceneLink") if isinstance(components, dict) else None
             if not isinstance(scene_link, dict) or "target_path" in scene_link:
@@ -146,9 +146,8 @@ class SceneFlowPolicy:
 
     def has_invalid_links(self, scene: "Scene") -> bool:
         metadata = self._metadata_flow(scene)
-        for entity_data in scene.entities_data:
-            if not isinstance(entity_data, dict):
-                continue
+        for entity in scene.list_entity_views():
+            entity_data = entity.to_dict()
             components = entity_data.get("components", {})
             scene_link = components.get("SceneLink") if isinstance(components, dict) else None
             if not isinstance(scene_link, dict):

@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G1 — `PR-G10-04` pendiente; schema v3 y resultados tipados ya están registrados; sigue la encapsulación de `Scene`.
+- Gate actual: G1 — `PR-G10-05` pendiente; `Scene` expone snapshots/views inmutables y getters legacy defensivos con deprecation warning.
 
 ### Commits
 
@@ -2050,6 +2050,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g10): add stable scene identity refs` | G1 / `PR-G10-01` | Completado | 79 tests enfocados OK; `OpenDocumentId` UUID session-only, refs tipadas y estabilidad tras save/rekey sin persistir identidad de workspace. |
 | `feat(g10): migrate scene persistence to schema v3` | G1 / `PR-G10-02` | Completado | 79 tests de schema/persistence OK; reader v2/v3, writer v3, `parent_id` determinista, informe reproducible y backup `.bak` antes de sobrescritura. |
 | `feat(g10): add typed scene results` | G1 / `PR-G10-03` | Completado | 42 tests enfocados OK; `Ok`/`Err` discriminados, errores tipados, metadata de mutación y adapters temporales para callers legacy. |
+| `feat(g10): encapsulate scene read surfaces` | G1 / `PR-G10-04` | Completado | 321 tests de escenas OK; snapshots/views profundamente inmutables, getters legacy devuelven copias y advierten, revision de escena y rollback sin reconstrucción accidental. |
 
 ### Actualizaciones
 
@@ -2067,3 +2068,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G10-01` añade `OpenDocumentId`, `OpenSceneRef`, `SceneAssetRef`, `EntityRef` y `ComponentRef`; cada entrada abierta conserva su identidad al reemplazar escena o rekeyear y esa identidad no entra en snapshots persistentes.
 - 2026-07-22: `PR-G10-02` sube el writer a schema v3, migra `parent` a `parent_id` sin reescribir IDs duplicados, expone `SceneMigrationReport` y guarda `.bak` antes de sobrescribir archivos existentes.
 - 2026-07-22: `PR-G10-03` añade resultados discriminados `Ok`/`Err` para contratos nuevos y un adapter explícito de compatibilidad bool/optional sin introducir command bus genérico.
+- 2026-07-22: `PR-G10-04` encapsula `Scene` con `SceneSnapshot`, `EntityView`, `RuleView` y `FeatureMetadataView`; las superficies legacy dejan de exponer referencias internas y las restauraciones de transacción conservan evidencia sin forzar una reconstrucción.

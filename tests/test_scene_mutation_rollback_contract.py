@@ -94,7 +94,7 @@ class SceneMutationRollbackContractTests(unittest.TestCase):
                     install_calls += 1
                     if fail_install and install_calls == 1:
                         raise ValueError("reject mutation")
-                    return original_install(*args, **kwargs)
+                    return original_install(_workspace, *args, **kwargs)
 
                 install_context = (
                     patch.object(SceneWorkspace, "install_entry_state", new=fail_first_install)

@@ -12,6 +12,10 @@ from typing import Any
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "Scene": ("engine.scenes.scene", "Scene"),
     "SceneManager": ("engine.scenes.scene_manager", "SceneManager"),
+    "EntityView": ("engine.scenes.scene_views", "EntityView"),
+    "FeatureMetadataView": ("engine.scenes.scene_views", "FeatureMetadataView"),
+    "RuleView": ("engine.scenes.scene_views", "RuleView"),
+    "SceneSnapshot": ("engine.scenes.scene_views", "SceneSnapshot"),
 }
 
 __all__ = list(_LAZY_IMPORTS)

@@ -386,18 +386,49 @@ class SceneWorkspace:
         self.restore_selection(entry, selection)
         return scene
 
-    def install_entry_state(self, entry: SceneWorkspaceEntry, scene: Scene, world: "World") -> None:
+    def install_entry_state(
+        self,
+        entry: SceneWorkspaceEntry,
+        scene: Scene,
+        world: "World",
+        *,
+        rebuild_projection: bool = True,
+    ) -> None:
         entry.scene = scene
         entry.edit_world = world
         entry.edit_world_version = world.version
         entry.scene_revision += 1
-        entry.projection_integrity_evidence = AuthoringProjectionFingerprintService(
-            self._projection.create_world
-        ).build_evidence(
-            scene,
-            world,
-            scene_revision=entry.scene_revision,
+        fingerprint_service = AuthoringProjectionFingerprintService(
+            self._projection.create_world if rebuild_projection else None
         )
+        if rebuild_projection:
+            entry.projection_integrity_evidence = fingerprint_service.build_evidence(
+                scene,
+                world,
+                scene_revision=entry.scene_revision,
+            )
+        else:
+            entry.projection_integrity_evidence = fingerprint_service.build_evidence_from_world(
+                scene,
+                world,
+                scene_revision=entry.scene_revision,
+            )
+
+    def restore_entry_state(
+        self,
+        entry: SceneWorkspaceEntry,
+        scene: Scene,
+        world: "World",
+        *,
+        scene_revision: int,
+        projection_integrity_evidence: ProjectionIntegrityEvidence | None,
+    ) -> None:
+        """Restore a captured state without rebuilding or re-fingerprinting it."""
+        entry.scene = scene
+        entry.edit_world = world
+        entry.edit_world_version = world.version
+        entry.scene_revision = scene_revision
+        entry.projection_integrity_evidence = projection_integrity_evidence
 
     def rebuild_edit_world(
         self,

@@ -40,9 +40,10 @@ class SceneIndexTests(unittest.TestCase):
         self.assertTrue(scene.update_entity_property("Hero", "name", "Player"))
 
         self.assertIsNone(scene.find_entity("Hero"))
-        self.assertIs(scene.find_entity("Player"), hero)
+        self.assertIsNot(scene.find_entity("Player"), hero)
         self.assertEqual(scene.find_entity("Player")["id"], hero_id)
-        self.assertIs(scene.find_entity_by_id(hero_id), hero)
+        self.assertIsNot(scene.find_entity_by_id(hero_id), hero)
+        self.assertEqual(scene.find_entity_by_id(hero_id)["name"], "Player")
 
     def test_internal_id_apis_edit_same_entity_as_name_apis(self) -> None:
         scene = self._scene()
@@ -349,7 +350,7 @@ class SceneIndexTests(unittest.TestCase):
 
         self.assertTrue(updated)
         stored = scene.find_entity("Actor")["components"]["Transform"]
-        self.assertIs(stored, component)
+        self.assertIsNot(stored, component)
         self.assertEqual(stored["x"], 9.0)
         self.assertEqual(stored["rotation"], 45.0)
         self.assertEqual(stored["y"], 2.0)

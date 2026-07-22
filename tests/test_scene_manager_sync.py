@@ -1163,7 +1163,9 @@ class SceneManagerSyncTests(unittest.TestCase):
             self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
             persisted_before = scene_path.read_text(encoding="utf-8")
 
-            manager.current_scene.find_entity("Camera")["components"]["Camera2D"]["zoom"] = 0.0
+            camera_data = manager.current_scene._find_entity_mutable("Camera")
+            assert camera_data is not None
+            camera_data["components"]["Camera2D"]["zoom"] = 0.0
 
             self.assertFalse(manager.save_scene_to_file(scene_path.as_posix()))
             self.assertEqual(scene_path.read_text(encoding="utf-8"), persisted_before)

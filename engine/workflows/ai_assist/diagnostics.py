@@ -76,8 +76,8 @@ class AuthoringValidationService:
             payload = build_canonical_scene_payload(
                 scene_name=entry.scene.name,
                 world_snapshot=world_snapshot,
-                rules_data=entry.scene.rules_data,
-                feature_metadata=entry.scene.feature_metadata,
+                rules_data=[rule.to_dict() for rule in entry.scene.rules_view()],
+                feature_metadata=entry.scene.feature_metadata_view().to_dict(),
             )
         except Exception as exc:
             diagnostic = self._simple_diagnostic(
@@ -228,8 +228,8 @@ class AuthoringValidationService:
             payload = build_canonical_scene_payload(
                 scene_name=entry.scene.name,
                 world_snapshot=copy.deepcopy(entry.edit_world.serialize()),
-                rules_data=entry.scene.rules_data,
-                feature_metadata=entry.scene.feature_metadata,
+                rules_data=[rule.to_dict() for rule in entry.scene.rules_view()],
+                feature_metadata=entry.scene.feature_metadata_view().to_dict(),
             )
         except Exception as exc:
             diagnostic = self._simple_diagnostic(

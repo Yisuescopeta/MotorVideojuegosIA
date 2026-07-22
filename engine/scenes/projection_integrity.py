@@ -89,6 +89,21 @@ class AuthoringProjectionFingerprintService:
             projection_schema_version=self.PROJECTION_SCHEMA_VERSION,
         )
 
+    def build_evidence_from_world(
+        self,
+        scene: "Scene",
+        world: "World",
+        *,
+        scene_revision: int,
+    ) -> ProjectionIntegrityEvidence:
+        """Capture an already-published incremental projection without rebuilding it."""
+        return ProjectionIntegrityEvidence(
+            scene_revision=scene_revision,
+            projected_world_version=world.version,
+            canonical_fingerprint=self.fingerprint_world(scene, world),
+            projection_schema_version=self.PROJECTION_SCHEMA_VERSION,
+        )
+
     def fingerprint_scene(self, scene: "Scene") -> str:
         if self._project_scene_to_world is not None:
             return self.fingerprint_payload(
@@ -136,7 +151,7 @@ class AuthoringProjectionFingerprintService:
             entities_with_ids.append(enriched)
         return self._canonicalize_domain_payload(
             entities=entities_with_ids,
-            rules=scene.rules_data,
+            rules=[rule.to_dict() for rule in scene.rules_view()],
             feature_metadata=world.feature_metadata,
         )
 
