@@ -24,6 +24,7 @@ from engine.scenes.edit_sync import (
     TRANSIENT_PREVIEW_SYNC_REASON as TRANSIENT_PREVIEW_SYNC_REASON,
 )
 from engine.scenes.incremental_authoring import SceneIncrementalAuthoring
+from engine.scenes.legacy_world_authoring_adapter import LegacyWorldAuthoringAdapter
 from engine.scenes.prefab_overrides import PrefabOverrideService
 from engine.scenes.projection_integrity import ProjectionIntegrityAction
 from engine.scenes.scene import Scene
@@ -63,6 +64,7 @@ class SceneManager:
             flow_policy=self._flow_policy,
         )
         self._edit_sync = SceneEditSyncCoordinator(self._workspace, self._projection)
+        self._legacy_world_authoring = LegacyWorldAuthoringAdapter(self._edit_sync)
         self._serializable_mutations = SerializableMutationCoordinator(
             self._workspace,
             self._projection,
@@ -622,7 +624,7 @@ class SceneManager:
         entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
         return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
 
-    def sync_from_edit_world(self, force: bool = False) -> bool:
+    def sync_from_edit_world(self) -> bool:
         """Deprecated: use EngineAPI or SceneManager public methods instead.
 
         Legacy method that syncs pending changes from edit_world back to the serialized scene.
@@ -633,10 +635,12 @@ class SceneManager:
             DeprecationWarning,
             stacklevel=2,
         )
-        return self._edit_sync.sync_from_edit_world(force=force)
+        return self._legacy_world_authoring.sync_pending()
 
     def mark_edit_world_dirty(self, reason: str = LEGACY_AUTHORING_SYNC_REASON) -> bool:
-        return self._edit_sync.mark_edit_world_dirty(reason=reason)
+        if reason == TRANSIENT_PREVIEW_SYNC_REASON:
+            return self._edit_sync.mark_edit_world_dirty(reason=reason)
+        return self._legacy_world_authoring.mark_dirty(reason=reason)
 
     def set_feature_metadata(self, key: str, value: Any) -> bool:
         return self._serializable_authoring.set_feature_metadata(key, value)

@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G0.5 — `PR-G05-06` pendiente; save/lifecycle están protegidos y los previews ya tienen lease conflict-aware con history único.
+- Gate actual: G1 — G0.5 completo; queda pendiente iniciar identidad estable (`OpenDocumentId`, `OpenSceneRef`, `SceneAssetRef`, `EntityRef`, `ComponentRef`).
 
 ### Commits
 
@@ -2046,6 +2046,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g05): protect scene saves with projection integrity` | G0.5 / `PR-G05-03` | Completado | 76 tests OK; save rechaza mutación directa, preserva el archivo y elimina la promoción automática basada en `World.version`. |
 | `feat(g05): protect scene lifecycle boundaries` | G0.5 / `PR-G05-04` | Completado | 108 tests de escenas OK + 7 tests API de export OK; PLAY, reload, activate, close y export de escenas abiertas bloquean divergencias; export de escenas no abiertas conserva la fuente en disco. La suite de export requirió `OPENGAME_HOME` temporal por permiso del entorno. |
 | `feat(g05): add preview lease registry` | G0.5 / `PR-G05-05` | Completado | 62 tests enfocados OK; lease único por escena, revisión/fingerprint base, conflicto fail-closed, commit/cancel tipado y una entrada snapshot de history con rollback ante fallo. |
+| `feat(g05): isolate legacy authoring adapter` | G0.5 / `PR-G05-06` | Completado | 62 tests enfocados OK; allowlist cerrada para `legacy_authoring`, sin `force` en producción, fitness G0 actualizada para distinguir guardas de integridad y adapter legacy. |
 
 ### Actualizaciones
 
@@ -2059,3 +2060,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G05-03` integra el guard en `prepare_for_save`, deja explícito que `World.version` no autoriza sincronización y protege la entrada pública de save con una prueba de no-escritura.
 - 2026-07-22: `PR-G05-04` aplica el guard a PLAY, reload, activación/cierre de workspace, refresh por mtime y export de escenas abiertas; la tanda funcional fue verde y los 7 tests API de export pasaron con estado global temporal escribible.
 - 2026-07-22: `PR-G05-05` añade `PreviewLeaseRegistry` con contrato obligatorio de history/restore, lease UUID no dependiente de rutas, revisión/fingerprint base, cancelación sin persistencia y commit conflict-aware con rollback.
+- 2026-07-22: `PR-G05-06` añade `LegacyWorldAuthoringAdapter`, elimina `force=True` del contrato productivo y actualiza el inventario/fitness para permitir únicamente ese adapter como consumidor legacy nuevo; `g0-03-fitness.json` regenerado con `passed=true`.

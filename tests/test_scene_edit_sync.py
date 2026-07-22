@@ -305,17 +305,17 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
             1.0,
         )
 
-    def test_force_sync_accepts_transient_preview_without_marking_dirty(self) -> None:
+    def test_sync_rejects_transient_preview_without_legacy_allowlist(self) -> None:
         self._actor_transform().x = 44.0
         self.coordinator.mark_edit_world_dirty(reason=TRANSIENT_PREVIEW_SYNC_REASON)
 
-        self.assertTrue(self.coordinator.sync_from_edit_world(force=True))
+        self.assertFalse(self.coordinator.sync_from_edit_world())
 
         self.assertEqual(
             self.entry.scene.find_entity("Actor")["components"]["Transform"]["x"],
-            44.0,
+            1.0,
         )
-        self.assertFalse(self.entry.edit_world_sync_pending)
+        self.assertTrue(self.entry.edit_world_sync_pending)
         self.assertFalse(self.entry.dirty)
 
     def test_prepare_for_save_discards_transient_preview(self) -> None:

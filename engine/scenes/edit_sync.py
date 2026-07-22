@@ -96,11 +96,11 @@ class SceneEditSyncCoordinator:
         entry.pending_edit_world_sync_reason = None
         entry.dirty_before_pending_edit_world_sync = None
 
-    def sync_from_edit_world(self, force: bool = False) -> bool:
+    def sync_from_edit_world(self) -> bool:
         entry = self._workspace.get_active_entry()
         if entry is None or entry.is_playing or entry.edit_world is None:
             return False
-        if not force and not self.has_pending_legacy(entry):
+        if not self.has_pending_legacy(entry):
             return False
         return self._sync_entry_from_edit_world(entry)
 

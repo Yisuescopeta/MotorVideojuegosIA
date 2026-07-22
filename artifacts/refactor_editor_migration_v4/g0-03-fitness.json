@@ -12,10 +12,10 @@
   },
   "current_metrics": {
     "direct_world_assignment_candidates": 8,
-    "import_edges": 2666,
+    "import_edges": 2694,
     "legacy_sync_consumers": 6,
     "parse_errors": 0,
-    "python_files": 394,
+    "python_files": 397,
     "runtime_to_editor_boundary_edges": 0,
     "scene_mutable_surface_candidates": 6,
     "scene_public_surfaces": 38,

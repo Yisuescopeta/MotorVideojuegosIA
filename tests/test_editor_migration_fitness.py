@@ -75,6 +75,30 @@ class EditorMigrationFitnessTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertEqual(report["violations"][0]["rule"], "all_scoped_python_files_parse")
 
+    def test_legacy_adapter_path_is_the_only_allowed_new_legacy_consumer(self) -> None:
+        baseline = {
+            "metrics": {},
+            "scene_mutable_surfaces": [],
+            "world_to_scene_consumers": [],
+            "runtime_to_editor_boundary_edges": [],
+            "parse_errors": [],
+        }
+        current = {
+            **baseline,
+            "world_to_scene_consumers": [
+                {
+                    "path": "engine/scenes/legacy_world_authoring_adapter.py",
+                    "category": "legacy_sync_api",
+                    "symbol": "sync_from_edit_world",
+                    "evidence": "return self._edit_sync.sync_from_edit_world()",
+                }
+            ],
+        }
+
+        report = evaluate_fitness(current, baseline)
+
+        self.assertTrue(report["passed"], report["violations"])
+
     def test_inventory_baseline_is_json_serializable(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as temp_dir:

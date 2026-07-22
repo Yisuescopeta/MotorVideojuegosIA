@@ -22,10 +22,10 @@ SOURCE_SUFFIX = ".py"
 LEGACY_METHODS = frozenset(
     {
         "mark_edit_world_dirty",
-        "prepare_for_save",
         "sync_from_edit_world",
     }
 )
+INTEGRITY_BOUNDARY_METHODS = frozenset({"prepare_for_save"})
 MUTATION_CALLS = frozenset(
     {
         "add_component",
@@ -175,6 +175,16 @@ def _consumer_records(tree: ast.AST, path: str, source_lines: list[str]) -> list
                         path=path,
                         line=node.lineno,
                         category="legacy_sync_api",
+                        symbol=symbol,
+                        evidence=source_lines[node.lineno - 1].strip(),
+                    )
+                )
+            elif symbol in INTEGRITY_BOUNDARY_METHODS:
+                records.append(
+                    ConsumerRecord(
+                        path=path,
+                        line=node.lineno,
+                        category="integrity_boundary_api",
                         symbol=symbol,
                         evidence=source_lines[node.lineno - 1].strip(),
                     )

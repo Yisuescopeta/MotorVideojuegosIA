@@ -10,6 +10,9 @@ from typing import Iterable
 from tools.editor_migration_inventory import build_inventory
 
 DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[1]
+ALLOWED_LEGACY_ADAPTER_PATHS = frozenset(
+    {"engine/scenes/legacy_world_authoring_adapter.py"}
+)
 
 
 def _record_key(record: dict[str, object], fields: Iterable[str]) -> tuple[str, ...]:
@@ -47,11 +50,22 @@ def evaluate_fitness(current: dict[str, object], baseline: dict[str, object]) ->
         baseline_surfaces,
         ("path", "name", "kind"),
     )
+    current_legacy_consumers = [
+        record for record in current_consumers if record.get("category") == "legacy_sync_api"
+    ]
+    baseline_legacy_consumers = [
+        record for record in baseline_consumers if record.get("category") == "legacy_sync_api"
+    ]
     new_consumers = _new_records(
-        current_consumers,
-        baseline_consumers,
+        current_legacy_consumers,
+        baseline_legacy_consumers,
         ("path", "category", "symbol", "evidence"),
     )
+    new_consumers = [
+        record
+        for record in new_consumers
+        if record.get("path") not in ALLOWED_LEGACY_ADAPTER_PATHS
+    ]
     new_edges = _new_records(
         current_edges,
         baseline_edges,

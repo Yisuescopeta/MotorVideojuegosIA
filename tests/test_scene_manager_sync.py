@@ -610,7 +610,7 @@ class SceneManagerSyncTests(unittest.TestCase):
         transform.x = 77.0
         manager.mark_edit_world_dirty()
 
-        changed = manager.sync_from_edit_world(force=True)
+        changed = manager.sync_from_edit_world()
 
         self.assertTrue(changed)
         payload = manager.current_scene.to_dict()
