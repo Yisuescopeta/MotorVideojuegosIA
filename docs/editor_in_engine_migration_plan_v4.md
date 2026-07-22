@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G0.5 — `PR-G05-04` pendiente; save ya bloquea divergencias no registradas y no promociona por `World.version`.
+- Gate actual: G0.5 — `PR-G05-05` pendiente; save, PLAY, reload, cambio/cierre de tab y export de escenas abiertas ya verifican la proyección.
 
 ### Commits
 
@@ -2044,6 +2044,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g05): add projection fingerprint evidence` | G0.5 / `PR-G05-01` | Completado | 110 tests OK; fingerprint excluye selección, detecta mutación directa sin `touch_*` y workspace registra evidencia. Ruff no disponible en runtime bundled. |
 | `feat(g05): add projection integrity guard` | G0.5 / `PR-G05-02` | Completado | 114 tests OK; reportes tipados, schema/revisión fail-closed, mutación directa rechazada y `World.version` no usado como autoridad. |
 | `feat(g05): protect scene saves with projection integrity` | G0.5 / `PR-G05-03` | Completado | 76 tests OK; save rechaza mutación directa, preserva el archivo y elimina la promoción automática basada en `World.version`. |
+| `feat(g05): protect scene lifecycle boundaries` | G0.5 / `PR-G05-04` | Completado | 108 tests de escenas OK + 7 tests API de export OK; PLAY, reload, activate, close y export de escenas abiertas bloquean divergencias; export de escenas no abiertas conserva la fuente en disco. La suite de export requirió `OPENGAME_HOME` temporal por permiso del entorno. |
 
 ### Actualizaciones
 
@@ -2055,3 +2056,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G05-01` añade canonicalización, `ProjectionIntegrityEvidence` y evidencia por instalación/rebuild de `EditWorld`; aún no activa fail-closed.
 - 2026-07-22: `PR-G05-02` añade `ProjectionIntegrityGuard`, códigos/acciones tipados y pruebas de mutación directa, versión no autoritativa, evidencia ausente y revisión obsoleta; la integración en save queda para `PR-G05-03`.
 - 2026-07-22: `PR-G05-03` integra el guard en `prepare_for_save`, deja explícito que `World.version` no autoriza sincronización y protege la entrada pública de save con una prueba de no-escritura.
+- 2026-07-22: `PR-G05-04` aplica el guard a PLAY, reload, activación/cierre de workspace, refresh por mtime y export de escenas abiertas; la tanda funcional fue verde y los 7 tests API de export pasaron con estado global temporal escribible.

@@ -37,6 +37,7 @@ from engine.export.preset_schema import validate_preset
 from engine.export.reports import generate_build_report, write_build_report
 from engine.export.validator import validate_preset_against_project
 from engine.export.windows_exporter import WindowsExporter
+from engine.scenes.projection_integrity import ProjectionIntegrityAction
 
 
 def _register_default_exporters() -> None:
@@ -320,6 +321,17 @@ class ExportAPI(EngineAPIComponent):  # type: ignore[misc]
         )
         if errors:
             return _fail("Export preset validation failed", {"errors": errors})
+
+        scene_manager = self.scene_manager
+        if scene_manager is not None:
+            scene_path = Path(self._context.project_root) / preset.entry_scene
+            if not scene_manager.projection_integrity_allows(
+                scene_path.resolve().as_posix(),
+                action=ProjectionIntegrityAction.EXPORT,
+            ):
+                return _fail(
+                    "Export blocked: the open scene has unregistered projection changes.",
+                )
 
         ctx = BuildContext(preset, self._context.project_root)
 

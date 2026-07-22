@@ -46,6 +46,16 @@ class SceneEditSyncCoordinator:
     def last_integrity_report(self) -> ProjectionIntegrityReport | None:
         return self._last_integrity_report
 
+    def inspect_integrity(
+        self,
+        entry: SceneWorkspaceEntry,
+        *,
+        action: ProjectionIntegrityAction,
+    ) -> ProjectionIntegrityReport:
+        report = self._integrity_guard.inspect(entry, action=action)
+        self._last_integrity_report = report
+        return report
+
     @staticmethod
     def has_pending_legacy(entry: SceneWorkspaceEntry) -> bool:
         return entry.pending_edit_world_sync_reason == LEGACY_AUTHORING_SYNC_REASON
@@ -123,6 +133,7 @@ class SceneEditSyncCoordinator:
         entry: SceneWorkspaceEntry,
         *,
         failure_context: str = "scene_save",
+        action: ProjectionIntegrityAction = ProjectionIntegrityAction.SAVE,
     ) -> bool:
         if (
             self.has_pending_legacy(entry)
@@ -137,11 +148,7 @@ class SceneEditSyncCoordinator:
         if self.has_pending_legacy(entry):
             if not self.flush_pending(entry, failure_context=failure_context):
                 return False
-        self._last_integrity_report = self._integrity_guard.inspect(
-            entry,
-            action=ProjectionIntegrityAction.SAVE,
-        )
-        return self._last_integrity_report.allowed
+        return self.inspect_integrity(entry, action=action).allowed
 
     def _sync_or_reject(
         self,

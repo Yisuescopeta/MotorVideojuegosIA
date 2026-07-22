@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from engine.authoring.changes import Change
-from engine.core.runtime_logging import log_err
+from engine.core.runtime_logging import log_err, log_warn
 from engine.scenes.change_history import SceneChangeCoordinator
 from engine.scenes.contracts import (
     SceneAuthoringPort,
@@ -25,6 +25,7 @@ from engine.scenes.edit_sync import (
 )
 from engine.scenes.incremental_authoring import SceneIncrementalAuthoring
 from engine.scenes.prefab_overrides import PrefabOverrideService
+from engine.scenes.projection_integrity import ProjectionIntegrityAction
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_persistence import (
@@ -209,6 +210,14 @@ class SceneManager:
             log_err(f"SceneManager: failed to reload stale scene from {resolved_source}: {exc}")
             return entry.edit_world
         try:
+            if not self._edit_sync.inspect_integrity(
+                entry,
+                action=ProjectionIntegrityAction.RELOAD,
+            ).allowed:
+                log_warn(
+                    f"SceneManager: skipped stale reload for '{entry.key}' due to projection divergence"
+                )
+                return entry.edit_world
             self._workspace.replace_entry_scene(entry, loaded.payload, source_path=resolved_source)
             self._edit_sync.clear_pending(entry)
             self._workspace.clear_dirty(entry)
@@ -342,9 +351,29 @@ class SceneManager:
         return self._workspace.get_workspace_state()
 
     def activate_scene(self, key_or_path: str) -> Optional["World"]:
+        target = self._workspace.resolve_entry(key_or_path)
+        active = self._get_active_entry()
+        if target is None:
+            return None
+        if active is not None and active.key != target.key:
+            if not self._edit_sync.prepare_for_save(
+                active,
+                failure_context="activate_scene",
+                action=ProjectionIntegrityAction.LIFECYCLE,
+            ):
+                return None
         return self._workspace.activate_scene(key_or_path)
 
     def close_scene(self, key_or_path: str, discard_changes: bool = False) -> bool:
+        entry = self._workspace.resolve_entry(key_or_path)
+        if entry is None:
+            return False
+        if not self._edit_sync.prepare_for_save(
+            entry,
+            failure_context="close_scene",
+            action=ProjectionIntegrityAction.LIFECYCLE,
+        ):
+            return False
         return self._workspace.close_scene(key_or_path, discard_changes=discard_changes)
 
     def reset_workspace(self) -> None:
@@ -375,7 +404,7 @@ class SceneManager:
         existing = self._workspace.resolve_entry(workspace_path)
         if existing is not None:
             if activate:
-                return self._workspace.activate_scene(existing.key)
+                return self.activate_scene(existing.key)
             return existing.edit_world
         try:
             loaded = self._persistence.load(resolved_path, storage=storage)
@@ -400,6 +429,13 @@ class SceneManager:
         return self._workspace.create_new_scene(name, activate=activate)
 
     def enter_play(self) -> Optional["World"]:
+        entry = self._get_active_entry()
+        if entry is None or not self._edit_sync.prepare_for_save(
+            entry,
+            failure_context="enter_play",
+            action=ProjectionIntegrityAction.PLAY,
+        ):
+            return None
         runtime_world = self._workspace.enter_play()
         entry = self._get_active_entry()
         if runtime_world is None or entry is None:
@@ -419,6 +455,12 @@ class SceneManager:
 
     def reload_scene(self) -> Optional["World"]:
         entry = self._get_active_entry()
+        if entry is None or not self._edit_sync.prepare_for_save(
+            entry,
+            failure_context="reload_scene",
+            action=ProjectionIntegrityAction.RELOAD,
+        ):
+            return None
         edit_world = self._workspace.reload_scene()
         if entry is not None:
             self._edit_sync.clear_pending(entry)
@@ -896,6 +938,18 @@ class SceneManager:
         Si key_or_path es None o vacío, retorna la entrada activa.
         """
         return self._resolve_entry(key_or_path)
+
+    def projection_integrity_allows(
+        self,
+        key_or_path: Optional[str] = None,
+        *,
+        action: ProjectionIntegrityAction = ProjectionIntegrityAction.EXPORT,
+    ) -> bool:
+        """Check an open scene without promoting EditWorld data to Scene."""
+        entry = self._resolve_entry(key_or_path)
+        if entry is None:
+            return True
+        return self._edit_sync.inspect_integrity(entry, action=action).allowed
 
     @staticmethod
     def _mtime_key(path: str | Path) -> str:
