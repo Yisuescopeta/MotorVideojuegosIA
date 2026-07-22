@@ -2030,7 +2030,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - Estado inicial: working tree limpio; baseline dirigido de escena/lifecycle: 59 tests OK.
 - Runtime de validación: Python bundled del entorno Codex; `py` no encuentra intérprete instalado.
 - Política de commits: un commit autocontenido por paquete `PR-*`; documentación inicial tiene commit propio.
-- Gate actual: G0.5 — `PR-G05-05` pendiente; save, PLAY, reload, cambio/cierre de tab y export de escenas abiertas ya verifican la proyección.
+- Gate actual: G0.5 — `PR-G05-06` pendiente; save/lifecycle están protegidos y los previews ya tienen lease conflict-aware con history único.
 
 ### Commits
 
@@ -2045,6 +2045,7 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 | `feat(g05): add projection integrity guard` | G0.5 / `PR-G05-02` | Completado | 114 tests OK; reportes tipados, schema/revisión fail-closed, mutación directa rechazada y `World.version` no usado como autoridad. |
 | `feat(g05): protect scene saves with projection integrity` | G0.5 / `PR-G05-03` | Completado | 76 tests OK; save rechaza mutación directa, preserva el archivo y elimina la promoción automática basada en `World.version`. |
 | `feat(g05): protect scene lifecycle boundaries` | G0.5 / `PR-G05-04` | Completado | 108 tests de escenas OK + 7 tests API de export OK; PLAY, reload, activate, close y export de escenas abiertas bloquean divergencias; export de escenas no abiertas conserva la fuente en disco. La suite de export requirió `OPENGAME_HOME` temporal por permiso del entorno. |
+| `feat(g05): add preview lease registry` | G0.5 / `PR-G05-05` | Completado | 62 tests enfocados OK; lease único por escena, revisión/fingerprint base, conflicto fail-closed, commit/cancel tipado y una entrada snapshot de history con rollback ante fallo. |
 
 ### Actualizaciones
 
@@ -2057,3 +2058,4 @@ Un gate no se cierra por intención ni por número de commits. Se cierra únicam
 - 2026-07-22: `PR-G05-02` añade `ProjectionIntegrityGuard`, códigos/acciones tipados y pruebas de mutación directa, versión no autoritativa, evidencia ausente y revisión obsoleta; la integración en save queda para `PR-G05-03`.
 - 2026-07-22: `PR-G05-03` integra el guard en `prepare_for_save`, deja explícito que `World.version` no autoriza sincronización y protege la entrada pública de save con una prueba de no-escritura.
 - 2026-07-22: `PR-G05-04` aplica el guard a PLAY, reload, activación/cierre de workspace, refresh por mtime y export de escenas abiertas; la tanda funcional fue verde y los 7 tests API de export pasaron con estado global temporal escribible.
+- 2026-07-22: `PR-G05-05` añade `PreviewLeaseRegistry` con contrato obligatorio de history/restore, lease UUID no dependiente de rutas, revisión/fingerprint base, cancelación sin persistencia y commit conflict-aware con rollback.
