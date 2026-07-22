@@ -4,12 +4,13 @@ import copy
 import hashlib
 import json
 from collections.abc import Container
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from engine.assets.asset_reference import build_asset_reference, normalize_asset_path, normalize_asset_reference
 
-CURRENT_SCENE_SCHEMA_VERSION = 2
+CURRENT_SCENE_SCHEMA_VERSION = 3
 CURRENT_PREFAB_SCHEMA_VERSION = 2
 SUPPORTED_RULE_ACTIONS = {
     "set_animation",
@@ -34,6 +35,16 @@ ASSET_REFERENCE_FIELD_PAIRS = {
     "Tilemap": ("tileset", "tileset_path"),
     "AudioSource": ("asset", "asset_path"),
 }
+
+
+@dataclass(frozen=True, slots=True)
+class SceneMigrationReport:
+    source_version: int
+    target_version: int
+    migrated: bool
+    entity_count: int
+    parent_references_migrated: int
+    diagnostics: tuple[str, ...] = ()
 
 
 def _coerce_schema_version(raw: Any, *, kind: str) -> int:
@@ -387,6 +398,7 @@ def canonicalize_scene_entity(
             candidate = f"{base_id}_{suffix}"
         entity["id"] = candidate
     _canonicalize_entity_payload(entity, entity_path=f"$.entities[{int(index)}]")
+    entity.setdefault("parent_id", None)
     return entity
 
 
@@ -470,6 +482,77 @@ def _canonicalize_scene_v2(data: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_scene_v2_to_v3(data: dict[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(data)
+    migrated["schema_version"] = 3
+    _default_scene_fields(migrated)
+    _ensure_entity_ids(migrated)
+    entities = migrated.get("entities", [])
+    if not isinstance(entities, list):
+        return migrated
+
+    ids_by_name: dict[str, str] = {}
+    names_by_id: dict[str, str] = {}
+    for index, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            continue
+        name = str(entity.get("name", "") or "").strip()
+        entity_id = str(entity.get("id", "") or "").strip()
+        if not name or not entity_id:
+            continue
+        if entity_id in names_by_id:
+            continue
+        ids_by_name[name] = entity_id
+        names_by_id[entity_id] = name
+
+    for index, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            continue
+        parent_id = entity.get("parent_id")
+        parent_name = entity.get("parent")
+        if parent_id is not None:
+            if not isinstance(parent_id, str) or not parent_id.strip():
+                continue
+            normalized_parent_id = parent_id.strip()
+            entity["parent_id"] = normalized_parent_id
+            if normalized_parent_id in names_by_id:
+                entity.setdefault("parent", names_by_id[normalized_parent_id])
+            continue
+        if parent_name is None or parent_name == "":
+            entity["parent_id"] = None
+            continue
+        if not isinstance(parent_name, str) or not parent_name.strip():
+            entity["parent_id"] = parent_name
+            continue
+        normalized_parent_name = parent_name.strip()
+        resolved_parent_id = ids_by_name.get(normalized_parent_name)
+        if resolved_parent_id is None:
+            entity["parent_id"] = None
+            continue
+        entity["parent"] = normalized_parent_name
+        entity["parent_id"] = resolved_parent_id
+
+    return _canonicalize_scene_v3(migrated)
+
+
+def _canonicalize_scene_v3(data: dict[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(data)
+    migrated["schema_version"] = 3
+    _default_scene_fields(migrated)
+    _ensure_entity_ids(migrated)
+    entities = migrated.get("entities", [])
+    if isinstance(entities, list):
+        migrated = _migrate_scene_v2_to_v3(migrated) if any(
+            isinstance(entity, dict) and "parent_id" not in entity
+            for entity in entities
+        ) else migrated
+        entities = migrated.get("entities", [])
+        for index, entity in enumerate(entities):
+            if isinstance(entity, dict):
+                _canonicalize_entity_payload(entity, entity_path=f"$.entities[{index}]")
+    return migrated
+
+
 def _migrate_prefab_v0_to_v1(data: dict[str, Any]) -> dict[str, Any]:
     migrated = copy.deepcopy(data)
     if "entities" not in migrated:
@@ -522,9 +605,34 @@ def migrate_scene_data(data: dict[str, Any]) -> dict[str, Any]:
     if version == 1:
         migrated = _migrate_scene_v1_to_v2(migrated)
         version = 2
+    if version == 2:
+        migrated = _migrate_scene_v2_to_v3(migrated)
+        version = 3
     if version != CURRENT_SCENE_SCHEMA_VERSION:
         raise ValueError(f"Unsupported scene schema version: {version}")
-    return _canonicalize_scene_v2(migrated)
+    return _canonicalize_scene_v3(migrated)
+
+
+def migrate_scene_data_with_report(data: dict[str, Any]) -> tuple[dict[str, Any], SceneMigrationReport]:
+    """Migrate a scene and return deterministic migration evidence."""
+    source_version = _scene_schema_version_of(data)
+    migrated = migrate_scene_data(data)
+    entities = migrated.get("entities", [])
+    parent_references_migrated = sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict) and entity.get("parent_id") is not None
+    ) if isinstance(entities, list) else 0
+    diagnostics = tuple(validate_scene_data(migrated))
+    report = SceneMigrationReport(
+        source_version=source_version,
+        target_version=CURRENT_SCENE_SCHEMA_VERSION,
+        migrated=source_version != CURRENT_SCENE_SCHEMA_VERSION,
+        entity_count=len(entities) if isinstance(entities, list) else 0,
+        parent_references_migrated=parent_references_migrated,
+        diagnostics=diagnostics,
+    )
+    return migrated, report
 
 
 def migrate_prefab_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -1400,6 +1508,8 @@ def _validate_entity(entity: Any, *, path: str, require_id: bool = False) -> lis
         errors.append(f"{path}.id: expected non-empty string")
     elif "id" in payload:
         _expect_string(payload.get("id"), path=f"{path}.id", errors=errors, non_empty=True)
+    if "parent_id" in payload and payload.get("parent_id") is not None:
+        _expect_string(payload.get("parent_id"), path=f"{path}.parent_id", errors=errors, non_empty=True)
     components = payload.get("components", {})
     if not isinstance(components, dict):
         errors.append(f"{path}.components: expected object")
@@ -1500,6 +1610,21 @@ def _validate_entity_graph(
 
     for entity_name in names_to_indexes:
         walk(entity_name)
+    if any(isinstance(entity, dict) and "parent_id" in entity for entity in entities):
+        for index, entity in enumerate(entities):
+            if not isinstance(entity, dict):
+                continue
+            entity_id = entity.get("id")
+            parent_id = entity.get("parent_id")
+            if parent_id is None:
+                continue
+            if not isinstance(parent_id, str) or not parent_id.strip():
+                errors.append(f"{path}[{index}].parent_id: expected non-empty string or null")
+                continue
+            if parent_id == entity_id:
+                errors.append(f"{path}[{index}].parent_id: entity cannot be its own parent")
+            elif parent_id not in ids_to_indexes:
+                errors.append(f"{path}[{index}].parent_id: unknown parent id '{parent_id}'")
     return errors, roots
 
 

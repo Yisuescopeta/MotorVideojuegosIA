@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -25,6 +26,7 @@ class SavedSceneResult:
     payload: dict[str, Any]
     entity_count: int
     mtime: float | None
+    backup_path: str | None = None
 
 
 class SceneStorageReadError(RuntimeError):
@@ -72,10 +74,14 @@ class ScenePersistenceService:
     ) -> SavedSceneResult:
         target = Path(path)
         temp_path: Path | None = None
+        backup_path: Path | None = None
         stored_payload = payload
         entity_count = self._entity_count(stored_payload)
         try:
             if storage is None:
+                if target.exists():
+                    backup_path = target.with_name(f"{target.name}.bak")
+                    shutil.copy2(target, backup_path)
                 temp_path = target.with_name(f"{target.name}.tmp")
                 use_compact_save = (
                     compact_save if compact_save is not None else entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
@@ -106,6 +112,7 @@ class ScenePersistenceService:
                 payload=stored_payload,
                 entity_count=entity_count,
                 mtime=self._read_mtime(resolved),
+                backup_path=str(backup_path.resolve()) if backup_path is not None else None,
             )
         finally:
             if temp_path is not None:

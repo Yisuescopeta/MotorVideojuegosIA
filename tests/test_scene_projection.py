@@ -44,7 +44,7 @@ class SceneProjectionServiceTests(unittest.TestCase):
         scene = self.projection.create_scene(_scene_payload(), source_path="projection.json")
         world = self.projection.create_world(scene)
 
-        self.assertEqual(scene.to_dict()["schema_version"], 2)
+        self.assertEqual(scene.to_dict()["schema_version"], 3)
         self.assertEqual(scene.source_path, "projection.json")
         actor = world.get_entity_by_name("Actor")
         self.assertIsNotNone(actor)
