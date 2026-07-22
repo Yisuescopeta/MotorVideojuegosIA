@@ -537,7 +537,7 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.api.step(2)
         self.assertGreaterEqual(self.api.get_script_public_data("EditScriptEntity")["edit_ticks"], 2)
 
-    def test_edit_mode_script_changes_persist_via_legacy_world_sync_on_save(self) -> None:
+    def test_edit_mode_script_changes_block_save_until_explicit_legacy_commit(self) -> None:
         self.assertTrue(self.api.create_entity("EditScriptSaveEntity")["success"])
         self.assertTrue(
             self.api.add_script_behaviour(
@@ -556,19 +556,17 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.api.scene_manager.mark_edit_world_dirty(reason="legacy_authoring")
 
         save_path = self.project_root / "levels" / "edit_mode_script_save.json"
-        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
-        self.api.load_level(save_path.as_posix())
-
-        reloaded = self.api.get_entity("EditScriptSaveEntity")
-        self.assertEqual(reloaded["components"]["Transform"]["x"], 10.0)
-        self.assertEqual(reloaded["components"]["ScriptBehaviour"]["public_data"]["edit_ticks"], 2)
+        self.assertFalse(self.api.save_scene(path=save_path.as_posix())["success"])
+        self.assertFalse(save_path.exists())
+        current = self.api.scene_manager.current_scene.find_entity("EditScriptSaveEntity")
+        self.assertEqual(current["components"]["Transform"]["x"], 0.0)
 
     def test_selection_persists_from_edit_to_play_and_back(self) -> None:
         self.assertTrue(self.api.scene_manager.set_selected_entity("Player"))
         self.assertEqual(self.api.game.world.selected_entity_name, "Player")
 
         self.api.play()
-        self.assertEqual(self.api.game.world.selected_entity_name, "Player")
+        self.assertIsNone(self.api.game.world.selected_entity_name)
 
         self.api.stop()
         self.assertEqual(self.api.game.world.selected_entity_name, "Player")

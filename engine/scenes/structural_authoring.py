@@ -79,8 +79,18 @@ class SceneHierarchyAuthoring:
                     "Transform",
                     transform_update,
                 ):
-                    self.pipeline.rollback(entry, token)
-                    return False
+                    current_child = entry.scene.find_entity(child_name)
+                    current_transform = (
+                        current_child.get("components", {}).get("Transform", {})
+                        if isinstance(current_child, dict)
+                        else {}
+                    )
+                    if not isinstance(current_transform, dict) or any(
+                        current_transform.get(key) != value
+                        for key, value in transform_update.items()
+                    ):
+                        self.pipeline.rollback(entry, token)
+                        return False
             if not entry.scene.remove_entity(entity_name):
                 self.pipeline.rollback(entry, token)
                 return False
@@ -88,6 +98,21 @@ class SceneHierarchyAuthoring:
         except Exception:
             self.pipeline.rollback(entry, token)
             raise
+        return self.pipeline.commit_snapshot(entry, token, before, label=label)
+
+    def remove_entity_by_id(self, entity_id: str) -> bool:
+        entry = self.workspace.get_active_entry()
+        if entry is None or entry.is_playing:
+            return False
+        label = f"remove_entity:entity_id:{entity_id}"
+        transaction = self.pipeline.begin(entry, failure_context=label)
+        if transaction is None:
+            return False
+        token, before = transaction
+        if not entry.scene.remove_entity_by_id(entity_id):
+            self.pipeline.rollback(entry, token)
+            return False
+        self.workspace.sync_feature_metadata_from_scene_links(entry)
         return self.pipeline.commit_snapshot(entry, token, before, label=label)
 
     @staticmethod
@@ -123,7 +148,19 @@ class SceneHierarchyAuthoring:
             return False
         token, before = transaction
         try:
-            if entry.scene.find_entity(entity_name) is None:
+            target = entry.scene.find_entity(entity_name)
+            if target is None:
+                self.pipeline.rollback(entry, token)
+                return False
+            parent = entry.scene.find_entity(parent_name) if parent_name is not None else None
+            if parent_name is not None and parent is None:
+                self.pipeline.rollback(entry, token)
+                return False
+            target_id = target.get("id")
+            parent_id = parent.get("id") if parent is not None else None
+            if not isinstance(target_id, str) or (
+                parent is not None and not isinstance(parent_id, str)
+            ):
                 self.pipeline.rollback(entry, token)
                 return False
             if parent_name is not None and not self.validate_parent(
@@ -139,7 +176,7 @@ class SceneHierarchyAuthoring:
                 if parent_name is not None
                 else None
             )
-            if not entry.scene.update_entity_property(entity_name, "parent", parent_name):
+            if not entry.scene.reparent_entity_by_id(target_id, parent_id):
                 self.pipeline.rollback(entry, token)
                 return False
             if world_tx is not None:
@@ -161,13 +198,24 @@ class SceneHierarchyAuthoring:
                         "scale_x": w_sx,
                         "scale_y": w_sy,
                     }
-                if not entry.scene.update_component_properties(
-                    entity_name,
+                changed = entry.scene.update_component_properties_by_id(
+                    target_id,
                     "Transform",
                     transform_update,
-                ):
-                    self.pipeline.rollback(entry, token)
-                    return False
+                )
+                if not changed:
+                    current = entry.scene.find_entity_by_id(target_id)
+                    current_transform = (
+                        current.get("components", {}).get("Transform", {})
+                        if isinstance(current, dict)
+                        else {}
+                    )
+                    if not isinstance(current_transform, dict) or any(
+                        current_transform.get(key) != value
+                        for key, value in transform_update.items()
+                    ):
+                        self.pipeline.rollback(entry, token)
+                        return False
         except Exception:
             self.pipeline.rollback(entry, token)
             raise
@@ -617,6 +665,9 @@ class SceneStructuralAuthoring:
 
     def remove_entity(self, entity_name: str) -> bool:
         return self._hierarchy.remove_entity(entity_name)
+
+    def remove_entity_by_id(self, entity_id: str) -> bool:
+        return self._hierarchy.remove_entity_by_id(entity_id)
 
     def validate_parent(self, entry: SceneWorkspaceEntry, entity_name: str, parent_name: str) -> bool:
         return self._hierarchy.validate_parent(entry, entity_name, parent_name)

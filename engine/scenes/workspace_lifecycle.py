@@ -33,7 +33,6 @@ class SceneWorkspaceEntry:
     pending_edit_world_sync_reason: Optional[str] = None
     dirty_before_pending_edit_world_sync: Optional[bool] = None
     edit_world_version: int = 0
-    scene_revision: int = 0
     projection_integrity_evidence: Optional[ProjectionIntegrityEvidence] = None
     view_state: dict[str, Any] = field(default_factory=dict)
 
@@ -52,6 +51,15 @@ class SceneWorkspaceEntry:
     @property
     def open_scene_ref(self) -> OpenSceneRef:
         return OpenSceneRef(self.open_document_id)
+
+    @property
+    def scene_revision(self) -> int:
+        """Compatibility view; Scene.revision is the sole revision authority."""
+        return self.scene.revision
+
+    @scene_revision.setter
+    def scene_revision(self, value: int) -> None:
+        self.scene._restore_revision(value)
 
 
 @dataclass(frozen=True)
@@ -77,6 +85,13 @@ class SceneWorkspace:
 
     def get_active_entry(self) -> Optional[SceneWorkspaceEntry]:
         return self.entries.get(self.active_scene_key) if self.active_scene_key else None
+
+    def resolve_open_document(self, document_id: OpenDocumentId) -> Optional[SceneWorkspaceEntry]:
+        """Resolve open document identity without using workspace key/path."""
+        for entry in self.entries.values():
+            if entry.open_document_id == document_id:
+                return entry
+        return None
 
     def resolve_entry(self, key_or_path: Optional[str]) -> Optional[SceneWorkspaceEntry]:
         if key_or_path in (None, ""):
@@ -200,27 +215,26 @@ class SceneWorkspace:
         if entry is None or entry.edit_world is None:
             log_warn("SceneManager: no hay world para play")
             return None
-        selection = self.capture_selection(entry)
         try:
-            runtime_world = entry.edit_world.clone()
+            # Runtime starts from canonical persistent Scene. EditWorld may contain
+            # editor-only selection, hover, caches or an unregistered overlay.
+            runtime_world = self._projection.create_world(entry.scene)
         except Exception as exc:
             entry.runtime_world = None
             entry.is_playing = False
-            log_err(f"SceneManager: no se pudo entrar en PLAY por fallo de clonacion: {exc}")
+            log_err(f"SceneManager: no se pudo entrar en PLAY por fallo de proyeccion: {exc}")
             return None
+        # The selection authority remains outside World.  Keep only the
+        # presentation projection in the freshly-created runtime world.
+        runtime_world.selected_entity_name = entry.selected_entity_name
         entry.runtime_world = runtime_world
         entry.is_playing = True
-        self.restore_selection(entry, selection)
         return entry.runtime_world
 
     def exit_play(self) -> Optional["World"]:
         entry = self.get_active_entry()
         if entry is None:
             return None
-        if entry.runtime_world is not None:
-            runtime_name = entry.runtime_world.selected_entity_name
-            if runtime_name:
-                self.select_entity(entry, entity_name=runtime_name)
         entry.runtime_world = None
         entry.is_playing = False
         self.rebuild_edit_world(entry)
@@ -287,12 +301,9 @@ class SceneWorkspace:
         return entity_name if isinstance(entity_name, str) and entity_name else None
 
     def capture_selection(self, entry: SceneWorkspaceEntry) -> SceneSelectionSnapshot:
-        world_name = entry.active_world.selected_entity_name if entry.active_world is not None else None
-        if world_name and entry.scene.find_entity(world_name) is not None:
-            return SceneSelectionSnapshot(
-                entity_name=world_name,
-                entity_id=self.entity_id_for_name(entry, world_name),
-            )
+        # Selection authority lives in EditorSession. These entry fields are a
+        # deprecated compatibility projection populated by explicit selection
+        # commands; never promote mutable World visual state back into it.
         entity_name = entry.selected_entity_name
         entity_id = entry.selected_entity_id or self.entity_id_for_name(entry, entity_name)
         resolved_name = self.entity_name_for_id(entry, entity_id) or entity_name
@@ -371,6 +382,7 @@ class SceneWorkspace:
         data: dict[str, Any],
         *,
         source_path: Optional[str] = None,
+        revision: Optional[int] = None,
     ) -> Scene:
         selection = self.capture_selection(entry)
         target_source_path = entry.scene.source_path if source_path is None else source_path
@@ -381,6 +393,9 @@ class SceneWorkspace:
             fallback_name=entry.scene.name,
         )
         self._flow_policy.sync_links_from_metadata(scene)
+        scene._restore_revision(
+            entry.scene.revision + 1 if revision is None else int(revision)
+        )
         world = self._projection.create_world(scene)
         self.install_entry_state(entry, scene, world)
         self.restore_selection(entry, selection)
@@ -397,7 +412,6 @@ class SceneWorkspace:
         entry.scene = scene
         entry.edit_world = world
         entry.edit_world_version = world.version
-        entry.scene_revision += 1
         fingerprint_service = AuthoringProjectionFingerprintService(
             self._projection.create_world if rebuild_projection else None
         )
@@ -405,13 +419,13 @@ class SceneWorkspace:
             entry.projection_integrity_evidence = fingerprint_service.build_evidence(
                 scene,
                 world,
-                scene_revision=entry.scene_revision,
+                scene_revision=scene.revision,
             )
         else:
             entry.projection_integrity_evidence = fingerprint_service.build_evidence_from_world(
                 scene,
                 world,
-                scene_revision=entry.scene_revision,
+                scene_revision=scene.revision,
             )
 
     def restore_entry_state(

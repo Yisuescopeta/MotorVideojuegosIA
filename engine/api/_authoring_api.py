@@ -690,14 +690,28 @@ class AuthoringAPI(EngineAPIComponent):
             normalized = ["None"]
         freeze_x = "FreezePositionX" in normalized
         freeze_y = "FreezePositionY" in normalized
+        current = self.load_component_payload(entity_name, "RigidBody")
+        if not isinstance(current, dict):
+            return self.fail("Edit failed (check names/property)")
 
-        result = self.edit_component(entity_name, "RigidBody", "freeze_x", freeze_x)
-        if not result["success"]:
-            return result
-        result = self.edit_component(entity_name, "RigidBody", "freeze_y", freeze_y)
-        if not result["success"]:
-            return result
-        return self.edit_component(entity_name, "RigidBody", "constraints", normalized)
+        changed = False
+        for property_name, value in (
+            ("freeze_x", freeze_x),
+            ("freeze_y", freeze_y),
+            ("constraints", normalized),
+        ):
+            if current.get(property_name) == value:
+                continue
+            result = self.edit_component(entity_name, "RigidBody", property_name, value)
+            if not result["success"]:
+                observed = self.load_component_payload(entity_name, "RigidBody")
+                if not isinstance(observed, dict) or observed.get(property_name) != value:
+                    return result
+                current = observed
+                continue
+            current[property_name] = value
+            changed = True
+        return self.ok("RigidBody constraints applied") if changed or current else self.fail("Edit failed (check names/property)")
 
     def create_tilemap(
         self,
@@ -1595,6 +1609,9 @@ class AuthoringAPI(EngineAPIComponent):
     def _apply_entity_property(self, name: str, property_name: str, value: Union[str, int, float, bool, list, dict, None], message: str) -> ActionResult:
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
+        existing = self.scene_authoring.find_entity_data(name)
+        if isinstance(existing, dict) and existing.get(property_name) == value:
+            return self.ok(message, {"entity": name})
         success = self.scene_authoring.update_entity_property(name, property_name, value)
         return self.ok(message, {"entity": name}) if success else self.fail("Entity property update failed")
 

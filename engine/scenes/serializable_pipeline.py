@@ -194,7 +194,7 @@ class SceneSerializableAuthoringPipeline:
         publisher.publish(
             DomainEvent(
                 scene=entry.open_scene_ref,
-                scene_revision=entry.scene_revision,
+                scene_revision=entry.scene.revision,
                 label=str(label or "scene_commit"),
                 changed_entities=changed_entity_refs(
                     entry.open_scene_ref,

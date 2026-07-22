@@ -247,9 +247,8 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
         self.assertLess(events.index("flush"), events.index("lookup"))
         self.assertIsNone(self.entry.scene.find_entity("Added"))
 
-    def test_creation_delta_redo_flushes_pending_before_capture_and_add(self) -> None:
+    def test_creation_delta_redo_blocks_pending_legacy_without_import(self) -> None:
         self.assertTrue(self.authoring.create_entity("Added"))
-        created_id = self.entry.scene.find_entity("Added")["id"]
         change = self.history.differential_changes[-1]
         self.assertTrue(change["undo"]())
 
@@ -296,24 +295,21 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
                 )[1],
             ),
         ):
-            self.assertTrue(change["redo"]())
+            self.assertFalse(change["redo"]())
 
         self.assertEqual(
             events,
-            ["capture_guard", "flush", "capture_authoring", "add"],
+            ["capture_guard", "flush"],
         )
         self.assertEqual(
             self.entry.scene.find_entity("Hero")["components"]["Transform"]["x"],
-            42.0,
+            1.0,
         )
         hero = self.entry.edit_world.get_entity_by_name("Hero")
         self.assertEqual(hero.get_component(Transform).x, 42.0)
-        self.assertEqual(self.entry.scene.find_entity("Added")["id"], created_id)
-        self.assertEqual(
-            self.entry.edit_world.get_entity_by_name("Added").serialized_id,
-            created_id,
-        )
-        self.assertIsNone(self.entry.pending_edit_world_sync_reason)
+        self.assertIsNone(self.entry.scene.find_entity("Added"))
+        self.assertIsNone(self.entry.edit_world.get_entity_by_name("Added"))
+        self.assertEqual(self.entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
 
     def test_creation_delta_redo_failure_restores_post_flush_state(self) -> None:
         self.assertTrue(self.authoring.create_entity("Added"))
@@ -329,22 +325,16 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
                 reason=LEGACY_AUTHORING_SYNC_REASON,
             )
         )
-        original_add = self.projection.add_entity
-
-        def add_then_fail(scene, world, payload):
-            self.assertIsNotNone(original_add(scene, world, payload))
-            raise RuntimeError("failure after incremental add")
-
         with patch.object(
             self.projection,
             "add_entity",
-            side_effect=add_then_fail,
+            wraps=self.projection.add_entity,
         ):
             self.assertFalse(change["redo"]())
 
         self.assertEqual(
             self.entry.scene.find_entity("Hero")["components"]["Transform"]["x"],
-            42.0,
+            1.0,
         )
         hero = self.entry.edit_world.get_entity_by_name("Hero")
         self.assertEqual(hero.get_component(Transform).x, 42.0)
@@ -357,7 +347,7 @@ class SceneEntityAuthoringTests(_SerializableOwnerTestSupport):
         )
         self.assertEqual(self.entry.edit_world.selected_entity_name, "Hero")
         self.assertTrue(self.entry.dirty)
-        self.assertIsNone(self.entry.pending_edit_world_sync_reason)
+        self.assertEqual(self.entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
         self.assertEqual(len(self.history.differential_changes), 1)
         self.assertEqual(self.history.scene_changes, [])
 

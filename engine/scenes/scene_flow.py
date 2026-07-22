@@ -12,15 +12,30 @@ class SceneFlowPolicy:
     """Pure precedence and synchronization rules for SceneLink metadata."""
 
     @staticmethod
+    def _target_path_hint(scene_link: dict[str, Any]) -> str:
+        target_scene = scene_link.get("target_scene")
+        if isinstance(target_scene, Mapping):
+            return str(target_scene.get("path_hint", "") or "").strip()
+        return str(scene_link.get("target_path", "") or "").strip()
+
+    @staticmethod
     def _metadata_flow(scene: "Scene") -> dict[str, str]:
         metadata = scene.feature_metadata_view().get("scene_flow", {})
         if not isinstance(metadata, Mapping):
             return {}
         return {
-            str(key): str(value)
+            str(key): SceneFlowPolicy._target_from_metadata(value)
             for key, value in metadata.items()
-            if str(key).strip() and str(value).strip()
+            if str(key).strip() and SceneFlowPolicy._target_from_metadata(value)
         }
+
+    @staticmethod
+    def _target_from_metadata(value: Any) -> str:
+        if isinstance(value, Mapping):
+            target_scene = value.get("target_scene", value)
+            if isinstance(target_scene, Mapping):
+                return str(target_scene.get("path_hint", "") or "").strip()
+        return str(value or "").strip()
 
     @staticmethod
     def _payload_metadata_flow(payload: dict[str, Any]) -> dict[str, str]:
@@ -29,9 +44,9 @@ class SceneFlowPolicy:
         if not isinstance(metadata, dict):
             return {}
         return {
-            str(key): str(value)
+            str(key): SceneFlowPolicy._target_from_metadata(value)
             for key, value in metadata.items()
-            if str(key).strip() and str(value).strip()
+            if str(key).strip() and SceneFlowPolicy._target_from_metadata(value)
         }
 
     def prepare_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -49,7 +64,7 @@ class SceneFlowPolicy:
                 continue
             components = entity_data.get("components", {})
             scene_link = components.get("SceneLink") if isinstance(components, dict) else None
-            if not isinstance(scene_link, dict) or "target_path" in scene_link:
+            if not isinstance(scene_link, dict) or "target_path" in scene_link or "target_scene" in scene_link:
                 continue
             flow_key = str(scene_link.get("flow_key", "") or "").strip()
             fallback = metadata.get(flow_key, "")
@@ -59,7 +74,7 @@ class SceneFlowPolicy:
 
     def prepare_component(self, scene: "Scene", component_data: dict[str, Any]) -> dict[str, Any]:
         prepared = copy.deepcopy(component_data)
-        if "target_path" in prepared:
+        if "target_path" in prepared or "target_scene" in prepared:
             return prepared
         flow_key = str(prepared.get("flow_key", "") or "").strip()
         fallback = self._metadata_flow(scene).get(flow_key, "")
@@ -87,14 +102,14 @@ class SceneFlowPolicy:
             flow_key = str(scene_link.get("flow_key", "") or "").strip()
             if not flow_key:
                 continue
-            if "target_path" not in scene_link:
+            if "target_path" not in scene_link and "target_scene" not in scene_link:
                 fallback = metadata.get(flow_key, "")
                 if fallback:
                     effective[flow_key] = fallback
                 else:
                     effective.pop(flow_key, None)
                 continue
-            target_path = str(scene_link.get("target_path", "") or "").strip()
+            target_path = self._target_path_hint(scene_link)
             if target_path:
                 effective[flow_key] = target_path
             else:
@@ -104,7 +119,29 @@ class SceneFlowPolicy:
     def sync_metadata_from_links(self, scene: "Scene") -> dict[str, str]:
         effective = self.get_effective_flow(scene)
         if effective:
-            scene.set_feature_metadata("scene_flow", copy.deepcopy(effective))
+            raw_metadata = scene.feature_metadata_view().get("scene_flow", {})
+            canonical_metadata: dict[str, Any] = {}
+            for key, path_hint in effective.items():
+                existing = raw_metadata.get(key) if isinstance(raw_metadata, Mapping) else None
+                if isinstance(existing, dict):
+                    target_scene = existing.get("target_scene", existing)
+                    if isinstance(target_scene, dict) and target_scene.get("guid"):
+                        canonical_metadata[key] = {
+                            "guid": str(target_scene.get("guid")),
+                            "path_hint": path_hint,
+                        }
+                        continue
+                for entity in scene.list_entity_views():
+                    payload = entity.to_dict().get("components", {}).get("SceneLink", {})
+                    if isinstance(payload, dict) and payload.get("flow_key") == key and isinstance(payload.get("target_scene"), dict):
+                        canonical_metadata[key] = {
+                            "guid": str(payload["target_scene"].get("guid", "")),
+                            "path_hint": path_hint,
+                        }
+                        break
+                else:
+                    canonical_metadata[key] = path_hint
+            scene.set_feature_metadata("scene_flow", canonical_metadata)
         else:
             scene.remove_feature_metadata("scene_flow")
         return effective
@@ -115,7 +152,7 @@ class SceneFlowPolicy:
             entity_data = entity.to_dict()
             components = entity_data.get("components", {})
             scene_link = components.get("SceneLink") if isinstance(components, dict) else None
-            if not isinstance(scene_link, dict) or "target_path" in scene_link:
+            if not isinstance(scene_link, dict) or "target_path" in scene_link or "target_scene" in scene_link:
                 continue
             flow_key = str(scene_link.get("flow_key", "") or "").strip()
             if not flow_key:
@@ -124,7 +161,10 @@ class SceneFlowPolicy:
             if not fallback:
                 continue
             updated_link = copy.deepcopy(scene_link)
-            updated_link["target_path"] = fallback
+            if isinstance(updated_link.get("target_scene"), dict):
+                updated_link["target_scene"]["path_hint"] = fallback
+            else:
+                updated_link["target_path"] = fallback
             entity_name = str(entity_data.get("name", "") or "")
             if entity_name:
                 scene.replace_component_data(entity_name, "SceneLink", updated_link)
@@ -153,11 +193,11 @@ class SceneFlowPolicy:
             if not isinstance(scene_link, dict):
                 continue
             flow_key = str(scene_link.get("flow_key", "") or "").strip()
-            if "target_path" not in scene_link:
+            if "target_path" not in scene_link and "target_scene" not in scene_link:
                 if not flow_key or not metadata.get(flow_key, ""):
                     return True
                 continue
-            if not str(scene_link.get("target_path", "") or "").strip():
+            if not self._target_path_hint(scene_link):
                 return True
         return False
 

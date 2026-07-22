@@ -97,22 +97,22 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         assert transform is not None
         return transform
 
-    def test_legacy_pending_flushes_active_world_and_keeps_dirty(self) -> None:
+    def test_legacy_pending_flush_is_blocked_without_explicit_adapter(self) -> None:
         self._actor_transform().x = 77.0
 
         self.assertTrue(self.coordinator.mark_edit_world_dirty())
         self.assertEqual(self.entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
         self.assertFalse(self.entry.dirty_before_pending_edit_world_sync)
         self.assertTrue(self.entry.dirty)
-        self.assertTrue(self.coordinator.flush_pending(self.entry, failure_context="direct_legacy"))
+        self.assertFalse(self.coordinator.flush_pending(self.entry, failure_context="direct_legacy"))
 
         transform_data = self.entry.scene.find_entity("Actor")["components"]["Transform"]
-        self.assertEqual(transform_data["x"], 77.0)
-        self.assertFalse(self.entry.edit_world_sync_pending)
-        self.assertIsNone(self.entry.dirty_before_pending_edit_world_sync)
+        self.assertEqual(transform_data["x"], 1.0)
+        self.assertTrue(self.entry.edit_world_sync_pending)
+        self.assertFalse(self.entry.dirty_before_pending_edit_world_sync)
         self.assertTrue(self.entry.dirty)
 
-    def test_active_legacy_flush_preserves_serialized_entity_ids(self) -> None:
+    def test_legacy_pending_does_not_import_serialized_entity_ids(self) -> None:
         payload = _scene_payload()
         payload["entities"][0]["id"] = "actor-custom-id"
         payload["entities"][1]["id"] = "camera-custom-id"
@@ -133,7 +133,7 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.flush_pending(
                 self.entry,
                 failure_context="preserve_ids",
@@ -150,7 +150,7 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         )
         self.assertEqual(self.entry.selected_entity_id, "actor-custom-id")
 
-    def test_active_legacy_flush_preserves_id_across_world_rename(self) -> None:
+    def test_legacy_pending_does_not_import_world_rename(self) -> None:
         payload = _scene_payload()
         payload["entities"][0]["id"] = "actor-custom-id"
         self.workspace.reset_workspace()
@@ -167,20 +167,24 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.flush_pending(
                 self.entry,
                 failure_context="rename_preserve_id",
             )
         )
 
-        self.assertIsNone(self.entry.scene.find_entity("Actor"))
+        self.assertIsNotNone(self.entry.scene.find_entity("Actor"))
         renamed = self.entry.scene.find_entity("RenamedActor")
-        self.assertEqual(renamed["id"], "actor-custom-id")
-        self.assertEqual(self.entry.selected_entity_name, "RenamedActor")
+        self.assertIsNone(renamed)
+        self.assertEqual(
+            self.entry.scene.find_entity("Actor")["id"],
+            "actor-custom-id",
+        )
+        self.assertEqual(self.entry.selected_entity_name, "Actor")
         self.assertEqual(self.entry.selected_entity_id, "actor-custom-id")
 
-    def test_active_legacy_flush_assigns_shared_canonical_id_to_new_entity(self) -> None:
+    def test_legacy_pending_does_not_import_new_world_entity(self) -> None:
         assert self.entry.edit_world is not None
         created = self.entry.edit_world.create_entity("CreatedInWorld")
         created.add_component(Transform(x=9.0))
@@ -191,21 +195,16 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.flush_pending(
                 self.entry,
                 failure_context="new_entity_id",
             )
         )
 
-        created_data = self.entry.scene.find_entity("CreatedInWorld")
-        canonical_id = created_data["id"]
-        self.assertTrue(canonical_id)
-        projected = self.entry.edit_world.get_entity_by_name("CreatedInWorld")
-        assert projected is not None
-        self.assertEqual(projected.serialized_id, canonical_id)
+        self.assertIsNone(self.entry.scene.find_entity("CreatedInWorld"))
 
-    def test_active_legacy_flush_rejects_duplicate_live_serialized_ids(self) -> None:
+    def test_legacy_pending_does_not_repair_duplicate_live_serialized_ids(self) -> None:
         payload = _scene_payload()
         payload["entities"][0]["id"] = "actor-custom-id"
         payload["entities"][1]["id"] = "camera-custom-id"
@@ -237,12 +236,12 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         restored_camera = self.entry.edit_world.get_entity_by_name("Camera")
         assert restored_actor is not None and restored_camera is not None
         self.assertEqual(restored_actor.serialized_id, "actor-custom-id")
-        self.assertEqual(restored_camera.serialized_id, "camera-custom-id")
-        self.assertEqual(restored_actor.get_component(Transform).x, 1.0)
-        self.assertIsNone(self.entry.pending_edit_world_sync_reason)
-        self.assertFalse(self.entry.dirty)
+        self.assertEqual(restored_camera.serialized_id, "actor-custom-id")
+        self.assertEqual(restored_actor.get_component(Transform).x, 42.0)
+        self.assertEqual(self.entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
+        self.assertTrue(self.entry.dirty)
 
-    def test_active_legacy_flush_preserves_compact_prefab_root_id(self) -> None:
+    def test_legacy_pending_does_not_import_compact_prefab_world_entities(self) -> None:
         payload = {
             "name": "CompactPrefab",
             "entities": [
@@ -278,7 +277,7 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.flush_pending(
                 self.entry,
                 failure_context="compact_prefab_id",
@@ -318,35 +317,35 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         self.assertTrue(self.entry.edit_world_sync_pending)
         self.assertFalse(self.entry.dirty)
 
-    def test_prepare_for_save_discards_transient_preview(self) -> None:
+    def test_prepare_for_save_blocks_unowned_transient_preview(self) -> None:
         self._actor_transform().x = 55.0
         self.coordinator.mark_edit_world_dirty(reason=TRANSIENT_PREVIEW_SYNC_REASON)
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.prepare_for_save(self.entry, failure_context="save_transient")
         )
 
-        self.assertEqual(self._actor_transform().x, 1.0)
+        self.assertEqual(self._actor_transform().x, 55.0)
         self.assertEqual(
             self.entry.scene.find_entity("Actor")["components"]["Transform"]["x"],
             1.0,
         )
-        self.assertFalse(self.entry.edit_world_sync_pending)
+        self.assertTrue(self.entry.edit_world_sync_pending)
         self.assertFalse(self.entry.dirty)
 
-    def test_prepare_for_save_flushes_legacy_pending(self) -> None:
+    def test_prepare_for_save_blocks_legacy_pending(self) -> None:
         self._actor_transform().x = 66.0
         self.coordinator.mark_edit_world_dirty(reason=LEGACY_AUTHORING_SYNC_REASON)
 
-        self.assertTrue(
+        self.assertFalse(
             self.coordinator.prepare_for_save(self.entry, failure_context="save_legacy")
         )
 
         self.assertEqual(
             self.entry.scene.find_entity("Actor")["components"]["Transform"]["x"],
-            66.0,
+            1.0,
         )
-        self.assertFalse(self.entry.edit_world_sync_pending)
+        self.assertTrue(self.entry.edit_world_sync_pending)
         self.assertTrue(self.entry.dirty)
 
     def test_prepare_for_save_syncs_unmarked_world_version_change(self) -> None:
@@ -428,7 +427,7 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
         self.assertTrue(self.entry.dirty)
         self.assertFalse(self.entry.dirty_before_pending_edit_world_sync)
 
-    def test_invalid_snapshot_rebuilds_world_restores_dirty_baseline_and_clears_pending(self) -> None:
+    def test_invalid_snapshot_stays_blocked_without_rebuilding_or_clearing_pending(self) -> None:
         self.workspace.mark_dirty(self.entry)
         scene_before = copy.deepcopy(self.entry.scene.to_dict())
         assert self.entry.edit_world is not None
@@ -450,17 +449,17 @@ class SceneEditSyncCoordinatorTests(unittest.TestCase):
             )
 
         self.assertFalse(flushed)
-        validate.assert_called_once()
+        validate.assert_not_called()
         self.assertEqual(self.entry.scene.to_dict(), scene_before)
         self.assertTrue(self.entry.dirty)
-        self.assertFalse(self.entry.edit_world_sync_pending)
-        self.assertIsNone(self.entry.dirty_before_pending_edit_world_sync)
+        self.assertTrue(self.entry.edit_world_sync_pending)
+        self.assertTrue(self.entry.dirty_before_pending_edit_world_sync)
         assert self.entry.edit_world is not None
         restored_camera = self.entry.edit_world.get_entity_by_name("Camera")
         assert restored_camera is not None
         restored_component = restored_camera.get_component(Camera2D)
         assert restored_component is not None
-        self.assertEqual(restored_component.zoom, 1.0)
+        self.assertEqual(restored_component.zoom, 0.0)
 
     def test_snapshot_roundtrip_is_owned_by_coordinator(self) -> None:
         self.coordinator.mark_edit_world_dirty(reason=TRANSIENT_PREVIEW_SYNC_REASON)

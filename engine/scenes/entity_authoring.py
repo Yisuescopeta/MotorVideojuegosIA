@@ -121,13 +121,7 @@ class SceneEntityAuthoring:
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False
-            self._restore_renamed_selection(
-                entry,
-                entity_name,
-                entity_id,
-                property_name,
-                value,
-            )
+            self._restore_renamed_selection(entry, entity_name, entity_id, property_name, value)
         except Exception:
             self._pipeline.rollback(entry, token)
             return False
@@ -165,13 +159,6 @@ class SceneEntityAuthoring:
                 property_name,
                 copy.deepcopy(value),
             )
-            if not changed:
-                changed = self._prefab_overrides.update_entity_property(
-                    entry,
-                    entity_name,
-                    property_name,
-                    value,
-                )
             if not changed:
                 self._pipeline.rollback(entry, token)
                 return False

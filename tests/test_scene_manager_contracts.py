@@ -11,6 +11,7 @@ import engine.scenes.scene_manager as scene_manager_module
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.edit_sync import LEGACY_AUTHORING_SYNC_REASON, TRANSIENT_PREVIEW_SYNC_REASON
 from engine.scenes.prefab_overrides import PrefabOverrideService
+from engine.scenes.refs import ResolvedSceneReference, SceneAssetRef
 from engine.scenes.scene_manager import SceneManager
 from engine.scenes.structural_authoring import ScenePrefabAuthoring, SceneStructuralAuthoring
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
@@ -285,6 +286,13 @@ class SceneManagerContractsTests(unittest.TestCase):
         )
         self.assertTrue(authoring.set_feature_metadata("phase_1", {"enabled": True}))
         self.assertTrue(workspace.set_scene_flow_target("next_scene", "levels/next_scene.json"))
+        self.manager.set_scene_reference_resolver(
+            lambda path: (
+                ResolvedSceneReference(SceneAssetRef("33333333-3333-3333-3333-333333333333", path))
+                if path == "levels/next_scene.json"
+                else None
+            )
+        )
         self.assertEqual(authoring.get_component_data("Enemy", "Transform")["x"], 8.0)
         enemy_data = self.manager.find_entity_data("Enemy")
         self.assertIsInstance(enemy_data.get("id"), str)
@@ -343,7 +351,7 @@ class SceneManagerContractsTests(unittest.TestCase):
 
         runtime_world = self.manager.enter_play()
         self.assertIsNotNone(runtime_world)
-        self.assertEqual(runtime_world.selected_entity_name, "Hero")
+        self.assertIsNone(runtime_world.selected_entity_name)
 
         edit_world = self.manager.exit_play()
         self.assertIsNotNone(edit_world)
@@ -412,9 +420,9 @@ class SceneManagerContractsTests(unittest.TestCase):
             self.assertIsNotNone(self.manager.activate_scene(entry.key))
             self.assertTrue(self.manager.mark_edit_world_dirty())
             self.manager.clear_dirty()
-            self.assertIsNotNone(self.manager.activate_scene(primary_key))
-            # Recreate a pending inactive entry after the lifecycle guard has
-            # correctly flushed the previous pending state during activation.
+            self.assertIsNone(self.manager.activate_scene(primary_key))
+            # A pending inactive entry remains blocked until its explicit
+            # LegacyWorldAuthoringAdapter lease is committed.
             entry.pending_edit_world_sync_reason = LEGACY_AUTHORING_SYNC_REASON
             entry.dirty_before_pending_edit_world_sync = False
             entry.edit_world_version = 777

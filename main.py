@@ -24,6 +24,7 @@ from cli.runner import CLIRunner
 from cli.script_executor import ScriptExecutor
 from engine.core.game import Game
 from engine.core.composition_root import EngineCompositionRoot
+from engine.app.editor_application import EditorApplication
 from engine.events.event_bus import EventBus
 from engine.inspector.inspector_system import InspectorSystem
 from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
@@ -165,6 +166,7 @@ def main() -> None:
     )
 
     runtime_systems.install(game, project_service=project_service, scene_manager=scene_manager)
+    EditorApplication(scene_manager, game)
     game.set_inspector_system(inspector_system)
     game.set_selection_system(selection_system)
     _register_optional_box2d_backend(

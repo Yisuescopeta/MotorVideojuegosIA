@@ -232,7 +232,13 @@ class AIFacingEndToEndTests(unittest.TestCase):
         """Step 7: AI adds a component to an entity."""
         # Setup
         self._run_motor("scene", "create", "ComponentTest")
-        self._run_motor("entity", "create", "Player")
+        self._run_motor(
+            "entity",
+            "create",
+            "Player",
+            "--components",
+            '{"Sprite":{"enabled":true}}',
+        )
 
         # Add component
         result = self._run_motor(
@@ -261,7 +267,13 @@ class AIFacingEndToEndTests(unittest.TestCase):
         self.assertTrue(scene_result["success"])
 
         # 5. Create entity
-        entity_result = self._run_motor("entity", "create", "Hero")
+        entity_result = self._run_motor(
+            "entity",
+            "create",
+            "Hero",
+            "--components",
+            '{"Sprite":{"enabled":true}}',
+        )
         self.assertTrue(entity_result["success"])
 
         # 6. Add components

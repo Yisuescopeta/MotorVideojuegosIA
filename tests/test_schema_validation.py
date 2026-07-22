@@ -1135,7 +1135,10 @@ class SchemaValidationTests(unittest.TestCase):
                         "Transform": _transform_component(),
                         "SceneTransitionAction": {
                             "enabled": True,
-                            "target_scene_path": "levels/target_scene.json",
+                            "target_scene": {
+                                "guid": "11111111-1111-1111-1111-111111111111",
+                                "path_hint": "levels/target_scene.json",
+                            },
                             "target_entry_id": "arrival",
                         },
                     },
@@ -1148,7 +1151,7 @@ class SchemaValidationTests(unittest.TestCase):
             self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
             saved = json.loads(scene_path.read_text(encoding="utf-8"))
             action = saved["entities"][0]["components"]["SceneTransitionAction"]
-            self.assertEqual(action["target_scene_path"], "levels/target_scene.json")
+            self.assertEqual(action["target_scene"]["guid"], "11111111-1111-1111-1111-111111111111")
             self.assertEqual(action["target_entry_id"], "arrival")
 
             reloaded_manager = SceneManager(create_default_registry())
@@ -1156,7 +1159,7 @@ class SchemaValidationTests(unittest.TestCase):
             reloaded_entity = reloaded_manager.current_scene.find_entity("Portal")
             self.assertIsNotNone(reloaded_entity)
             reloaded_action = reloaded_entity["components"]["SceneTransitionAction"]
-            self.assertEqual(reloaded_action["target_scene_path"], "levels/target_scene.json")
+            self.assertEqual(reloaded_action["target_scene"]["path_hint"], "levels/target_scene.json")
             self.assertEqual(reloaded_action["target_entry_id"], "arrival")
 
     def test_scene_entry_point_roundtrip_save_load(self) -> None:

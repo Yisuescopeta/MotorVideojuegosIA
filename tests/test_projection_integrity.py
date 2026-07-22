@@ -162,7 +162,7 @@ class ProjectionIntegrityFingerprintTests(unittest.TestCase):
         entry = workspace.get_active_entry()
         assert entry is not None and entry.projection_integrity_evidence is not None
 
-        self.assertEqual(entry.projection_integrity_evidence.scene_revision, 1)
+        self.assertEqual(entry.projection_integrity_evidence.scene_revision, entry.scene.revision)
         self.assertEqual(
             entry.projection_integrity_evidence.canonical_fingerprint,
             AuthoringProjectionFingerprintService(projection.create_world).fingerprint_scene(entry.scene),

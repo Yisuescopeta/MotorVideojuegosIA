@@ -14,6 +14,8 @@ from engine.scenes.projection_integrity import (
     ProjectionIntegrityAction,
     ProjectionIntegrityGuard,
 )
+from engine.scenes.refs import OpenDocumentId
+from engine.scenes.result import Err, Ok, Result
 
 if TYPE_CHECKING:
     from engine.scenes.scene import Scene
@@ -43,11 +45,19 @@ class PreviewCancelReason(str, Enum):
     TARGET_MISSING = "target_missing"
     CONFLICT = "conflict"
     VALIDATION_FAILED = "validation_failed"
+    AUTOSAVE = "autosave"
+    PROJECT_SWITCH = "project_switch"
+    RELOAD = "reload"
+    EXPORT = "export"
+    INTERRUPTED = "interrupted"
+    DRAG_NO_CHANGES = "drag_no_changes"
+    ERROR = "error"
 
 
 @dataclass(frozen=True, slots=True)
 class PreviewLease:
     lease_id: str
+    document_id: OpenDocumentId
     scene_key: str
     scene_revision: int
     base_fingerprint: str
@@ -98,7 +108,7 @@ class PreviewLeaseRegistry:
                 PreviewLeaseCode.INVALID_ENTRY,
                 "A preview requires an installed Scene/EditWorld projection.",
             )
-        if self.active_for_scene(entry.key) is not None:
+        if self.active_for(entry.open_document_id):
             return self._failure(
                 PreviewLeaseCode.ACTIVE_LEASE,
                 "The scene already has an active preview lease.",
@@ -115,8 +125,9 @@ class PreviewLeaseRegistry:
 
         lease = PreviewLease(
             lease_id=uuid4().hex,
+            document_id=entry.open_document_id,
             scene_key=entry.key,
-            scene_revision=entry.scene_revision,
+            scene_revision=entry.scene.revision,
             base_fingerprint=self._fingerprint_service.fingerprint_scene(entry.scene),
             kind=str(kind or "preview"),
             label=str(label or "preview"),
@@ -132,7 +143,16 @@ class PreviewLeaseRegistry:
             lease=lease,
         )
 
+    def active_for(self, document_id: OpenDocumentId) -> tuple[PreviewLease, ...]:
+        """Return active leases for stable open-document identity."""
+        return tuple(
+            state.lease
+            for state in self._leases.values()
+            if state.lease.document_id == document_id
+        )
+
     def active_for_scene(self, scene_key: str) -> PreviewLease | None:
+        """Deprecated path-key compatibility query; not used for identity."""
         for state in self._leases.values():
             if state.lease.scene_key == scene_key:
                 return state.lease
@@ -166,20 +186,20 @@ class PreviewLeaseRegistry:
         lease_id: str,
         entry: "SceneWorkspaceEntry",
         *,
-        apply_preview: Callable[[], bool],
+        apply_preview: Callable[[], bool | Result[None]],
         restore_snapshot: SceneSnapshotRestore | None = None,
     ) -> PreviewLeaseReport:
         state = self._leases.get(lease_id)
         if state is None:
             return self._failure(PreviewLeaseCode.NOT_FOUND, "Preview lease was not found.")
         lease = state.lease
-        if entry.key != lease.scene_key:
+        if entry.open_document_id != lease.document_id:
             return self._failure(
                 PreviewLeaseCode.CONFLICT,
                 "Preview lease belongs to another scene.",
                 lease=lease,
             )
-        if entry.scene_revision != lease.scene_revision:
+        if entry.scene.revision != lease.scene_revision:
             return self._failure(
                 PreviewLeaseCode.CONFLICT,
                 "Scene revision changed while the preview was open.",
@@ -192,36 +212,51 @@ class PreviewLeaseRegistry:
                 lease=lease,
             )
 
+        restore = restore_snapshot or self._restore_snapshot
         try:
-            applied = apply_preview()
+            applied_result = apply_preview()
+            if isinstance(applied_result, Err):
+                message = applied_result.error.user_message
+                rollback_error = self._restore_after_failure(
+                    restore, lease, state.base_scene_snapshot, entry
+                )
+                if rollback_error:
+                    message = f"{message} Rollback failed: {rollback_error}"
+                return self._failure(PreviewLeaseCode.APPLY_FAILED, message, lease=lease)
+            applied = applied_result.value if isinstance(applied_result, Ok) else bool(applied_result)
         except Exception as exc:
-            return self._failure(
-                PreviewLeaseCode.APPLY_FAILED,
-                f"Preview commit failed: {exc}",
-                lease=lease,
+            message = f"Preview commit failed: {exc}"
+            rollback_error = self._restore_after_failure(
+                restore, lease, state.base_scene_snapshot, entry
             )
+            if rollback_error:
+                message = f"{message} Rollback failed: {rollback_error}"
+            return self._failure(PreviewLeaseCode.APPLY_FAILED, message, lease=lease)
         if not applied:
-            return self._failure(
-                PreviewLeaseCode.APPLY_FAILED,
-                "Preview commit was rejected by the authoring boundary.",
-                lease=lease,
+            message = "Preview commit was rejected by the authoring boundary."
+            rollback_error = self._restore_after_failure(
+                restore, lease, state.base_scene_snapshot, entry
             )
+            if rollback_error:
+                message = f"{message} Rollback failed: {rollback_error}"
+            return self._failure(PreviewLeaseCode.APPLY_FAILED, message, lease=lease)
 
         after_snapshot = copy.deepcopy(entry.scene.to_dict())
         history = self._history
-        restore = restore_snapshot or self._restore_snapshot
         post_integrity = self._guard.inspect(
             entry,
             action=ProjectionIntegrityAction.PREVIEW_COMMIT,
         )
         if not post_integrity.allowed:
-            try:
-                restore(lease.scene_key, copy.deepcopy(state.base_scene_snapshot))
-            except Exception:
-                pass
+            restore_error = self._restore_after_failure(
+                restore, lease, state.base_scene_snapshot, entry
+            )
+            message = post_integrity.message
+            if restore_error:
+                message = f"{message} Rollback failed: {restore_error}"
             return self._failure(
                 PreviewLeaseCode.INTEGRITY_BLOCKED,
-                post_integrity.message,
+                message,
                 lease=lease,
             )
         if state.base_scene_snapshot != after_snapshot:
@@ -232,13 +267,15 @@ class PreviewLeaseRegistry:
                     redo=lambda: restore(lease.scene_key, copy.deepcopy(after_snapshot)),
                 )
             except Exception as exc:
-                try:
-                    restore(lease.scene_key, copy.deepcopy(state.base_scene_snapshot))
-                except Exception:
-                    pass
+                restore_error = self._restore_after_failure(
+                    restore, lease, state.base_scene_snapshot, entry
+                )
+                message = f"Preview history entry failed: {exc}"
+                if restore_error:
+                    message = f"{message} Rollback failed: {restore_error}"
                 return self._failure(
                     PreviewLeaseCode.HISTORY_FAILED,
-                    f"Preview history entry failed: {exc}",
+                    message,
                     lease=lease,
                 )
 
@@ -250,6 +287,28 @@ class PreviewLeaseRegistry:
             lease=lease,
             history_recorded=state.base_scene_snapshot != after_snapshot,
         )
+
+    def _restore_after_failure(
+        self,
+        restore: SceneSnapshotRestore,
+        lease: PreviewLease,
+        snapshot: dict[str, Any],
+        entry: "SceneWorkspaceEntry",
+    ) -> str | None:
+        try:
+            if not restore(lease.scene_key, copy.deepcopy(snapshot)):
+                return "scene snapshot restore was rejected"
+            entry.scene_revision = lease.scene_revision
+            if entry.edit_world is None:
+                return "restored entry has no EditWorld"
+            entry.projection_integrity_evidence = self._fingerprint_service.build_evidence(
+                entry.scene,
+                entry.edit_world,
+                scene_revision=lease.scene_revision,
+            )
+            return None
+        except Exception as exc:
+            return str(exc)
 
     @staticmethod
     def _failure(

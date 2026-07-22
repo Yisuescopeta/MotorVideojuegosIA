@@ -57,7 +57,7 @@ class UnityRuntimeBaseTests(unittest.TestCase):
         self.assertEqual(transform.y, 208.0)
 
         self.api.play()
-        self.assertEqual(self.api.game.world.selected_entity_name, "Child")
+        self.assertIsNone(self.api.game.world.selected_entity_name)
         self.api.stop()
         self.assertEqual(self.api.game.world.selected_entity_name, "Child")
 

@@ -150,6 +150,13 @@ class Scene:
     def _bump_revision(self) -> None:
         self._revision += 1
 
+    def _restore_revision(self, revision: int) -> None:
+        """Restore revision only for an atomic workspace rollback."""
+        normalized = int(revision)
+        if normalized < 0:
+            raise ValueError("Scene revision cannot be negative")
+        self._revision = normalized
+
     def get_signal_metadata(self) -> Dict[str, Any]:
         signals = self._feature_metadata().get("signals", {})
         return copy.deepcopy(signals) if isinstance(signals, dict) else {}
@@ -362,6 +369,8 @@ class Scene:
             return False
         components = entity_data.get("components", {})
         if component_name in components:
+            if not isinstance(components[component_name], dict) or components[component_name].get(property_name) == value:
+                return False
             if component_name == "SceneEntryPoint":
                 self._deindex_scene_entry(entity_data)
             components[component_name][property_name] = value
@@ -385,6 +394,8 @@ class Scene:
         component_data = components.get(component_name) if isinstance(components, dict) else None
         if not isinstance(component_data, dict):
             return False
+        if all(component_data.get(key) == value for key, value in properties.items()):
+            return False
         if component_name == "SceneEntryPoint":
             self._deindex_scene_entry(entity_data)
         component_data.update(properties)
@@ -405,6 +416,8 @@ class Scene:
         components = entity_data.get("components", {})
         component_data = components.get(component_name) if isinstance(components, dict) else None
         if not isinstance(component_data, dict):
+            return False
+        if all(component_data.get(key) == value for key, value in properties.items()):
             return False
         if component_name == "SceneEntryPoint":
             self._deindex_scene_entry(entity_data)
@@ -444,9 +457,14 @@ class Scene:
             parent = self._find_entity_mutable(parent_name) if parent_name is not None else None
             if parent_name is not None and parent is None:
                 return False
+            next_parent_id = parent.get("id") if parent is not None else None
+            if entity_data.get("parent") == parent_name and entity_data.get("parent_id") == next_parent_id:
+                return False
             entity_data["parent"] = parent_name
-            entity_data["parent_id"] = parent.get("id") if parent is not None else None
+            entity_data["parent_id"] = next_parent_id
         else:
+            if entity_data.get(property_name) == value:
+                return False
             entity_data[property_name] = value
         self._bump_revision()
         return True
@@ -462,6 +480,9 @@ class Scene:
         if entity_data is None:
             return False
         normalized_groups = list(normalize_entity_groups(groups))
+        current_groups = list(normalize_entity_groups(entity_data.get("groups", ())))
+        if current_groups == normalized_groups:
+            return False
         if normalized_groups:
             entity_data["groups"] = normalized_groups
         else:
@@ -475,6 +496,8 @@ class Scene:
             return False
         components = entity_data.setdefault("components", {})
         if component_name not in components:
+            return False
+        if components[component_name] == component_data:
             return False
         if component_name == "SceneEntryPoint":
             self._deindex_scene_entry(entity_data)
@@ -504,12 +527,17 @@ class Scene:
         if not isinstance(entity_metadata, dict):
             entity_metadata = {}
             entity_data["component_metadata"] = entity_metadata
+        current_metadata = entity_metadata.get(component_name, {})
+        current_metadata = current_metadata if isinstance(current_metadata, dict) else {}
+        if current_metadata == metadata:
+            return False
         if metadata:
             entity_metadata[component_name] = copy.deepcopy(metadata)
         else:
             entity_metadata.pop(component_name, None)
         if not entity_metadata:
             entity_data.pop("component_metadata", None)
+        self._bump_revision()
         return True
 
     def add_entity(self, entity_data: Dict[str, Any]) -> bool:
@@ -547,6 +575,10 @@ class Scene:
         if not isinstance(entity_metadata, dict):
             entity_metadata = {}
             entity_data["component_metadata"] = entity_metadata
+        current_metadata = entity_metadata.get(component_name, {})
+        current_metadata = current_metadata if isinstance(current_metadata, dict) else {}
+        if current_metadata == metadata:
+            return False
         if metadata:
             entity_metadata[component_name] = copy.deepcopy(metadata)
         else:
@@ -615,6 +647,8 @@ class Scene:
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
+        if components.get(component_name) == component_data:
+            return False
         components[component_name] = component_data
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
@@ -626,6 +660,8 @@ class Scene:
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
+        if components.get(component_name) == component_data:
+            return False
         components[component_name] = component_data
         if component_name == "SceneEntryPoint":
             self._index_scene_entry(entity_data)
@@ -668,9 +704,12 @@ class Scene:
         self._bump_revision()
         return True
 
-    def set_feature_metadata(self, key: str, value: Any) -> None:
+    def set_feature_metadata(self, key: str, value: Any) -> bool:
+        if self._feature_metadata().get(key) == value:
+            return False
         self._feature_metadata()[key] = value
         self._bump_revision()
+        return True
 
     def remove_feature_metadata(self, key: str) -> bool:
         if key not in self._feature_metadata():
@@ -695,6 +734,8 @@ class Scene:
             return False
         components = entity_data.get("components", {})
         if component_name in components:
+            if not isinstance(components[component_name], dict) or components[component_name].get(property_name) == value:
+                return False
             if component_name == "SceneEntryPoint":
                 self._deindex_scene_entry(entity_data)
             components[component_name][property_name] = value
@@ -714,19 +755,18 @@ class Scene:
         if property_name == "parent_id":
             return self.reparent_entity_by_id(entity_id, value)
         if property_name == "parent":
-            parent_name = value if isinstance(value, str) and value.strip() else None
-            parent = self._find_entity_mutable(parent_name) if parent_name is not None else None
-            return self.reparent_entity_by_id(
-                entity_id,
-                parent.get("id") if parent is not None else None,
-            )
+            return self.reparent_entity_by_id(entity_id, value)
         if property_name == "groups":
             normalized_groups = list(normalize_entity_groups(value))
+            if list(normalize_entity_groups(entity_data.get("groups", ()))) == normalized_groups:
+                return False
             if normalized_groups:
                 entity_data["groups"] = normalized_groups
             else:
                 entity_data.pop("groups", None)
         else:
+            if entity_data.get(property_name) == value:
+                return False
             entity_data[property_name] = value
         self._bump_revision()
         return True
@@ -776,9 +816,9 @@ class Scene:
             if isinstance(raw_parent_id, str) and raw_parent_id.strip():
                 current_id = raw_parent_id.strip()
                 continue
-            raw_parent_name = current.get("parent")
-            parent_by_name = self._find_entity_mutable(raw_parent_name) if isinstance(raw_parent_name, str) else None
-            current_id = str(parent_by_name.get("id")) if parent_by_name is not None else None
+            current_id = None
+        if entity_data.get("parent_id") == normalized_parent_id:
+            return False
         entity_data["parent_id"] = normalized_parent_id
         entity_data["parent"] = parent.get("name") if parent is not None else None
         self._bump_revision()
@@ -790,6 +830,8 @@ class Scene:
             return False
         components = entity_data.setdefault("components", {})
         if component_name not in components:
+            return False
+        if components[component_name] == component_data:
             return False
         if component_name == "SceneEntryPoint":
             self._deindex_scene_entry(entity_data)

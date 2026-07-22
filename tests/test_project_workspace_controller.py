@@ -131,6 +131,9 @@ class _FakeSceneManager:
         self.active_scene_key = ""
         self.current_scene = None
 
+    def prepare_workspace_switch(self) -> bool:
+        return True
+
     def create_new_scene(self, name: str):
         self.current_scene = SimpleNamespace(source_path="")
         return {"created": name}
@@ -360,7 +363,7 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.assertTrue(self.scene_manager.clear_all_dirty_called)
         open_project.assert_called_once_with(target_project)
 
-    def test_capture_active_scene_view_state_syncs_shared_selection(self) -> None:
+    def test_capture_active_scene_view_state_does_not_promote_world_selection(self) -> None:
         self.scene_manager.active_scene_key = "scene-a"
         self.scene_manager.edit_world.selected_entity_name = "Hero"
         self.layout.editor_camera.target = rl.Vector2(12.0, 18.0)
@@ -368,8 +371,8 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
 
         self.controller.capture_active_scene_view_state()
 
-        self.assertEqual(self.selection_state.entity_name, "Hero")
-        self.assertEqual(self.scene_manager.scene_view_states["scene-a"]["selected_entity"], "Hero")
+        self.assertIsNone(self.selection_state.entity_name)
+        self.assertIsNone(self.scene_manager.scene_view_states["scene-a"]["selected_entity"])
 
     def test_apply_active_scene_view_state_updates_shared_selection(self) -> None:
         self.scene_manager.active_scene_key = "scene-a"

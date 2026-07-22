@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from engine.scenes.projection_integrity import (
     AuthoringProjectionFingerprintService,
     ProjectionIntegrityAction,
     ProjectionIntegrityGuard,
+    ProjectionIntegrityCode,
     ProjectionIntegrityReport,
 )
+from engine.scenes.preview_leases import PreviewCancelReason
+from engine.scenes.result import Err
 from engine.scenes.scene_projection import SceneProjectionService
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
+    from engine.editor.editor_preview_coordinator import EditorPreviewCoordinator
 
 LEGACY_AUTHORING_SYNC_REASON = "legacy_authoring"
 TRANSIENT_PREVIEW_SYNC_REASON = "transient_preview"
@@ -41,10 +45,21 @@ class SceneEditSyncCoordinator:
             AuthoringProjectionFingerprintService(projection.create_world)
         )
         self._last_integrity_report: ProjectionIntegrityReport | None = None
+        self._preview_coordinator: "EditorPreviewCoordinator | None" = None
+        self._legacy_lease_checker: Callable[[SceneWorkspaceEntry], bool] | None = None
 
     @property
     def last_integrity_report(self) -> ProjectionIntegrityReport | None:
         return self._last_integrity_report
+
+    def set_preview_coordinator(self, coordinator: "EditorPreviewCoordinator | None") -> None:
+        self._preview_coordinator = coordinator
+
+    def set_legacy_lease_checker(
+        self,
+        checker: Callable[[SceneWorkspaceEntry], bool] | None,
+    ) -> None:
+        self._legacy_lease_checker = checker
 
     def inspect_integrity(
         self,
@@ -102,7 +117,7 @@ class SceneEditSyncCoordinator:
             return False
         if not self.has_pending_legacy(entry):
             return False
-        return self._sync_entry_from_edit_world(entry)
+        return self.commit_legacy_entry(entry)
 
     def mark_edit_world_dirty(self, reason: str = LEGACY_AUTHORING_SYNC_REASON) -> bool:
         entry = self._workspace.get_active_entry()
@@ -126,7 +141,7 @@ class SceneEditSyncCoordinator:
     ) -> bool:
         if not self.has_pending_legacy(entry) or entry.key != self._workspace.active_scene_key:
             return True
-        return self._sync_or_reject(entry, failure_context=failure_context)
+        return False
 
     def prepare_for_save(
         self,
@@ -135,20 +150,80 @@ class SceneEditSyncCoordinator:
         failure_context: str = "scene_save",
         action: ProjectionIntegrityAction = ProjectionIntegrityAction.SAVE,
     ) -> bool:
-        if (
-            self.has_pending_legacy(entry)
-            and entry.key != self._workspace.active_scene_key
-        ):
-            return False
         if entry.edit_world is None:
             return False
-        if self.has_pending_transient(entry):
-            self._workspace.rebuild_edit_world(entry)
-            self.clear_pending(entry)
-        if self.has_pending_legacy(entry):
-            if not self.flush_pending(entry, failure_context=failure_context):
+
+        if self._preview_coordinator is not None:
+            cancelled = self._preview_coordinator.cancel_all(
+                entry.open_document_id,
+                self._preview_reason(action),
+            )
+            if isinstance(cancelled, Err):
+                self._last_integrity_report = ProjectionIntegrityReport(
+                    action=action,
+                    allowed=False,
+                    code=ProjectionIntegrityCode.PREVIEW_CANCEL_FAILED,
+                    message=cancelled.error.user_message,
+                    scene_revision=entry.scene.revision,
+                    observed_scene_revision=entry.scene.revision,
+                )
                 return False
+            if self._preview_coordinator.has_writing_leases(entry.open_document_id):
+                self._last_integrity_report = ProjectionIntegrityReport(
+                    action=action,
+                    allowed=False,
+                    code=ProjectionIntegrityCode.ACTIVE_PREVIEW,
+                    message="Active preview writing leases must be closed before this action.",
+                    scene_revision=entry.scene.revision,
+                    observed_scene_revision=entry.scene.revision,
+                )
+                return False
+
+        if self._legacy_lease_checker is not None and self._legacy_lease_checker(entry):
+            self._last_integrity_report = ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.LEGACY_LEASE_OPEN,
+                message="An explicit legacy authoring lease is still open.",
+                scene_revision=entry.scene.revision,
+                observed_scene_revision=entry.scene.revision,
+            )
+            return False
+        if self.has_pending_legacy(entry):
+            self._last_integrity_report = ProjectionIntegrityReport(
+                action=action,
+                allowed=False,
+                code=ProjectionIntegrityCode.LEGACY_PENDING,
+                message="Pending EditWorld authoring requires an explicit legacy adapter commit.",
+                scene_revision=entry.scene.revision,
+                observed_scene_revision=entry.scene.revision,
+            )
+            return False
         return self.inspect_integrity(entry, action=action).allowed
+
+    @staticmethod
+    def _preview_reason(action: ProjectionIntegrityAction) -> PreviewCancelReason:
+        return {
+            ProjectionIntegrityAction.SAVE: PreviewCancelReason.SAVE,
+            ProjectionIntegrityAction.AUTOSAVE: PreviewCancelReason.AUTOSAVE,
+            ProjectionIntegrityAction.PLAY: PreviewCancelReason.PLAY,
+            ProjectionIntegrityAction.RELOAD: PreviewCancelReason.RELOAD,
+            ProjectionIntegrityAction.EXPORT: PreviewCancelReason.EXPORT,
+            ProjectionIntegrityAction.LIFECYCLE: PreviewCancelReason.SCENE_SWITCH,
+        }.get(action, PreviewCancelReason.INTERRUPTED)
+
+    def commit_legacy_entry(self, entry: SceneWorkspaceEntry) -> bool:
+        """Import World -> Scene only for LegacyWorldAuthoringAdapter.commit."""
+        if entry.is_playing or entry.edit_world is None or not self.has_pending_legacy(entry):
+            return False
+        try:
+            return self._sync_entry_from_edit_world(entry)
+        except ValueError as exc:
+            return self._reject_invalid_pending_edit_world(
+                entry,
+                failure_context="legacy_authoring_commit",
+                error=exc,
+            )
 
     def _sync_or_reject(
         self,
@@ -168,10 +243,6 @@ class SceneEditSyncCoordinator:
     def _sync_entry_from_edit_world(self, entry: SceneWorkspaceEntry) -> bool:
         if entry.is_playing or entry.edit_world is None:
             return False
-        self._workspace.select_entity(
-            entry,
-            entity_name=entry.edit_world.selected_entity_name,
-        )
         world_snapshot = entry.edit_world.serialize()
         self._inject_serialized_entity_ids(entry.edit_world, world_snapshot)
         payload = self._projection.build_canonical_payload(

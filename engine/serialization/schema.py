@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from engine.assets.asset_reference import build_asset_reference, normalize_asset_path, normalize_asset_reference
+from engine.scenes.refs import ResolvedSceneReference, SceneAssetRef
 
 CURRENT_SCENE_SCHEMA_VERSION = 3
 CURRENT_PREFAB_SCHEMA_VERSION = 2
@@ -358,6 +359,22 @@ def _canonicalize_tilemap(payload: dict[str, Any]) -> None:
     payload.setdefault("default_layer_name", "Layer")
 
 
+def _canonicalize_scene_asset_ref(raw: Any, *, entity_path: str) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"Cannot migrate {entity_path}: expected an object")
+    guid = raw.get("guid")
+    path_hint = raw.get("path_hint", "")
+    if not isinstance(guid, str) or not guid.strip():
+        raise ValueError(f"Cannot migrate {entity_path}: unresolved scene GUID")
+    if not isinstance(path_hint, str):
+        raise ValueError(f"Cannot migrate {entity_path}.path_hint: expected a string")
+    try:
+        SceneAssetRef(guid.strip(), path_hint)
+    except ValueError as exc:
+        raise ValueError(f"Cannot migrate {entity_path}: invalid scene GUID") from exc
+    return {"guid": guid.strip(), "path_hint": normalize_asset_path(path_hint)}
+
+
 def _canonicalize_component_payload(component_name: str, payload: dict[str, Any], *, entity_path: str) -> None:
     if component_name in ASSET_REFERENCE_FIELD_PAIRS:
         ref_key, path_key = ASSET_REFERENCE_FIELD_PAIRS[component_name]
@@ -384,15 +401,23 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
         payload["entry_id"] = "" if entry_id is None else entry_id.strip() if isinstance(entry_id, str) else entry_id
         payload["label"] = "" if label is None else label.strip() if isinstance(label, str) else label
     elif component_name == "SceneTransitionAction":
+        target_scene = payload.get("target_scene")
         target_scene_path = payload.get("target_scene_path")
         target_entry_id = payload.get("target_entry_id")
-        payload["target_scene_path"] = (
-            ""
-            if target_scene_path is None
-            else target_scene_path.strip()
-            if isinstance(target_scene_path, str)
-            else target_scene_path
-        )
+        if target_scene is not None:
+            payload["target_scene"] = _canonicalize_scene_asset_ref(
+                target_scene,
+                entity_path=f"{entity_path}.components.SceneTransitionAction.target_scene",
+            )
+            payload.pop("target_scene_path", None)
+        else:
+            payload["target_scene_path"] = (
+                ""
+                if target_scene_path is None
+                else target_scene_path.strip()
+                if isinstance(target_scene_path, str)
+                else target_scene_path
+            )
         payload["target_entry_id"] = (
             ""
             if target_entry_id is None
@@ -409,6 +434,7 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
     elif component_name == "SceneTransitionOnPlayerDeath":
         payload.setdefault("enabled", True)
     elif component_name == "SceneLink":
+        target_scene = payload.get("target_scene")
         target_path = payload.get("target_path")
         target_entity_name = payload.get("target_entity_name")
         target_entity_id = payload.get("target_entity_id")
@@ -416,7 +442,14 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
         preview_label = payload.get("preview_label")
         link_mode = payload.get("link_mode")
         target_entry_id = payload.get("target_entry_id")
-        payload["target_path"] = "" if target_path is None else target_path.strip() if isinstance(target_path, str) else target_path
+        if target_scene is not None:
+            payload["target_scene"] = _canonicalize_scene_asset_ref(
+                target_scene,
+                entity_path=f"{entity_path}.components.SceneLink.target_scene",
+            )
+            payload.pop("target_path", None)
+        else:
+            payload["target_path"] = "" if target_path is None else target_path.strip() if isinstance(target_path, str) else target_path
         payload["target_entity_name"] = (
             "" if target_entity_name is None else target_entity_name.strip() if isinstance(target_entity_name, str) else target_entity_name
         )
@@ -439,6 +472,10 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
             if isinstance(target_entry_id, str)
             else target_entry_id
         )
+        if target_scene is not None and payload.get("target_entity_name") and not payload.get("target_entity_id"):
+            raise ValueError(
+                f"Cannot migrate {entity_path}.components.SceneLink: unresolved target entity ID"
+            )
 
 
 def _canonicalize_entity_payload(entity: dict[str, Any], *, entity_path: str) -> None:
@@ -737,6 +774,7 @@ def build_canonical_scene_payload(
     world_snapshot: dict[str, Any],
     rules_data: list[Any],
     feature_metadata: dict[str, Any] | None = None,
+    scene_reference_resolver: Callable[[str], ResolvedSceneReference | None] | None = None,
 ) -> dict[str, Any]:
     payload = {
         "schema_version": CURRENT_SCENE_SCHEMA_VERSION,
@@ -749,7 +787,102 @@ def build_canonical_scene_payload(
             else world_snapshot.get("feature_metadata", {})
         ),
     }
-    return migrate_scene_data(payload)
+    canonical = migrate_scene_data(payload)
+    if scene_reference_resolver is not None:
+        canonical = canonicalize_scene_cross_references(canonical, scene_reference_resolver)
+    return canonical
+
+
+def canonicalize_scene_cross_references(
+    data: dict[str, Any],
+    resolver: Callable[[str], ResolvedSceneReference | None],
+) -> dict[str, Any]:
+    """Convert legacy path-only cross-scene references through an explicit resolver."""
+    canonical = _canonicalize_scene_v3(data)
+    feature_metadata = canonical.get("feature_metadata", {})
+    scene_flow = feature_metadata.get("scene_flow") if isinstance(feature_metadata, dict) else None
+    if isinstance(scene_flow, dict):
+        canonical_flow: dict[str, dict[str, str]] = {}
+        for flow_key, raw_target in scene_flow.items():
+            key = str(flow_key or "").strip()
+            if not key:
+                continue
+            if isinstance(raw_target, dict):
+                target_scene = raw_target.get("target_scene", raw_target)
+                canonical_flow[key] = _canonicalize_scene_asset_ref(
+                    target_scene,
+                    entity_path=f"$.feature_metadata.scene_flow.{key}",
+                )
+                continue
+            target_path = str(raw_target or "").strip()
+            if not target_path:
+                raise ValueError(
+                    f"Cannot canonicalize $.feature_metadata.scene_flow.{key}: unresolved target path"
+                )
+            resolved = resolver(target_path)
+            if resolved is None:
+                raise ValueError(
+                    f"Cannot canonicalize $.feature_metadata.scene_flow.{key}: unresolved scene '{target_path}'"
+                )
+            canonical_flow[key] = {
+                "guid": resolved.scene.guid,
+                "path_hint": resolved.scene.canonical_path_hint or target_path,
+            }
+        feature_metadata["scene_flow"] = canonical_flow
+    entities = canonical.get("entities", [])
+    if not isinstance(entities, list):
+        return canonical
+    for index, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            continue
+        components = entity.get("components", {})
+        if not isinstance(components, dict):
+            continue
+        for component_name in ("SceneLink", "SceneTransitionAction"):
+            payload = components.get(component_name)
+            if not isinstance(payload, dict) or "target_scene" in payload:
+                continue
+            path_key = "target_path" if component_name == "SceneLink" else "target_scene_path"
+            target_path = str(payload.get(path_key, "") or "").strip()
+            if not target_path:
+                raise ValueError(
+                    f"Cannot canonicalize $.entities[{index}].components.{component_name}: unresolved target path"
+                )
+            resolved = resolver(target_path)
+            if resolved is None:
+                raise ValueError(
+                    f"Cannot canonicalize $.entities[{index}].components.{component_name}: unresolved scene '{target_path}'"
+                )
+            target_scene = {
+                "guid": resolved.scene.guid,
+                "path_hint": resolved.scene.canonical_path_hint or target_path,
+            }
+            payload["target_scene"] = target_scene
+            payload.pop(path_key, None)
+            if component_name == "SceneLink":
+                target_entity_id = str(payload.get("target_entity_id", "") or "").strip()
+                if not target_entity_id and resolved.target_entity_id:
+                    payload["target_entity_id"] = resolved.target_entity_id
+                if payload.get("target_entity_name") and not payload.get("target_entity_id"):
+                    raise ValueError(
+                        f"Cannot canonicalize $.entities[{index}].components.SceneLink: unresolved target entity ID"
+                    )
+    return _canonicalize_scene_v3(canonical)
+
+
+def validate_no_session_only_references(data: Any, *, path: str = "$") -> list[str]:
+    """Reject session/workspace identities from persisted scene payloads."""
+    errors: list[str] = []
+    if isinstance(data, dict):
+        for key, value in data.items():
+            key_text = str(key)
+            if key_text in {"open_document_id", "workspace_key", "scene_key", "document_id"}:
+                errors.append(f"{path}.{key_text}: session-only identity cannot be persisted")
+            errors.extend(validate_no_session_only_references(value, path=f"{path}.{key_text}"))
+    elif isinstance(data, list):
+        for index, value in enumerate(data):
+            errors.extend(validate_no_session_only_references(value, path=f"{path}[{index}]"))
+    return errors
 
 
 def _is_json_serializable(value: Any) -> bool:
@@ -1393,7 +1526,15 @@ def _validate_scene_link(data: dict[str, Any], *, path: str) -> list[str]:
     errors: list[str] = []
     if "enabled" in data:
         _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
-    if "target_path" in data:
+    if "target_scene" in data:
+        target_scene = data["target_scene"]
+        if not isinstance(target_scene, dict):
+            errors.append(f"{path}.target_scene: expected object")
+        else:
+            _expect_string(target_scene.get("guid"), path=f"{path}.target_scene.guid", errors=errors, non_empty=True)
+            if "path_hint" in target_scene:
+                _expect_string(target_scene["path_hint"], path=f"{path}.target_scene.path_hint", errors=errors)
+    elif "target_path" in data:
         _expect_string(data["target_path"], path=f"{path}.target_path", errors=errors)
     if "target_entity_name" in data:
         _expect_string(data["target_entity_name"], path=f"{path}.target_entity_name", errors=errors)
@@ -1416,7 +1557,15 @@ def _validate_scene_transition_action(data: dict[str, Any], *, path: str) -> lis
     errors: list[str] = []
     if "enabled" in data:
         _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
-    if "target_scene_path" in data:
+    if "target_scene" in data:
+        target_scene = data["target_scene"]
+        if not isinstance(target_scene, dict):
+            errors.append(f"{path}.target_scene: expected object")
+        else:
+            _expect_string(target_scene.get("guid"), path=f"{path}.target_scene.guid", errors=errors, non_empty=True)
+            if "path_hint" in target_scene:
+                _expect_string(target_scene["path_hint"], path=f"{path}.target_scene.path_hint", errors=errors)
+    elif "target_scene_path" in data:
         _expect_string(data["target_scene_path"], path=f"{path}.target_scene_path", errors=errors, non_empty=True)
     else:
         errors.append(f"{path}.target_scene_path: expected non-empty string")
@@ -1838,8 +1987,21 @@ def _validate_scene_flow_metadata(value: Any, *, path: str) -> list[str]:
         if not isinstance(key, str) or not key.strip():
             errors.append(f"{path}: expected non-empty string keys")
             continue
-        if not isinstance(item, str) or not item.strip():
-            errors.append(f"{path}.{key}: expected non-empty string")
+        if isinstance(item, str):
+            if not item.strip():
+                errors.append(f"{path}.{key}: expected non-empty string")
+            continue
+        if isinstance(item, dict):
+            errors.extend(_validate_scene_asset_reference(item, path=f"{path}.{key}"))
+            continue
+        errors.append(f"{path}.{key}: expected string or scene reference object")
+    return errors
+
+
+def _validate_scene_asset_reference(value: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    _expect_string(value.get("guid"), path=f"{path}.guid", errors=errors, non_empty=True)
+    _expect_string(value.get("path_hint", ""), path=f"{path}.path_hint", errors=errors)
     return errors
 
 

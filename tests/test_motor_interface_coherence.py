@@ -599,7 +599,14 @@ class MotorCLIContractExecutableTests(unittest.TestCase):
 
         # Setup
         self._run_motor("scene", "create", "ComponentTest", "--json")
-        self._run_motor("entity", "create", "Player_TestComp", "--json")
+        self._run_motor(
+            "entity",
+            "create",
+            "Player_TestComp",
+            "--components",
+            '{"Sprite":{"enabled":true}}',
+            "--json",
+        )
 
         # Add component
         result = self._run_motor(

@@ -40,6 +40,11 @@ class ProjectionIntegrityCode(str, Enum):
     EVIDENCE_REVISION_MISMATCH = "evidence_revision_mismatch"
     UNREGISTERED_EDIT_WORLD_MUTATION = "unregistered_edit_world_mutation"
     FINGERPRINT_ERROR = "fingerprint_error"
+    LEGACY_LEASE_OPEN = "LEGACY_LEASE_OPEN"
+    LEGACY_PENDING = "LEGACY_PENDING"
+    ACTIVE_PREVIEW = "ACTIVE_PREVIEW"
+    PREVIEW_CANCEL_FAILED = "PREVIEW_CANCEL_FAILED"
+    PROJECTION_DIVERGED = "PROJECTION_DIVERGED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,8 +234,8 @@ class ProjectionIntegrityGuard:
                 allowed=False,
                 code=ProjectionIntegrityCode.MISSING_EVIDENCE,
                 message="Projection integrity evidence is required before a protected action.",
-                scene_revision=entry.scene_revision,
-                observed_scene_revision=entry.scene_revision,
+                scene_revision=entry.scene.revision,
+                observed_scene_revision=entry.scene.revision,
                 observed_world_version=world.version if world is not None else None,
             )
 
@@ -242,12 +247,12 @@ class ProjectionIntegrityGuard:
                 message="Projection integrity evidence uses an unsupported schema version.",
                 expected_fingerprint=evidence.canonical_fingerprint,
                 scene_revision=evidence.scene_revision,
-                observed_scene_revision=entry.scene_revision,
+                observed_scene_revision=entry.scene.revision,
                 expected_world_version=evidence.projected_world_version,
                 observed_world_version=world.version,
             )
 
-        if evidence.scene_revision != entry.scene_revision:
+        if evidence.scene_revision != entry.scene.revision:
             return ProjectionIntegrityReport(
                 action=action,
                 allowed=False,
@@ -255,7 +260,7 @@ class ProjectionIntegrityGuard:
                 message="Projection integrity evidence does not match the current Scene revision.",
                 expected_fingerprint=evidence.canonical_fingerprint,
                 scene_revision=evidence.scene_revision,
-                observed_scene_revision=entry.scene_revision,
+                observed_scene_revision=entry.scene.revision,
                 expected_world_version=evidence.projected_world_version,
                 observed_world_version=world.version,
             )
@@ -273,7 +278,7 @@ class ProjectionIntegrityGuard:
                 message=f"Projection fingerprint could not be verified: {exc}",
                 expected_fingerprint=evidence.canonical_fingerprint,
                 scene_revision=evidence.scene_revision,
-                observed_scene_revision=entry.scene_revision,
+                observed_scene_revision=entry.scene.revision,
                 expected_world_version=evidence.projected_world_version,
                 observed_world_version=world.version,
             )
@@ -287,7 +292,7 @@ class ProjectionIntegrityGuard:
                 expected_fingerprint=evidence.canonical_fingerprint,
                 observed_fingerprint=observed_fingerprint,
                 scene_revision=evidence.scene_revision,
-                observed_scene_revision=entry.scene_revision,
+                observed_scene_revision=entry.scene.revision,
                 expected_world_version=evidence.projected_world_version,
                 observed_world_version=world.version,
             )
@@ -300,7 +305,7 @@ class ProjectionIntegrityGuard:
             expected_fingerprint=evidence.canonical_fingerprint,
             observed_fingerprint=observed_fingerprint,
             scene_revision=evidence.scene_revision,
-            observed_scene_revision=entry.scene_revision,
+            observed_scene_revision=entry.scene.revision,
             expected_world_version=evidence.projected_world_version,
             observed_world_version=world.version,
         )

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from engine.ecs.world import World
     from engine.scenes.scene import Scene
     from engine.scenes.scene_manager import SceneManager
+    from engine.scenes.refs import OpenDocumentId
     from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 
 SceneSnapshotRestore = Callable[[str, Dict[str, Any]], bool]
@@ -247,6 +248,11 @@ class SceneWorkspacePort(Protocol):
 
     def resolve_entry(self, key_or_path: Optional[str]) -> Optional["SceneWorkspaceEntry"]: ...
 
+    def resolve_open_document(
+        self,
+        document_id: "OpenDocumentId",
+    ) -> Optional["SceneWorkspaceEntry"]: ...
+
     def ensure_scene_open(self, scene_ref: str, activate: bool = False) -> Optional["SceneWorkspaceEntry"]: ...
 
     def load_scene(
@@ -422,6 +428,12 @@ class SceneManagerWorkspaceAdapter(_SceneManagerAdapter):
 
     def resolve_entry(self, key_or_path: Optional[str]) -> Optional["SceneWorkspaceEntry"]:
         return self._manager.resolve_entry(key_or_path)
+
+    def resolve_open_document(
+        self,
+        document_id: "OpenDocumentId",
+    ) -> Optional["SceneWorkspaceEntry"]:
+        return self._manager.resolve_open_document(document_id)
 
     def ensure_scene_open(self, scene_ref: str, activate: bool = False) -> Optional["SceneWorkspaceEntry"]:
         return self._manager.ensure_scene_open(scene_ref, activate=activate)

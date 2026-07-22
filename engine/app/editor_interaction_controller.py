@@ -11,6 +11,7 @@ from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.transform_preview import TransformPreviewState
+from engine.scenes.result import Err
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -34,12 +35,14 @@ class EditorInteractionController:
         get_history_manager: Callable[[], Any],
         get_current_scene_viewport_size: Callable[[], tuple[float, float]],
         get_current_viewport_size: Callable[[], tuple[float, float]],
+        get_editor_session: Optional[Callable[[], Any]] = None,
         get_animator_collider_preview: Optional[Callable[[Any], Any]] = None,
         get_transform_preview_commands: Optional[Callable[[], Any]] = None,
     ) -> None:
         self._get_state = get_state
         self._get_editor_layout = get_editor_layout
         self._get_editor_selection = get_editor_selection
+        self._get_editor_session = get_editor_session
         self._get_scene_manager = get_scene_manager
         self._get_selection_system = get_selection_system
         self._get_gizmo_system = get_gizmo_system
@@ -52,6 +55,11 @@ class EditorInteractionController:
         self._get_animator_collider_preview = get_animator_collider_preview
         self._get_transform_preview_commands = get_transform_preview_commands
         self._camera_drag_state: dict[str, Any] | None = None
+        self._last_preview_error: object | None = None
+
+    @property
+    def last_preview_error(self) -> object | None:
+        return self._last_preview_error
 
     def _resolve_collider_preview_snapshot(self, world: "World") -> Any:
         if self._get_animator_collider_preview is not None:
@@ -65,16 +73,25 @@ class EditorInteractionController:
 
     def _apply_selection(self, active_world: Optional["World"], entity_name: Optional[str]) -> Optional[str]:
         normalized = EditorSelectionState.normalize(entity_name)
-        selection_state = self._get_editor_selection()
-        if selection_state is not None:
-            normalized = selection_state.set(normalized)
         scene_manager = self._get_scene_manager()
-        if scene_manager is not None:
-            scene_manager.set_selected_entity(normalized)
-        elif active_world is not None:
-            active_world.selected_entity_name = normalized
-        if selection_state is not None and active_world is not None:
-            selection_state.apply_to_world(active_world)
+        if scene_manager is None:
+            return None
+        session = self._get_editor_session() if self._get_editor_session is not None else None
+        if session is not None:
+            active_ref = getattr(scene_manager, "active_scene_ref", None)
+            if active_ref is not None and session.snapshot.active_scene != active_ref:
+                session.activate_scene(active_ref)
+            if normalized is None:
+                session.clear_selection()
+            else:
+                entity_ref = scene_manager.entity_ref_by_name(normalized)
+                if entity_ref is None or isinstance(session.select(entity_ref), Err):
+                    return None
+        else:
+            selection_state = self._get_editor_selection()
+            if selection_state is not None:
+                normalized = selection_state.set(normalized)
+        scene_manager.set_selected_entity(normalized)
         return normalized
 
     def commit_gizmo_drag(self, drag: Any) -> None:
@@ -90,8 +107,12 @@ class EditorInteractionController:
         if (
             getattr(drag, "component_name", "") == "Transform"
             and preview_handle is not None
-            and preview_commands is not None
         ):
+            if preview_commands is None:
+                self._last_preview_error = RuntimeError(
+                    "Typed Transform preview capability is unavailable."
+                )
+                return
             state = TransformPreviewState(
                 x=drag.after_state.get("x", 0.0),
                 y=drag.after_state.get("y", 0.0),
@@ -99,7 +120,10 @@ class EditorInteractionController:
                 scale_x=drag.after_state.get("scale_x", 1.0),
                 scale_y=drag.after_state.get("scale_y", 1.0),
             )
-            preview_commands.commit(preview_handle, state)
+            result = preview_commands.commit(preview_handle, state)
+            if isinstance(result, Err):
+                self._last_preview_error = result.error
+                return result
             return
         if getattr(drag, "component_name", "") == "Camera2D":
             scene_manager.apply_edit_to_world(
@@ -279,6 +303,7 @@ class EditorInteractionController:
         if not tilemap_tool_active and not collider_dragging and gizmo_system is not None and active_world is not None:
             if gizmo_system.is_dragging or mouse_in_scene:
                 was_dragging = gizmo_system.is_dragging
+                was_transform_drag = getattr(gizmo_system, "drag_component_name", "") == "Transform"
                 active_tool = layout.active_tool if layout is not None else EditorTool.MOVE
                 transform_space = layout.transform_space if layout is not None else TransformSpace.WORLD
                 pivot_mode = layout.pivot_mode if layout is not None else PivotMode.PIVOT
@@ -304,9 +329,22 @@ class EditorInteractionController:
                     camera_profile_id=getattr(layout, "game_view_device_profile", None) if layout is not None else None,
                     camera_viewport_size=self._get_current_viewport_size(),
                 )
-                if (was_dragging or gizmo_system.is_dragging) and scene_manager is not None:
-                    scene_manager.mark_edit_world_dirty(reason="transient_preview")
+                preview_commands = (
+                    self._get_transform_preview_commands()
+                    if self._get_transform_preview_commands is not None
+                    else None
+                )
                 drag = gizmo_system.consume_completed_drag()
+                typed_transform_drag = bool(
+                    (was_transform_drag and preview_commands is not None)
+                    or (drag is not None and getattr(drag, "preview_handle", None) is not None)
+                )
+                if (
+                    (was_dragging or gizmo_system.is_dragging)
+                    and scene_manager is not None
+                    and not typed_transform_drag
+                ):
+                    scene_manager.mark_edit_world_dirty(reason="transient_preview")
                 if drag is not None:
                     self.commit_gizmo_drag(drag)
 
@@ -604,14 +642,19 @@ class EditorInteractionController:
         return project_service.to_scene_locator(file_path, scene_source_path=scene_source_path)
 
     def _get_selected_entity_name(self, active_world: Optional["World"]) -> Optional[str]:
+        session = self._get_editor_session() if self._get_editor_session is not None else None
+        if session is not None:
+            selection = session.snapshot.selection
+            if selection is None:
+                return None
+            scene_manager = self._get_scene_manager()
+            if scene_manager is None:
+                return None
+            return scene_manager.entity_name_for_ref(selection)
         selection_state = self._get_editor_selection()
         selected = getattr(selection_state, "entity_name", None)
         if selected:
             return str(selected)
-        if active_world is not None:
-            selected = getattr(active_world, "selected_entity_name", None)
-            if selected:
-                return str(selected)
         return None
 
     def _inspector_asset_edit_target(self, file_path: str) -> Optional[tuple[str, str, str]]:

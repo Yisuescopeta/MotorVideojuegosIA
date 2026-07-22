@@ -1,4 +1,4 @@
-"""Typed transform preview boundary for the editor tools migration."""
+"""Fail-closed, conflict-aware Transform preview commands."""
 
 from __future__ import annotations
 
@@ -7,12 +7,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from engine.scenes.preview_leases import PreviewCancelReason, PreviewLeaseCode, PreviewLeaseRegistry
-from engine.scenes.refs import EntityRef
+from engine.components.transform import Transform
+from engine.editor.editor_preview_coordinator import EditorPreviewCoordinator
+from engine.scenes.preview_leases import PreviewCancelReason, PreviewLeaseCode
+from engine.scenes.refs import EntityRef, OpenDocumentId
 from engine.scenes.result import CommandError, CommandErrorCode, Err, MutationMetadata, Ok, Result
 
 if TYPE_CHECKING:
-    from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
+    from engine.ecs.world import World
+    from engine.scenes.contracts import SceneWorkspacePort
+    from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,46 +45,36 @@ class TransformPreviewHandle:
 class TransformPreviewCommands(Protocol):
     def begin(self, entity: EntityRef) -> Result[TransformPreviewHandle]: ...
 
-    def update(
-        self,
-        handle: TransformPreviewHandle,
-        state: TransformPreviewState,
-    ) -> Result[None]: ...
+    def update(self, handle: TransformPreviewHandle, state: TransformPreviewState) -> Result[None]: ...
 
-    def commit(
-        self,
-        handle: TransformPreviewHandle,
-        state: TransformPreviewState,
-    ) -> Result[None]: ...
+    def commit(self, handle: TransformPreviewHandle, state: TransformPreviewState) -> Result[None]: ...
 
-    def cancel(
-        self,
-        handle: TransformPreviewHandle,
-        reason: PreviewCancelReason,
-    ) -> Result[None]: ...
+    def cancel(self, handle: TransformPreviewHandle, reason: PreviewCancelReason) -> Result[None]: ...
 
 
-TransformCommit = Callable[[EntityRef, TransformPreviewState], bool]
+TransformCommit = Callable[[EntityRef, TransformPreviewState], Result[None] | bool]
 
 
 @dataclass
 class _TransformPreviewSession:
     handle: TransformPreviewHandle
+    document_id: OpenDocumentId
     scene_key: str
+    base_state: TransformPreviewState
     state: TransformPreviewState
 
 
 class TransformPreviewCoordinator:
-    """Coordinates typed transform state without mutating Scene during preview."""
+    """Tool-specific Transform boundary using application-owned preview lifecycle."""
 
     def __init__(
         self,
-        workspace: "SceneWorkspace",
-        leases: PreviewLeaseRegistry,
+        workspace: "SceneWorkspacePort",
+        previews: EditorPreviewCoordinator,
         commit_transform: TransformCommit,
     ) -> None:
         self._workspace = workspace
-        self._leases = leases
+        self._previews = previews
         self._commit_transform = commit_transform
         self._sessions: dict[str, _TransformPreviewSession] = {}
 
@@ -93,91 +87,156 @@ class TransformPreviewCoordinator:
         state = self._read_state(entry, entity.entity_id)
         if state is None:
             return Err(self._error(CommandErrorCode.NOT_FOUND, "Entity has no Transform component."))
-        acquired = self._leases.acquire(
-            entry,
-            kind="transform",
-            label=f"transform:{entity.entity_id}",
-        )
+        acquired = self._previews.acquire(entry, kind="transform", label=f"transform:{entity.entity_id}")
         if not acquired.success or acquired.lease is None:
             return Err(self._lease_error(acquired.code, acquired.message))
         handle = TransformPreviewHandle(
             lease_id=acquired.lease.lease_id,
             target=entity,
-            base_scene_revision=entry.scene_revision,
+            base_scene_revision=entry.scene.revision,
         )
-        self._sessions[handle.lease_id] = _TransformPreviewSession(
+        session = _TransformPreviewSession(
             handle=handle,
+            document_id=entry.open_document_id,
             scene_key=entry.key,
+            base_state=state,
             state=state,
         )
+        self._sessions[handle.lease_id] = session
+        self._previews.bind(handle.lease_id, lambda reason: self._cancel_bound(session, reason))
         return Ok(handle)
 
-    def update(
-        self,
-        handle: TransformPreviewHandle,
-        state: TransformPreviewState,
-    ) -> Result[None]:
+    def update(self, handle: TransformPreviewHandle, state: TransformPreviewState) -> Result[None]:
         session = self._sessions.get(handle.lease_id)
         if session is None or session.handle != handle:
             return Err(self._error(CommandErrorCode.NOT_FOUND, "Transform preview was not found."))
-        entry = self._workspace.resolve_entry(session.scene_key)
-        if entry is None or entry.scene_revision != handle.base_scene_revision:
-            self._cancel_conflicted(session)
-            return Err(self._error(CommandErrorCode.CONFLICT, "Scene revision changed during preview."))
-        if self._read_state(entry, handle.target.entity_id) is None:
-            self._cancel_conflicted(session)
-            return Err(self._error(CommandErrorCode.NOT_FOUND, "Transform target disappeared."))
-        session.state = state
-        return Ok(None)
+        entry = self._workspace.resolve_open_document(session.document_id)
+        try:
+            if entry is None or entry.scene.revision != handle.base_scene_revision:
+                self._cancel_bound(session, PreviewCancelReason.CONFLICT)
+                return Err(self._error(CommandErrorCode.CONFLICT, "Scene revision changed during preview."))
+            if self._read_state(entry, handle.target.entity_id) is None:
+                self._cancel_bound(session, PreviewCancelReason.TARGET_MISSING)
+                return Err(self._error(CommandErrorCode.NOT_FOUND, "Transform target disappeared."))
+            if not self._apply_overlay(entry.edit_world, handle.target.entity_id, state):
+                self._cancel_bound(session, PreviewCancelReason.ERROR)
+                return Err(self._error(CommandErrorCode.NOT_FOUND, "Transform preview target disappeared."))
+            session.state = state
+            return Ok(None)
+        except Exception as exc:
+            self._cancel_bound(session, PreviewCancelReason.ERROR)
+            return Err(self._error(CommandErrorCode.INTERNAL_ERROR, f"Transform preview update failed: {exc}"))
 
-    def commit(
-        self,
-        handle: TransformPreviewHandle,
-        state: TransformPreviewState,
-    ) -> Result[None]:
+    def commit(self, handle: TransformPreviewHandle, state: TransformPreviewState) -> Result[None]:
         session = self._sessions.get(handle.lease_id)
         if session is None or session.handle != handle:
             return Err(self._error(CommandErrorCode.NOT_FOUND, "Transform preview was not found."))
-        entry = self._workspace.resolve_entry(session.scene_key)
-        if entry is None or entry.scene_revision != handle.base_scene_revision:
-            self._cancel_conflicted(session)
+        if state == session.base_state:
+            return self.cancel(handle, PreviewCancelReason.DRAG_NO_CHANGES)
+        entry = self._workspace.resolve_open_document(session.document_id)
+        if entry is None or entry.scene.revision != handle.base_scene_revision:
+            self._cancel_bound(session, PreviewCancelReason.CONFLICT)
             return Err(self._error(CommandErrorCode.CONFLICT, "Scene revision changed during preview."))
-        report = self._leases.commit(
-            handle.lease_id,
-            entry,
-            apply_preview=lambda: self._commit_transform(handle.target, state),
-        )
+
+        callback_result: Result[None] | bool = False
+        callback_exception: Exception | None = None
+
+        def apply_preview() -> Result[None] | bool:
+            nonlocal callback_result, callback_exception
+            try:
+                callback_result = self._commit_transform(handle.target, state)
+            except Exception as exc:
+                callback_exception = exc
+                raise
+            return callback_result
+
+        try:
+            report = self._previews.commit(
+                handle.lease_id,
+                entry,
+                apply_preview=apply_preview,
+            )
+        except Exception as exc:
+            self._cancel_bound(session, PreviewCancelReason.ERROR)
+            return Err(self._error(CommandErrorCode.INTERNAL_ERROR, f"Transform preview commit failed: {exc}"))
         if not report.success:
-            self._cancel_conflicted(session)
+            self._cancel_bound(session, PreviewCancelReason.ERROR)
+            if isinstance(callback_result, Err):
+                return callback_result
+            if callback_exception is not None:
+                return Err(
+                    self._error(
+                        CommandErrorCode.INTERNAL_ERROR,
+                        f"Transform preview commit failed: {callback_exception}",
+                    )
+                )
             return Err(self._lease_error(report.code, report.message))
+        self._previews.complete(handle.lease_id)
         self._sessions.pop(handle.lease_id, None)
         return Ok(
             None,
             metadata=MutationMetadata(
                 changed_entities=(handle.target,),
-                scene_revision=entry.scene_revision,
+                scene_revision=entry.scene.revision,
             ),
         )
 
-    def cancel(
-        self,
-        handle: TransformPreviewHandle,
-        reason: PreviewCancelReason,
-    ) -> Result[None]:
+    def cancel(self, handle: TransformPreviewHandle, reason: PreviewCancelReason) -> Result[None]:
         session = self._sessions.get(handle.lease_id)
         if session is None or session.handle != handle:
             return Err(self._error(CommandErrorCode.NOT_FOUND, "Transform preview was not found."))
-        report = self._leases.cancel(handle.lease_id)
-        if not report.success:
-            return Err(self._lease_error(report.code, report.message))
-        self._sessions.pop(handle.lease_id, None)
-        return Ok(None)
+        return self._previews.cancel(handle.lease_id, reason)
+
+    def _cancel_bound(self, session: _TransformPreviewSession, reason: PreviewCancelReason) -> Result[None]:
+        entry = self._workspace.resolve_open_document(session.document_id)
+        restore_error: Exception | None = None
+        try:
+            if entry is not None:
+                self._restore_overlay(entry, session.handle.target.entity_id, session.base_state)
+        except Exception as exc:
+            restore_error = exc
+        finally:
+            released = self._previews.release(session.handle.lease_id)
+            self._sessions.pop(session.handle.lease_id, None)
+        if isinstance(released, Err):
+            return released
+        if restore_error is not None:
+            return Err(
+                self._error(
+                    CommandErrorCode.PREVIEW_CANCEL_FAILED,
+                    f"Transform preview restoration failed: {restore_error}",
+                )
+            )
+        return released
+
+    @staticmethod
+    def _restore_overlay(
+        entry: "SceneWorkspaceEntry",
+        entity_id: str,
+        state: TransformPreviewState,
+    ) -> None:
+        if entry.edit_world is None or not TransformPreviewCoordinator._apply_overlay(entry.edit_world, entity_id, state):
+            raise RuntimeError("Transform preview overlay could not be restored")
+
+    @staticmethod
+    def _apply_overlay(world: "World | None", entity_id: str, state: TransformPreviewState) -> bool:
+        if world is None:
+            return False
+        entity = world.get_entity_by_serialized_id(entity_id)
+        if entity is None:
+            return False
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return False
+        transform.local_x = state.x
+        transform.local_y = state.y
+        transform.local_rotation = state.rotation
+        transform.local_scale_x = state.scale_x
+        transform.local_scale_y = state.scale_y
+        return True
 
     def _entry_for(self, entity: EntityRef) -> "SceneWorkspaceEntry | None":
-        for entry in self._workspace.entries.values():
-            if entry.open_document_id == entity.scene.document_id:
-                return entry
-        return None
+        return self._workspace.resolve_open_document(entity.scene.document_id)
 
     @staticmethod
     def _read_state(entry: "SceneWorkspaceEntry", entity_id: str) -> TransformPreviewState | None:
@@ -199,10 +258,6 @@ class TransformPreviewCoordinator:
         except (TypeError, ValueError):
             return None
 
-    def _cancel_conflicted(self, session: _TransformPreviewSession) -> None:
-        self._leases.cancel(session.handle.lease_id)
-        self._sessions.pop(session.handle.lease_id, None)
-
     @staticmethod
     def _error(code: CommandErrorCode, message: str) -> CommandError:
         return CommandError(code=code, user_message=message)
@@ -215,6 +270,7 @@ class TransformPreviewCoordinator:
             PreviewLeaseCode.INTEGRITY_BLOCKED: CommandErrorCode.PROJECTION_DIVERGED,
             PreviewLeaseCode.HISTORY_FAILED: CommandErrorCode.PERSISTENCE_FAILED,
             PreviewLeaseCode.NOT_FOUND: CommandErrorCode.NOT_FOUND,
+            PreviewLeaseCode.APPLY_FAILED: CommandErrorCode.PREVIEW_CANCEL_FAILED,
         }.get(code, CommandErrorCode.INTERNAL_ERROR)
         return cls._error(mapped, message)
 

@@ -77,7 +77,7 @@ class SerializableMutationCoordinator:
             selection=self._workspace.capture_selection(entry),
             dirty=entry.dirty,
             edit_sync_snapshot=self._edit_sync.capture_snapshot(entry),
-            scene_revision=entry.scene_revision,
+            scene_revision=entry.scene.revision,
             projection_integrity_evidence=entry.projection_integrity_evidence,
         )
 
@@ -99,6 +99,7 @@ class SerializableMutationCoordinator:
                 entry,
                 data,
                 selection=selection,
+                revision=entry.scene.revision + 1,
             )
         except ValueError:
             return False
@@ -178,6 +179,7 @@ class SerializableMutationCoordinator:
         data: dict[str, Any],
         *,
         selection: SceneSelectionSnapshot,
+        revision: int | None = None,
     ) -> None:
         source_path = entry.scene.source_path
         fallback_name = entry.scene.name
@@ -190,6 +192,7 @@ class SerializableMutationCoordinator:
         )
         self._workspace.sync_scene_links_from_feature_metadata(scene)
         scene.restore_empty_prefab_override_shapes(snapshot_data)
+        scene._restore_revision(entry.scene.revision if revision is None else revision)
         world = self._projection.create_world(scene)
         self._workspace.install_entry_state(entry, scene, world)
         self._workspace.restore_selection(entry, selection)

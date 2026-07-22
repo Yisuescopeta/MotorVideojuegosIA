@@ -126,7 +126,7 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.assertEqual(serialize_mock.call_count, 0)
         self.assertFalse(self.scene_manager.is_dirty)
 
-    def test_pending_world_changes_are_flushed_before_generic_scene_edit(self) -> None:
+    def test_pending_world_changes_block_generic_scene_edit(self) -> None:
         self.assertTrue(
             self.scene_manager.add_component_to_entity(
                 "Player",
@@ -155,13 +155,14 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.scene_manager.mark_edit_world_dirty()
 
         updated = self.scene_manager.apply_edit_to_world("Player", "Sprite", "height", 48)
-        self.assertTrue(updated)
+        self.assertFalse(updated)
 
         refreshed_world = self.scene_manager.get_edit_world()
         refreshed_player = refreshed_world.get_entity_by_name("Player")
         refreshed_sprite = refreshed_player.get_component(Sprite)
         self.assertEqual(refreshed_sprite.width, 96)
-        self.assertEqual(refreshed_sprite.height, 48)
+        self.assertEqual(refreshed_sprite.height, 32)
+        self.assertTrue(self.scene_manager.resolve_entry(None).edit_world_sync_pending)
 
     def test_apply_edit_to_world_routes_transform_to_canonical_authoring_path(self) -> None:
         edit_world = self.scene_manager.get_edit_world()
@@ -458,7 +459,7 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.assertEqual(refreshed_sprite.width, 32)
         self.assertEqual(refreshed_sprite.height, 48)
 
-    def test_save_scene_to_file_ignores_transient_preview_and_cancels_it(self) -> None:
+    def test_save_scene_to_file_blocks_unowned_transient_world_state(self) -> None:
         edit_world = self.scene_manager.get_edit_world()
         player = edit_world.get_entity_by_name("Player")
         transform = player.get_component(Transform)
@@ -467,16 +468,14 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             scene_path = Path(temp_dir) / "transient_preview_scene.json"
-            self.assertTrue(self.scene_manager.save_scene_to_file(scene_path.as_posix()))
-            persisted = json.loads(scene_path.read_text(encoding="utf-8"))
+            self.assertFalse(self.scene_manager.save_scene_to_file(scene_path.as_posix()))
+            self.assertFalse(scene_path.exists())
 
-        self.assertEqual(persisted["entities"][0]["components"]["Transform"]["x"], 10.0)
         refreshed_transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
-        self.assertEqual(refreshed_transform.x, 10.0)
-        self.assertFalse(self.scene_manager.resolve_entry(self.scene_manager.active_scene_key).edit_world_sync_pending)
-        self.assertFalse(self.scene_manager.is_dirty)
+        self.assertEqual(refreshed_transform.x, 144.0)
+        self.assertTrue(self.scene_manager.resolve_entry(self.scene_manager.active_scene_key).edit_world_sync_pending)
 
-    def test_save_scene_to_file_flushes_legacy_pending_world_changes(self) -> None:
+    def test_save_scene_to_file_blocks_legacy_pending_world_changes(self) -> None:
         edit_world = self.scene_manager.get_edit_world()
         player = edit_world.get_entity_by_name("Player")
         transform = player.get_component(Transform)
@@ -485,11 +484,11 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             scene_path = Path(temp_dir) / "legacy_pending_scene.json"
-            self.assertTrue(self.scene_manager.save_scene_to_file(scene_path.as_posix()))
-            persisted = json.loads(scene_path.read_text(encoding="utf-8"))
+            self.assertFalse(self.scene_manager.save_scene_to_file(scene_path.as_posix()))
+            self.assertFalse(scene_path.exists())
 
-        self.assertEqual(persisted["entities"][0]["components"]["Transform"]["x"], 77.0)
-        self.assertEqual(self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]["x"], 77.0)
+        self.assertEqual(self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]["x"], 10.0)
+        self.assertTrue(self.scene_manager.resolve_entry(None).edit_world_sync_pending)
 
     def test_small_scene_default_save_remains_pretty_printed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -598,7 +597,12 @@ class SceneManagerSyncTests(unittest.TestCase):
                 ],
                 "rules": [{"event": "tick", "do": [{"action": "log_message", "message": "keep"}]}],
                 "feature_metadata": {
-                    "scene_flow": {"next_scene": "levels/next.json"},
+                    "scene_flow": {
+                        "next_scene": {
+                            "guid": "22222222-2222-2222-2222-222222222222",
+                            "path_hint": "levels/next.json",
+                        }
+                    },
                     "render_2d": {"sorting_layers": ["Default", "Foreground"]},
                 },
             }
@@ -612,12 +616,20 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         changed = manager.sync_from_edit_world()
 
-        self.assertTrue(changed)
+        self.assertFalse(changed)
         payload = manager.current_scene.to_dict()
         self.assertEqual(payload["rules"], [{"event": "tick", "do": [{"action": "log_message", "message": "keep"}]}])
-        self.assertEqual(payload["feature_metadata"]["scene_flow"], {"next_scene": "levels/next.json"})
+        self.assertEqual(
+            payload["feature_metadata"]["scene_flow"],
+            {
+                "next_scene": {
+                    "guid": "22222222-2222-2222-2222-222222222222",
+                    "path_hint": "levels/next.json",
+                }
+            },
+        )
         self.assertEqual(payload["feature_metadata"]["render_2d"]["sorting_layers"], ["Default", "Foreground"])
-        self.assertEqual(payload["entities"][0]["components"]["Transform"]["x"], 77.0)
+        self.assertEqual(payload["entities"][0]["components"]["Transform"]["x"], 10.0)
 
     def test_save_and_reload_roundtrip_preserves_core_scene_payload(self) -> None:
         manager = SceneManager(create_default_registry())
@@ -659,7 +671,12 @@ class SceneManagerSyncTests(unittest.TestCase):
                 ],
                 "rules": [{"event": "tick", "do": [{"action": "log_message", "message": "saved"}]}],
                 "feature_metadata": {
-                    "scene_flow": {"next_scene": "levels/next.json"},
+                    "scene_flow": {
+                        "next_scene": {
+                            "guid": "22222222-2222-2222-2222-222222222222",
+                            "path_hint": "levels/next.json",
+                        }
+                    },
                     "render_2d": {"sorting_layers": ["Default", "UI"]},
                 },
             }
@@ -678,7 +695,15 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         self.assertEqual(persisted["rules"], [{"event": "tick", "do": [{"action": "log_message", "message": "saved"}]}])
         self.assertEqual(persisted["schema_version"], CURRENT_SCENE_SCHEMA_VERSION)
-        self.assertEqual(persisted["feature_metadata"]["scene_flow"], {"next_scene": "levels/next.json"})
+        self.assertEqual(
+            persisted["feature_metadata"]["scene_flow"],
+            {
+                "next_scene": {
+                    "guid": "22222222-2222-2222-2222-222222222222",
+                    "path_hint": "levels/next.json",
+                }
+            },
+        )
         self.assertEqual(payload["feature_metadata"]["render_2d"]["sorting_layers"], ["Default", "UI"])
         self.assertEqual(payload["entities"][1]["parent"], "CanvasRoot")
         self.assertEqual(payload["entities"][1]["components"]["UIButton"]["on_click"]["target"], "next_scene")
@@ -1046,17 +1071,17 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         self.assertFalse(updated)
         self.assertEqual(manager.current_scene.to_dict(), before)
-        self.assertFalse(entry.edit_world_sync_pending)
-        self.assertFalse(manager.is_dirty)
+        self.assertTrue(entry.edit_world_sync_pending)
+        self.assertTrue(manager.is_dirty)
         restored_camera = manager.get_edit_world().get_entity_by_name("Camera")
         restored_component = next(component for component in restored_camera.get_all_components() if type(component).__name__ == "Camera2D")
-        self.assertEqual(restored_component.zoom, 1.0)
+        self.assertEqual(restored_component.zoom, 0.0)
 
         retried = manager.apply_edit_to_world("Actor", "Sprite", "height", 48)
 
-        self.assertTrue(retried)
+        self.assertFalse(retried)
         self.assertTrue(manager.is_dirty)
-        self.assertEqual(manager.current_scene.find_entity("Actor")["components"]["Sprite"]["height"], 48)
+        self.assertEqual(manager.current_scene.find_entity("Actor")["components"]["Sprite"]["height"], 32)
 
     def test_save_rejects_invalid_legacy_authoring_snapshot_and_restores_sane_state(self) -> None:
         manager = SceneManager(create_default_registry())
@@ -1111,14 +1136,14 @@ class SceneManagerSyncTests(unittest.TestCase):
 
             self.assertFalse(manager.save_scene_to_file(scene_path.as_posix()))
             self.assertEqual(scene_path.read_text(encoding="utf-8"), persisted_before)
-            self.assertFalse(entry.edit_world_sync_pending)
-            self.assertFalse(manager.is_dirty)
+            self.assertTrue(entry.edit_world_sync_pending)
+            self.assertTrue(manager.is_dirty)
 
             restored_camera = manager.get_edit_world().get_entity_by_name("Camera")
             restored_component = next(component for component in restored_camera.get_all_components() if type(component).__name__ == "Camera2D")
-            self.assertEqual(restored_component.zoom, 1.0)
+            self.assertEqual(restored_component.zoom, 0.0)
 
-            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
+            self.assertFalse(manager.save_scene_to_file(scene_path.as_posix()))
 
     def test_save_scene_to_file_rejects_invalid_scene_and_preserves_existing_file(self) -> None:
         manager = SceneManager(create_default_registry())

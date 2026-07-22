@@ -23,6 +23,7 @@ from engine.ecs.world import World
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.editor.transform_preview import TransformPreviewState
 from engine.resources.texture_manager import TextureManager
+from engine.scenes.preview_leases import PreviewCancelReason
 from engine.scenes.refs import EntityRef
 from engine.scenes.result import Err
 from engine.utils.device_profiles import resolve_preview_size
@@ -111,6 +112,7 @@ class GizmoSystem:
         self._transform_preview_commands: Any | None = None
         self._transform_preview_scene_ref: Any | None = None
         self._transform_preview_handle: Any | None = None
+        self._last_preview_error: Any | None = None
         self._collider_preview: dict[str, Any] | None = None
         self._tilemap_preview: dict[str, Any] | None = None
         self._tilemap_texture_manager = TextureManager()
@@ -122,12 +124,21 @@ class GizmoSystem:
         self._tilemap_preview = copy.deepcopy(preview) if preview is not None else None
 
     def set_transform_preview_context(self, commands: Any | None, scene_ref: Any | None) -> None:
+        if (
+            self._transform_preview_handle is not None
+            and scene_ref != self._transform_preview_scene_ref
+        ):
+            self._cancel_transform_preview(PreviewCancelReason.SCENE_SWITCH)
         self._transform_preview_commands = commands
         self._transform_preview_scene_ref = scene_ref
 
     @property
     def has_typed_transform_preview(self) -> bool:
         return self._transform_preview_handle is not None
+
+    @property
+    def last_preview_error(self) -> Any | None:
+        return self._last_preview_error
 
     def update(
         self,
@@ -907,6 +918,7 @@ class GizmoSystem:
                 self._clear_state(keep_completed_drag=False)
                 return
             self._transform_preview_handle = started.value
+            self._last_preview_error = None
 
     def _start_rect_drag(
         self,
@@ -1063,7 +1075,8 @@ class GizmoSystem:
                 ),
             )
             if isinstance(updated, Err):
-                self._transform_preview_handle = None
+                self._cancel_transform_preview(PreviewCancelReason.ERROR)
+                self._clear_state(keep_completed_drag=False, cancel_preview=False)
 
     def _handle_rect_drag(
         self,
@@ -1289,7 +1302,8 @@ class GizmoSystem:
             else:
                 after_state = {}
                 label = f"gizmo:{self.drag_entity_name}"
-            if after_state != self.drag_before_state:
+            changed = after_state != self.drag_before_state
+            if changed:
                 self._completed_drag = CompletedGizmoDrag(
                     entity_name=self.drag_entity_name,
                     component_name=self.drag_component_name,
@@ -1299,9 +1313,20 @@ class GizmoSystem:
                     entity_id=self.drag_entity_id,
                     preview_handle=self._transform_preview_handle,
                 )
-        self._clear_state(keep_completed_drag=True)
+            elif self._transform_preview_handle is not None:
+                self._cancel_transform_preview(PreviewCancelReason.DRAG_NO_CHANGES)
+        elif self._transform_preview_handle is not None:
+            self._cancel_transform_preview(PreviewCancelReason.POINTER_CAPTURE_LOST)
+        self._clear_state(keep_completed_drag=True, cancel_preview=False)
 
-    def _clear_state(self, keep_completed_drag: bool = True) -> None:
+    def _clear_state(
+        self,
+        keep_completed_drag: bool = True,
+        *,
+        cancel_preview: bool = True,
+    ) -> None:
+        if cancel_preview and self._transform_preview_handle is not None:
+            self._cancel_transform_preview(PreviewCancelReason.INTERRUPTED)
         if not keep_completed_drag:
             self._completed_drag = None
         self.is_dragging = False
@@ -1315,6 +1340,18 @@ class GizmoSystem:
         self.drag_parent_rect = None
         self.drag_start_camera = None
         self._transform_preview_handle = None
+
+    def _cancel_transform_preview(self, reason: PreviewCancelReason) -> Any | None:
+        handle = self._transform_preview_handle
+        commands = self._transform_preview_commands
+        if handle is not None and commands is not None:
+            result = commands.cancel(handle, reason)
+            if isinstance(result, Err):
+                self._last_preview_error = result.error
+            self._transform_preview_handle = None
+            return result
+        self._transform_preview_handle = None
+        return None
 
     def _capture_transform_state(self, transform: Transform) -> dict[str, float]:
         return {

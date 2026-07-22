@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
@@ -27,8 +28,16 @@ from engine.scenes.incremental_authoring import SceneIncrementalAuthoring
 from engine.scenes.legacy_world_authoring_adapter import LegacyWorldAuthoringAdapter
 from engine.scenes.prefab_overrides import PrefabOverrideService
 from engine.scenes.post_commit import ScenePostCommitEventPublisher
+from engine.scenes.preview_leases import PreviewLeaseRegistry
+from engine.scenes.projection_integrity import AuthoringProjectionFingerprintService
 from engine.scenes.projection_integrity import ProjectionIntegrityAction
-from engine.scenes.refs import OpenSceneRef
+from engine.scenes.refs import (
+    EntityRef,
+    OpenDocumentId,
+    OpenSceneRef,
+    ResolvedSceneReference,
+    SceneAssetRef,
+)
 from engine.scenes.scene import Scene
 from engine.scenes.scene_flow import SceneFlowPolicy
 from engine.scenes.scene_persistence import (
@@ -49,6 +58,8 @@ from engine.scenes.structural_authoring import SceneStructuralAuthoring
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 
 if TYPE_CHECKING:
+    from engine.editor.editor_preview_coordinator import EditorPreviewCoordinator
+    from engine.editor.transform_preview import TransformPreviewState
     from engine.ecs.world import World
     from engine.levels.component_registry import ComponentRegistry
 
@@ -66,7 +77,12 @@ class SceneManager:
             flow_policy=self._flow_policy,
         )
         self._edit_sync = SceneEditSyncCoordinator(self._workspace, self._projection)
-        self._legacy_world_authoring = LegacyWorldAuthoringAdapter(self._edit_sync)
+        self._legacy_world_authoring = LegacyWorldAuthoringAdapter(
+            self._edit_sync,
+            self._workspace,
+            AuthoringProjectionFingerprintService(self._projection.create_world),
+        )
+        self._edit_sync.set_legacy_lease_checker(self._legacy_world_authoring.has_open_lease)
         self._serializable_mutations = SerializableMutationCoordinator(
             self._workspace,
             self._projection,
@@ -104,6 +120,8 @@ class SceneManager:
         self._runtime_signal_compiler: Optional[Callable[[Scene, "World"], int]] = None
         self._on_scene_saved_callbacks: list[Callable[[str, Dict[str, Any]], None]] = []
         self._scene_file_mtimes: dict[str, float] = {}
+        self._preview_coordinator: "EditorPreviewCoordinator | None" = None
+        self._scene_reference_resolver_explicit = False
 
     @property
     def current_scene(self) -> Optional[Scene]:
@@ -152,6 +170,71 @@ class SceneManager:
 
     def set_history_manager(self, history: Any) -> None:
         self._change_history.set_history_manager(history)
+
+    def set_preview_coordinator(self, coordinator: "EditorPreviewCoordinator | None") -> None:
+        """Install application-owned preview lifecycle authority."""
+        self._preview_coordinator = coordinator
+        self._edit_sync.set_preview_coordinator(coordinator)
+
+    def set_scene_reference_resolver(
+        self,
+        resolver: Callable[[str], ResolvedSceneReference | None] | None,
+    ) -> None:
+        """Install the project-owned GUID resolver used by scene writers."""
+        self._scene_reference_resolver_explicit = True
+        self._projection.set_scene_reference_resolver(resolver)
+
+    def _install_source_scene_reference_resolver(self, source_path: str | None) -> None:
+        if self._scene_reference_resolver_explicit or not source_path:
+            return
+        source = Path(source_path).resolve()
+
+        def resolve(target_path: str) -> ResolvedSceneReference | None:
+            raw = str(target_path or "").strip()
+            if not raw:
+                return None
+            normalized = raw.replace("\\", "/")
+            candidates: list[Path] = []
+            target = Path(raw)
+            if target.is_absolute():
+                candidates.append(target.resolve())
+            elif normalized.startswith("levels/") and source.parent.name == "levels":
+                candidates.append((source.parent.parent / normalized).resolve())
+            else:
+                candidates.append((source.parent / target).resolve())
+            for candidate in candidates:
+                metadata_path = Path(str(candidate) + ".meta.json")
+                try:
+                    with metadata_path.open("r", encoding="utf-8") as handle:
+                        metadata = json.load(handle)
+                except (OSError, ValueError):
+                    continue
+                guid = str(metadata.get("guid", "") or "").strip() if isinstance(metadata, dict) else ""
+                if not guid:
+                    continue
+                try:
+                    scene_ref = SceneAssetRef(guid, normalized)
+                except ValueError:
+                    continue
+                return ResolvedSceneReference(scene=scene_ref)
+            return None
+
+        self._projection.set_scene_reference_resolver(resolve)
+
+    def create_preview_lease_registry(self) -> PreviewLeaseRegistry:
+        """Build one registry for the editor application without exposing internals."""
+        return PreviewLeaseRegistry(
+            AuthoringProjectionFingerprintService(self._projection.create_world),
+            history=self._change_history,
+            restore_snapshot=lambda key, payload: self._serializable_mutations.restore_scene_data(
+                key,
+                payload,
+            ),
+        )
+
+    @property
+    def legacy_authoring_adapter(self) -> LegacyWorldAuthoringAdapter:
+        return self._legacy_world_authoring
 
     @property
     def post_commit_events(self) -> ScenePostCommitEventPublisher:
@@ -202,6 +285,12 @@ class SceneManager:
         raw_source = entry.source_path
         if not raw_source:
             return entry.edit_world
+        if not self._edit_sync.prepare_for_save(
+            entry,
+            failure_context="refresh_active_scene_if_stale",
+            action=ProjectionIntegrityAction.RELOAD,
+        ):
+            return entry.edit_world
         if entry.dirty:
             return entry.edit_world
         resolved_source = self._workspace.normalize_path_reference(raw_source)
@@ -221,15 +310,12 @@ class SceneManager:
             log_err(f"SceneManager: failed to reload stale scene from {resolved_source}: {exc}")
             return entry.edit_world
         try:
-            if not self._edit_sync.inspect_integrity(
+            self._workspace.replace_entry_scene(
                 entry,
-                action=ProjectionIntegrityAction.RELOAD,
-            ).allowed:
-                log_warn(
-                    f"SceneManager: skipped stale reload for '{entry.key}' due to projection divergence"
-                )
-                return entry.edit_world
-            self._workspace.replace_entry_scene(entry, loaded.payload, source_path=resolved_source)
+                loaded.payload,
+                source_path=resolved_source,
+                revision=entry.scene.revision,
+            )
             self._edit_sync.clear_pending(entry)
             self._workspace.clear_dirty(entry)
             self._scene_file_mtimes[mtime_key] = current_mtime
@@ -373,6 +459,12 @@ class SceneManager:
                 action=ProjectionIntegrityAction.LIFECYCLE,
             ):
                 return None
+            if not self._edit_sync.prepare_for_save(
+                target,
+                failure_context="activate_scene_target",
+                action=ProjectionIntegrityAction.LIFECYCLE,
+            ):
+                return None
         return self._workspace.activate_scene(key_or_path)
 
     def close_scene(self, key_or_path: str, discard_changes: bool = False) -> bool:
@@ -387,11 +479,34 @@ class SceneManager:
             return False
         return self._workspace.close_scene(key_or_path, discard_changes=discard_changes)
 
-    def reset_workspace(self) -> None:
+    def reset_workspace(self) -> bool:
+        if not self.prepare_workspace_switch():
+            return False
         self._workspace.reset_workspace()
         self._structural_authoring.reset_state()
+        return True
+
+    def prepare_workspace_switch(self) -> bool:
+        """Preflight project switch without discarding the current workspace."""
+        for entry in tuple(self._workspace.entries.values()):
+            if not self._edit_sync.prepare_for_save(
+                entry,
+                failure_context="project_switch",
+                action=ProjectionIntegrityAction.LIFECYCLE,
+            ):
+                return False
+        return True
 
     def load_scene(self, data: Dict[str, Any], source_path: Optional[str] = None, activate: bool = True) -> "World":
+        self._install_source_scene_reference_resolver(source_path)
+        if activate:
+            active = self._get_active_entry()
+            if active is not None and not self._edit_sync.prepare_for_save(
+                active,
+                failure_context="load_scene",
+                action=ProjectionIntegrityAction.LIFECYCLE,
+            ):
+                return None
         world = self._workspace.load_scene(data, source_path=source_path, activate=activate)
         if world is not None and source_path:
             try:
@@ -410,6 +525,7 @@ class SceneManager:
         storage: Optional[SceneStorage] = None,
     ) -> Optional["World"]:
         resolved_path = self._persistence.resolve_path(path)
+        self._install_source_scene_reference_resolver(str(resolved_path))
         workspace_path = self._workspace.normalize_path_reference(str(resolved_path))
         mtime_key = self._mtime_key(resolved_path)
         existing = self._workspace.resolve_entry(workspace_path)
@@ -422,6 +538,14 @@ class SceneManager:
         except SceneStorageReadError as exc:
             log_err(f"SceneManager: Error cargando {workspace_path}: {exc}")
             return None
+        if activate:
+            active = self._get_active_entry()
+            if active is not None and not self._edit_sync.prepare_for_save(
+                active,
+                failure_context="load_scene_from_file",
+                action=ProjectionIntegrityAction.LIFECYCLE,
+            ):
+                return None
         world = self._workspace.load_scene(
             loaded.payload,
             source_path=workspace_path,
@@ -497,6 +621,25 @@ class SceneManager:
             component_name,
             property_name,
             value,
+        )
+
+    def apply_transform_preview(self, target: EntityRef, state: "TransformPreviewState") -> bool:
+        """Commit a Transform preview by document and entity ID."""
+        entry = self.resolve_open_document(target.scene.document_id)
+        if entry is None or entry.is_playing:
+            return False
+        return self.apply_transform_state_by_id(
+            target.entity_id,
+            {
+                "x": state.x,
+                "y": state.y,
+                "rotation": state.rotation,
+                "scale_x": state.scale_x,
+                "scale_y": state.scale_y,
+            },
+            key_or_path=entry.key,
+            record_history=False,
+            label=f"transform:entity_id:{target.entity_id}",
         )
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
@@ -579,15 +722,6 @@ class SceneManager:
         entry = self._get_active_entry()
         if entry is None:
             return False
-        if property_name == "parent" and value is not None:
-            entity_data = self._serializable_authoring.find_entity_data_by_id(entity_id)
-            entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-            if not isinstance(entity_name, str) or not self._structural_authoring.validate_parent(
-                entry,
-                entity_name,
-                value,
-            ):
-                return False
         return self._serializable_authoring.update_entity_property_by_id(
             entity_id,
             property_name,
@@ -628,9 +762,7 @@ class SceneManager:
         )
 
     def remove_entity_by_id(self, entity_id: str) -> bool:
-        entity_data = self.find_entity_data_by_id(entity_id)
-        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
-        return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
+        return self._structural_authoring.remove_entity_by_id(entity_id)
 
     def sync_from_edit_world(self) -> bool:
         """Deprecated: use EngineAPI or SceneManager public methods instead.
@@ -745,6 +877,30 @@ class SceneManager:
             return False
         return self._workspace.select_entity(entry, entity_name=entity_name)
 
+    def entity_ref_by_name(
+        self,
+        entity_name: Optional[str],
+        *,
+        key_or_path: Optional[str] = None,
+    ) -> Optional[EntityRef]:
+        """Resolve a presentation label into a session-only EntityRef."""
+        normalized = str(entity_name or "").strip()
+        entry = self._resolve_entry(key_or_path)
+        if entry is None:
+            return None
+        for entity in entry.scene.list_entity_views():
+            if entity.name == normalized:
+                return EntityRef(entry.open_scene_ref, entity.entity_id)
+        return None
+
+    def entity_name_for_ref(self, entity_ref: EntityRef) -> Optional[str]:
+        """Resolve an EntityRef to a presentation label without name lookup."""
+        entry = self.resolve_open_document(entity_ref.scene.document_id)
+        if entry is None:
+            return None
+        entity = entry.scene.find_entity_view(entity_ref.entity_id)
+        return entity.name if entity is not None else None
+
     def save_scene_to_file(
         self,
         path: str,
@@ -762,13 +918,23 @@ class SceneManager:
             ):
                 return False
             data = self._projection.validate_payload(self._flow_policy.prepare_payload(entry.scene.to_dict()))
+            data = self._projection.canonicalize_scene_references(data)
+            session_errors = self._projection.validate_persistable_payload(data)
+            if session_errors:
+                raise ValueError("Scene payload contains session-only references: " + "; ".join(session_errors))
+            data = self._projection.validate_payload(data)
             saved = self._persistence.save(
                 path,
                 data,
                 compact_save=compact_save,
                 storage=storage,
             )
-            self._workspace.replace_entry_scene(entry, saved.payload, source_path=path)
+            self._workspace.replace_entry_scene(
+                entry,
+                saved.payload,
+                source_path=path,
+                revision=entry.scene.revision,
+            )
             self._workspace.rekey_entry(entry, self._workspace.build_scene_key(path, entry.scene.name))
             self._workspace.clear_dirty(entry)
             self._edit_sync.clear_pending(entry)
@@ -977,6 +1143,10 @@ class SceneManager:
         """
         return self._resolve_entry(key_or_path)
 
+    def resolve_open_document(self, document_id: OpenDocumentId) -> Optional[SceneWorkspaceEntry]:
+        """Resolve an open document by its stable in-memory identity."""
+        return self._workspace.resolve_open_document(document_id)
+
     def projection_integrity_allows(
         self,
         key_or_path: Optional[str] = None,
@@ -987,7 +1157,7 @@ class SceneManager:
         entry = self._resolve_entry(key_or_path)
         if entry is None:
             return True
-        return self._edit_sync.inspect_integrity(entry, action=action).allowed
+        return self._edit_sync.prepare_for_save(entry, failure_context="protected_action", action=action)
 
     @staticmethod
     def _mtime_key(path: str | Path) -> str:

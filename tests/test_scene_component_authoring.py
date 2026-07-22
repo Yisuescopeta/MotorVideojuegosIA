@@ -229,7 +229,7 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
         )
         self.assertEqual(len(self.history.scene_changes), 1)
 
-    def test_multiscene_component_routes_flush_before_entity_preconditions(self) -> None:
+    def test_pending_legacy_world_blocks_component_authoring_until_explicit_commit(self) -> None:
         assert self.entry.edit_world is not None
         pending_upsert = self.entry.edit_world.create_entity("PendingUpsert")
         pending_upsert.add_component(Transform(x=2.0))
@@ -239,7 +239,7 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.authoring.upsert_component_for_scene(
                 self.entry,
                 "PendingUpsert",
@@ -247,10 +247,7 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
                 _transform(8.0),
             )
         )
-        self.assertEqual(
-            self.entry.scene.find_entity("PendingUpsert")["components"]["Transform"]["x"],
-            8.0,
-        )
+        self.assertIsNone(self.entry.scene.find_entity("PendingUpsert"))
 
         pending_remove = self.entry.edit_world.create_entity("PendingRemove")
         pending_remove.add_component(Transform(x=3.0))
@@ -260,17 +257,14 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.authoring.remove_component_for_scene(
                 self.entry,
                 "PendingRemove",
                 "Transform",
             )
         )
-        self.assertNotIn(
-            "Transform",
-            self.entry.scene.find_entity("PendingRemove")["components"],
-        )
+        self.assertIsNone(self.entry.scene.find_entity("PendingRemove"))
 
     def test_component_prefab_fallbacks_use_only_the_port(self) -> None:
         self.assertTrue(
@@ -684,27 +678,21 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
             )
         )
 
-        self.assertTrue(
+        self.assertFalse(
             self.authoring.set_scene_flow_target(
                 "next",
                 "levels/next.json",
             )
         )
 
-        self.assertEqual(
-            self.entry.scene.find_entity("Hero")["components"]["Transform"]["x"],
-            42.0,
-        )
-        self.assertEqual(
-            self.entry.scene.feature_metadata["scene_flow"],
-            {"next": "levels/next.json"},
-        )
-        self.assertIsNone(self.entry.pending_edit_world_sync_reason)
+        self.assertEqual(self.entry.scene.find_entity("Hero")["components"]["Transform"]["x"], 1.0)
+        self.assertNotIn("scene_flow", self.entry.scene.feature_metadata)
+        self.assertEqual(self.entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
 
     def _assert_pending_projection_exception_is_atomic(
         self,
         error_type: type[Exception],
-        expected_calls: int,
+        expected_calls: int = 0,
     ) -> None:
         self.assertTrue(self.workspace.select_entity(self.entry, entity_name="Hero"))
         hero = self.entry.edit_world.get_entity_by_name("Hero")
@@ -757,10 +745,10 @@ class SceneComponentAuthoringTests(_SerializableOwnerTestSupport):
         self.assertEqual(self.history.scene_changes, [prior_history])
 
     def test_pending_runtime_projection_exception_restores_guard(self) -> None:
-        self._assert_pending_projection_exception_is_atomic(RuntimeError, 1)
+        self._assert_pending_projection_exception_is_atomic(RuntimeError)
 
     def test_pending_value_projection_exception_restores_guard(self) -> None:
-        self._assert_pending_projection_exception_is_atomic(ValueError, 2)
+        self._assert_pending_projection_exception_is_atomic(ValueError)
 
 
 if __name__ == "__main__":

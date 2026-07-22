@@ -782,7 +782,10 @@ class InspectorSystem:
         payload = self._current_component_payload(world, entity_name, component_name)
         if payload is None:
             return False
+        before = copy.deepcopy(payload)
         updater(payload)
+        if payload == before:
+            return True
         return self.replace_component_payload(world, entity_name, component_name, payload)
 
     def _register_default_component_editors(self) -> None:

@@ -14,6 +14,8 @@ from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
+from engine.editor.editor_session import EditorSession
+from engine.scenes.result import Err
 from engine.editor.render_safety import editor_scissor
 from engine.editor.theme import get_active_theme
 from engine.editor.ui.icons import ICON_PLUS, draw_icon
@@ -42,7 +44,12 @@ class HierarchyPanel:
     SCROLLBAR_WIDTH: int = 6
     WHEEL_STEP: int = 24
 
-    def __init__(self, selection_state: Optional[EditorSelectionState] = None, layout: Any = None) -> None:
+    def __init__(
+        self,
+        selection_state: Optional[EditorSelectionState] = None,
+        layout: Any = None,
+        editor_session: Optional[EditorSession] = None,
+    ) -> None:
         self.visible: bool = True
         self._layout = layout
         self.scroll_offset: int = 0
@@ -50,6 +57,7 @@ class HierarchyPanel:
         self.panel_width: int = 200
         self._scene_manager: Any = None
         self._selection_state: Optional[EditorSelectionState] = selection_state
+        self._editor_session = editor_session
         self._cached_world_id: int = -1
         self._cached_structure_version: int = -1
         self._cached_roots: List[Entity] = []
@@ -83,7 +91,16 @@ class HierarchyPanel:
     def set_selection_state(self, selection_state: Optional[EditorSelectionState]) -> None:
         self._selection_state = selection_state
 
+    def set_editor_session(self, session: Optional[EditorSession]) -> None:
+        self._editor_session = session
+
     def _get_selected_entity_name(self, world: "World") -> Optional[str]:
+        if self._editor_session is not None and self._scene_manager is not None:
+            selection = self._editor_session.snapshot.selection
+            if selection is None:
+                return None
+            selected = self._scene_manager.find_entity_data_by_id(selection.entity_id)
+            return str(selected.get("name")) if isinstance(selected, dict) and selected.get("name") else None
         world_selected = EditorSelectionState.normalize(getattr(world, "selected_entity_name", None))
         if self._selection_state is None:
             return world_selected
@@ -93,14 +110,21 @@ class HierarchyPanel:
 
     def _set_selected_entity(self, world: "World", entity_name: Optional[str]) -> Optional[str]:
         normalized = EditorSelectionState.normalize(entity_name)
-        if self._selection_state is not None:
+        if self._scene_manager is None:
+            return None
+        if self._editor_session is not None:
+            active_ref = self._scene_manager.active_scene_ref
+            if active_ref is not None:
+                self._editor_session.activate_scene(active_ref)
+            if normalized is None:
+                self._editor_session.clear_selection()
+            else:
+                entity_ref = self._scene_manager.entity_ref_by_name(normalized)
+                if entity_ref is None or isinstance(self._editor_session.select(entity_ref), Err):
+                    return None
+        if self._editor_session is None and self._selection_state is not None:
             normalized = self._selection_state.set(normalized)
-        if self._scene_manager is not None:
-            self._scene_manager.set_selected_entity(normalized)
-        else:
-            world.selected_entity_name = normalized
-        if self._selection_state is not None:
-            self._selection_state.apply_to_world(world)
+        self._scene_manager.set_selected_entity(normalized)
         return normalized
 
     def _resolve_colors(self) -> dict:

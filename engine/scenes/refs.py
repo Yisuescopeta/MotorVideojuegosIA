@@ -46,12 +46,16 @@ class SceneAssetRef:
 
     def __post_init__(self) -> None:
         normalized = _required(self.guid, field_name="SceneAssetRef.guid")
-        try:
-            normalized = str(UUID(normalized))
-        except ValueError as exc:
-            raise ValueError("SceneAssetRef.guid must be a UUID") from exc
         object.__setattr__(self, "guid", normalized)
         object.__setattr__(self, "canonical_path_hint", str(self.canonical_path_hint or "").strip())
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedSceneReference:
+    """Project-owned resolution of a persistent scene asset reference."""
+
+    scene: SceneAssetRef
+    target_entity_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,5 +81,6 @@ __all__ = [
     "EntityRef",
     "OpenDocumentId",
     "OpenSceneRef",
+    "ResolvedSceneReference",
     "SceneAssetRef",
 ]

@@ -388,7 +388,7 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
         self.assertFalse(entry.dirty_before_pending_edit_world_sync)
         self.assertNotEqual(entry.edit_world_version, 777)
         self.assertEqual(entry.edit_world_version, entry.edit_world.version)
-        install.assert_called_once()
+        install.assert_not_called()
         restore_selection.assert_called_once()
         restore_dirty.assert_called_once_with(entry, True)
         restore_pending.assert_called_once()
@@ -405,9 +405,9 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
                 )
             )
         self.assertEqual(entry.scene.to_dict(), scene_before)
-        self.assertFalse(entry.dirty)
-        self.assertIsNone(entry.pending_edit_world_sync_reason)
-        self.assertIsNone(entry.dirty_before_pending_edit_world_sync)
+        self.assertTrue(entry.dirty)
+        self.assertEqual(entry.pending_edit_world_sync_reason, LEGACY_AUTHORING_SYNC_REASON)
+        self.assertFalse(entry.dirty_before_pending_edit_world_sync)
 
     def test_failed_commit_logs_context_and_original_validation_error(self) -> None:
         token = self.coordinator.capture_snapshot(self.entry)
@@ -610,7 +610,7 @@ class SerializableMutationCoordinatorTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(install_calls, 2)
+        self.assertEqual(install_calls, 1)
         self.assertEqual(self.entry.scene.to_dict(), scene_before)
         self.assertEqual(self.entry.edit_world.serialize(), world_before)
         self.assertEqual(self.entry.edit_world_version, self.entry.edit_world.version)

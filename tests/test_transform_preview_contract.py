@@ -5,11 +5,12 @@ from engine.editor.transform_preview import (
     TransformPreviewCoordinator,
     TransformPreviewState,
 )
+from engine.editor.editor_preview_coordinator import EditorPreviewCoordinator
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.preview_leases import PreviewCancelReason, PreviewLeaseRegistry
 from engine.scenes.projection_integrity import AuthoringProjectionFingerprintService
 from engine.scenes.refs import EntityRef
-from engine.scenes.result import CommandErrorCode, Err
+from engine.scenes.result import CommandError, CommandErrorCode, Err, Result
 from engine.scenes.scene_manager import SceneManager
 
 
@@ -63,9 +64,12 @@ class TransformPreviewContractTests(unittest.TestCase):
             history=self.history,
             restore_snapshot=self._restore,
         )
+        self.preview_coordinator = EditorPreviewCoordinator(self.leases)
+        self.manager.set_preview_coordinator(self.preview_coordinator)
+        self.commit_mode = "ok"
         self.coordinator = TransformPreviewCoordinator(
             self.manager._workspace,
-            self.leases,
+            self.preview_coordinator,
             self._commit_transform,
         )
         self.target = EntityRef(self.entry.open_scene_ref, "hero-id")
@@ -77,7 +81,11 @@ class TransformPreviewContractTests(unittest.TestCase):
         self.manager._workspace.replace_entry_scene(entry, payload)
         return True
 
-    def _commit_transform(self, target: EntityRef, state: TransformPreviewState) -> bool:
+    def _commit_transform(self, target: EntityRef, state: TransformPreviewState) -> Result[None] | bool:
+        if self.commit_mode == "error":
+            return Err(CommandError(CommandErrorCode.VALIDATION_FAILED, "synthetic commit rejection"))
+        if self.commit_mode == "exception":
+            raise RuntimeError("synthetic commit exception")
         entry = self.manager.resolve_entry(self.entry.key)
         assert entry is not None
         return self.manager.apply_transform_state_by_id(
@@ -123,6 +131,17 @@ class TransformPreviewContractTests(unittest.TestCase):
         self.assertEqual(transform["scale_y"], 0.75)
         self.assertIsNone(self.leases.active_for_scene(self.entry.key))
 
+    def test_preview_update_keeps_revision_and_commit_bumps_once(self) -> None:
+        initial_revision = self.entry.scene.revision
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+        state = TransformPreviewState(10.0, 20.0, 15.0, 1.5, 0.75)
+
+        self.assertNotIsInstance(self.coordinator.update(started.value, state), Err)
+        self.assertEqual(self.entry.scene.revision, initial_revision)
+        self.assertNotIsInstance(self.coordinator.commit(started.value, state), Err)
+        self.assertEqual(self.entry.scene.revision, initial_revision + 1)
+
     def test_revision_conflict_cancels_lease(self) -> None:
         started = self.coordinator.begin(self.target)
         assert hasattr(started, "value")
@@ -136,6 +155,92 @@ class TransformPreviewContractTests(unittest.TestCase):
         self.assertIsInstance(result, Err)
         self.assertEqual(result.error.code, CommandErrorCode.CONFLICT)
         self.assertIsNone(self.leases.active_for_scene(self.entry.key))
+
+    def test_target_deleted_during_preview_cancels_and_releases(self) -> None:
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+        self.assertTrue(self.manager.remove_entity_by_id("hero-id"))
+
+        result = self.coordinator.update(
+            started.value,
+            TransformPreviewState(3.0, 4.0, 0.0, 1.0, 1.0),
+        )
+
+        self.assertIsInstance(result, Err)
+        self.assertEqual(result.error.code, CommandErrorCode.CONFLICT)
+        self.assertEqual(self.preview_coordinator.active_for(self.entry.open_document_id), ())
+
+    def test_commit_result_error_restores_overlay_and_releases(self) -> None:
+        before_scene = copy.deepcopy(self.entry.scene.to_snapshot_dict())
+        before_revision = self.entry.scene.revision
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+        state = TransformPreviewState(10.0, 20.0, 15.0, 1.5, 0.75)
+        self.assertNotIsInstance(self.coordinator.update(started.value, state), Err)
+        self.commit_mode = "error"
+
+        result = self.coordinator.commit(started.value, state)
+
+        self.assertIsInstance(result, Err)
+        self.assertEqual(result.error.code, CommandErrorCode.VALIDATION_FAILED)
+        self.assertEqual(self.entry.scene.to_snapshot_dict(), before_scene)
+        self.assertEqual(self.entry.scene.revision, before_revision)
+        self.assertEqual(self.preview_coordinator.active_for(self.entry.open_document_id), ())
+        self.assertEqual(self.history.records, [])
+
+    def test_commit_exception_restores_overlay_and_releases(self) -> None:
+        before_scene = copy.deepcopy(self.entry.scene.to_snapshot_dict())
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+        state = TransformPreviewState(10.0, 20.0, 15.0, 1.5, 0.75)
+        self.assertNotIsInstance(self.coordinator.update(started.value, state), Err)
+        self.commit_mode = "exception"
+
+        result = self.coordinator.commit(started.value, state)
+
+        self.assertIsInstance(result, Err)
+        self.assertEqual(result.error.code, CommandErrorCode.INTERNAL_ERROR)
+        self.assertEqual(self.entry.scene.to_snapshot_dict(), before_scene)
+        self.assertEqual(self.preview_coordinator.active_for(self.entry.open_document_id), ())
+        self.assertEqual(self.history.records, [])
+
+    def test_drag_without_changes_cancels_without_history(self) -> None:
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+
+        result = self.coordinator.commit(
+            started.value,
+            TransformPreviewState(1.0, 2.0, 0.0, 1.0, 1.0),
+        )
+
+        self.assertNotIsInstance(result, Err)
+        self.assertEqual(self.preview_coordinator.active_for(self.entry.open_document_id), ())
+        self.assertEqual(self.history.records, [])
+
+    def test_save_cancels_preview_before_protected_boundary(self) -> None:
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+        state = TransformPreviewState(10.0, 20.0, 15.0, 1.5, 0.75)
+        self.assertNotIsInstance(self.coordinator.update(started.value, state), Err)
+
+        with self.subTest(action="save"):
+            import tempfile
+            from pathlib import Path
+
+            with tempfile.TemporaryDirectory() as directory:
+                self.assertTrue(self.manager.save_scene_to_file(str(Path(directory) / "scene.json")))
+        self.assertEqual(self.preview_coordinator.active_for(self.entry.open_document_id), ())
+
+    def test_play_cancels_preview_before_runtime_projection(self) -> None:
+        started = self.coordinator.begin(self.target)
+        assert hasattr(started, "value")
+        state = TransformPreviewState(10.0, 20.0, 15.0, 1.5, 0.75)
+        self.assertNotIsInstance(self.coordinator.update(started.value, state), Err)
+
+        runtime = self.manager.enter_play()
+
+        self.assertIsNotNone(runtime)
+        self.assertEqual(self.preview_coordinator.active_for(self.entry.open_document_id), ())
 
     def test_cancel_releases_lease_without_scene_write(self) -> None:
         before = copy.deepcopy(self.entry.scene.to_snapshot_dict())

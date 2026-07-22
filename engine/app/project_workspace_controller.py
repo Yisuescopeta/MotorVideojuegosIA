@@ -43,6 +43,7 @@ class ProjectWorkspaceController:
         close_scene_workspace_tab: Callable[[str, bool], bool],
         stop_runtime: Callable[[], None],
         set_running: Callable[[bool], None],
+        get_editor_session: Callable[[], Any] | None = None,
     ) -> None:
         self._get_project_service = get_project_service
         self._get_scene_manager = get_scene_manager
@@ -73,6 +74,7 @@ class ProjectWorkspaceController:
         self._close_scene_workspace_tab = close_scene_workspace_tab
         self._stop_runtime = stop_runtime
         self._set_running = set_running
+        self._get_editor_session = get_editor_session
 
     def set_project_service(self, service: Any, *, notify_agent_panel: bool = True) -> None:
         editor_layout = self._get_editor_layout()
@@ -208,11 +210,20 @@ class ProjectWorkspaceController:
         if not active_key:
             return
         active_world = scene_manager.get_edit_world()
-        selection_state = self._get_editor_selection()
-        if selection_state is not None:
-            selected_entity = selection_state.sync_from_world(active_world)
+        session = self._get_editor_session() if self._get_editor_session is not None else None
+        selected_entity = None
+        if session is not None:
+            selection = session.snapshot.selection
+            if selection is not None:
+                selected_data = scene_manager.find_entity_data_by_id(selection.entity_id)
+                if isinstance(selected_data, dict):
+                    selected_entity = selected_data.get("name")
         else:
-            selected_entity = active_world.selected_entity_name if active_world is not None else None
+            selection_state = self._get_editor_selection()
+            if selection_state is not None:
+                selected_entity = selection_state.entity_name
+            elif active_world is not None:
+                selected_entity = active_world.selected_entity_name
         scene_manager.set_scene_view_state(
             active_key,
             {
@@ -239,12 +250,30 @@ class ProjectWorkspaceController:
             )
         editor_layout.editor_camera.zoom = max(0.1, float(view_state.get("camera_zoom", 1.0) or 1.0))
         selected_entity = view_state.get("selected_entity")
-        selection_state = self._get_editor_selection()
-        if selection_state is not None:
-            selected_entity = selection_state.set(selected_entity)
-        scene_manager.set_selected_entity(str(selected_entity) if selected_entity else None)
-        if selection_state is not None:
-            selection_state.apply_to_world(scene_manager.get_edit_world())
+        session = self._get_editor_session() if self._get_editor_session is not None else None
+        if session is not None:
+            active_ref = scene_manager.active_scene_ref
+            if active_ref is not None:
+                session.activate_scene(active_ref)
+            normalized = str(selected_entity or "").strip()
+            if normalized:
+                entity_ref = scene_manager.entity_ref_by_name(normalized)
+                if entity_ref is not None:
+                    session.select(entity_ref)
+                    scene_manager.set_selected_entity(normalized)
+                else:
+                    session.clear_selection()
+                    scene_manager.set_selected_entity(None)
+            else:
+                session.clear_selection()
+                scene_manager.set_selected_entity(None)
+        else:
+            selection_state = self._get_editor_selection()
+            if selection_state is not None:
+                selected_entity = selection_state.set(selected_entity)
+            scene_manager.set_selected_entity(str(selected_entity) if selected_entity else None)
+            if selection_state is not None:
+                selection_state.apply_to_world(scene_manager.get_edit_world())
 
     def persist_workspace_state(self) -> None:
         project_service = self._get_project_service()
@@ -344,6 +373,10 @@ class ProjectWorkspaceController:
             )
             rl.end_drawing()
 
+        if not scene_manager.prepare_workspace_switch():
+            log_err("Project switch blocked: scene projection is not canonical")
+            return False
+
         try:
             manifest = project_service.open_project(path)
         except Exception as exc:
@@ -354,7 +387,9 @@ class ProjectWorkspaceController:
 
         self._history_manager.clear()
         self.reset_project_bound_state()
-        scene_manager.reset_workspace()
+        if scene_manager.reset_workspace() is False:
+            log_err("Project switch blocked while resetting the workspace")
+            return False
         self.set_project_service(project_service)
         if not self.restore_workspace_from_project_state():
             scene_path = self.pick_initial_scene_path()

@@ -45,21 +45,18 @@ class SceneWorkspaceTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def test_exit_play_clears_pending_edit_sync(self) -> None:
+    def test_enter_play_blocks_pending_edit_sync(self) -> None:
         self.scene_manager.load_scene(
             {"name": "Exit", "entities": [], "rules": [], "feature_metadata": {}}
         )
         entry = self.scene_manager.resolve_entry(None)
         assert entry is not None
         self.assertTrue(self.scene_manager.mark_edit_world_dirty())
-        self.assertIsNotNone(self.scene_manager.enter_play())
+        self.assertIsNone(self.scene_manager.enter_play())
+        self.assertFalse(self.scene_manager.is_playing)
+        self.assertTrue(entry.edit_world_sync_pending)
 
-        self.assertIsNotNone(self.scene_manager.exit_play())
-
-        self.assertFalse(entry.edit_world_sync_pending)
-        self.assertIsNone(entry.dirty_before_pending_edit_world_sync)
-
-    def test_reload_scene_clears_pending_edit_sync(self) -> None:
+    def test_reload_scene_blocks_pending_edit_sync(self) -> None:
         self.scene_manager.load_scene(
             {"name": "Reload", "entities": [], "rules": [], "feature_metadata": {}}
         )
@@ -67,11 +64,9 @@ class SceneWorkspaceTests(unittest.TestCase):
         assert entry is not None
         self.assertTrue(self.scene_manager.mark_edit_world_dirty())
 
-        self.assertIsNotNone(self.scene_manager.reload_scene())
-
-        self.assertFalse(entry.edit_world_sync_pending)
-        self.assertIsNone(entry.dirty_before_pending_edit_world_sync)
-        self.assertFalse(entry.dirty)
+        self.assertIsNone(self.scene_manager.reload_scene())
+        self.assertTrue(entry.edit_world_sync_pending)
+        self.assertTrue(entry.dirty)
 
     def test_scene_link_syncs_feature_metadata_and_invalid_badge(self) -> None:
         self.scene_manager.load_scene(
@@ -469,7 +464,7 @@ class SceneWorkspaceTests(unittest.TestCase):
         self.assertEqual(self.scene_manager.resolve_entry(None).selected_entity_name, "ActorB")
         self.assertEqual(self.scene_manager.get_edit_world().selected_entity_name, "ActorB")
 
-    def test_enter_play_prefers_live_edit_world_selection(self) -> None:
+    def test_enter_play_ignores_live_edit_world_selection(self) -> None:
         self.scene_manager.load_scene(
             {
                 "name": "LiveSelection",
@@ -494,7 +489,7 @@ class SceneWorkspaceTests(unittest.TestCase):
         assert entry is not None
         assert edit_world is not None
         assert entity_b is not None
-        expected_b_id = entity_b["id"]
+        expected_a_id = self.scene_manager.find_entity_data("A")["id"]
         edit_world.selected_entity_name = "B"
 
         runtime_world = self.scene_manager.enter_play()
@@ -502,9 +497,9 @@ class SceneWorkspaceTests(unittest.TestCase):
         self.assertIsNotNone(entry)
         self.assertIsNotNone(runtime_world)
         assert runtime_world is not None
-        self.assertEqual(entry.selected_entity_name, "B")
-        self.assertEqual(entry.selected_entity_id, expected_b_id)
-        self.assertEqual(runtime_world.selected_entity_name, "B")
+        self.assertEqual(entry.selected_entity_name, "A")
+        self.assertEqual(entry.selected_entity_id, expected_a_id)
+        self.assertIsNone(runtime_world.selected_entity_name)
 
     def test_dirty_state_is_isolated_per_workspace_entry(self) -> None:
         self.scene_manager.create_new_scene("Clean Scene")
@@ -527,7 +522,7 @@ class SceneWorkspaceTests(unittest.TestCase):
         self.assertIsNotNone(self.scene_manager.activate_scene(dirty_key))
         self.assertTrue(self.scene_manager.is_dirty)
 
-    def test_enter_play_clone_failure_rolls_back_lifecycle_without_losing_selection_or_dirty(self) -> None:
+    def test_enter_play_builds_from_scene_without_cloning_edit_world(self) -> None:
         self.scene_manager.load_scene(
             {
                 "name": "CloneFailure",
@@ -549,12 +544,13 @@ class SceneWorkspaceTests(unittest.TestCase):
         edit_world = self.scene_manager.get_edit_world()
         entry = self.scene_manager.resolve_entry(None)
 
-        with patch.object(edit_world, "clone", side_effect=RuntimeError("clone failed")):
+        with patch.object(edit_world, "clone", side_effect=RuntimeError("clone must not be called")) as clone:
             runtime_world = self.scene_manager.enter_play()
 
-        self.assertIsNone(runtime_world)
-        self.assertFalse(self.scene_manager.is_playing)
-        self.assertIs(self.scene_manager.active_world, edit_world)
+        clone.assert_not_called()
+        self.assertIsNotNone(runtime_world)
+        self.assertTrue(self.scene_manager.is_playing)
+        self.assertIs(self.scene_manager.active_world, runtime_world)
         self.assertTrue(self.scene_manager.is_dirty)
         self.assertEqual(entry.selected_entity_name, "Player")
         self.assertEqual(entry.selected_entity_id, self.scene_manager.find_entity_data("Player")["id"])

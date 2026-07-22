@@ -355,7 +355,13 @@ def _ensure_component(api: EngineAPI, entity_name: str, component_name: str, pay
         return {"success": False, "message": f"Entity not found: {entity_name}"}
     components = entity.get("components", {})
     if component_name in components:
-        return api.replace_component_data(entity_name, component_name, payload)
+        result = api.replace_component_data(entity_name, component_name, payload)
+        if result.get("success"):
+            return result
+        current = components.get(component_name)
+        if isinstance(current, dict) and current == payload:
+            return {"success": True, "message": "Component already canonical"}
+        return result
     return api.add_component(entity_name, component_name, payload)
 
 

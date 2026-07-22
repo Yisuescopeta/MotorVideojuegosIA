@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.components.transform import Transform
 from engine.scenes.scene import Scene
-from engine.serialization.schema import build_canonical_scene_payload, migrate_scene_data, validate_scene_data
+from engine.serialization.schema import (
+    ResolvedSceneReference,
+    build_canonical_scene_payload,
+    migrate_scene_data,
+    validate_no_session_only_references,
+    validate_scene_data,
+)
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -17,6 +23,13 @@ class SceneProjectionService:
 
     def __init__(self, registry: "ComponentRegistry") -> None:
         self._registry = registry
+        self._scene_reference_resolver: Callable[[str], ResolvedSceneReference | None] | None = None
+
+    def set_scene_reference_resolver(
+        self,
+        resolver: Callable[[str], ResolvedSceneReference | None] | None,
+    ) -> None:
+        self._scene_reference_resolver = resolver
 
     @staticmethod
     def validate_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -70,7 +83,22 @@ class SceneProjectionService:
             world_snapshot=copy.deepcopy(world_snapshot),
             rules_data=scene_snapshot.get("rules", []),
             feature_metadata=scene_snapshot.get("feature_metadata", {}),
+            scene_reference_resolver=self._scene_reference_resolver,
         )
+
+    def canonicalize_scene_references(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Canonicalize persisted cross-scene references through the configured resolver."""
+        from engine.serialization.schema import canonicalize_scene_cross_references
+
+        return canonicalize_scene_cross_references(
+            data,
+            self._scene_reference_resolver or (lambda _path: None),
+        )
+
+    @staticmethod
+    def validate_persistable_payload(data: dict[str, Any]) -> list[str]:
+        """Return diagnostics for identities that cannot cross the session boundary."""
+        return validate_no_session_only_references(data)
 
     def add_entity(
         self,

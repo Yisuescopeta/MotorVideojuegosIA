@@ -28,6 +28,7 @@ from engine.app.scene_workflow_controller import SceneWorkflowController
 from engine.components.canvas import Canvas
 from engine.components.transform import Transform
 from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
+from engine.assets.asset_database import AssetDatabase
 from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
 from engine.core.runtime_contracts import RuntimeControllerContext
@@ -49,6 +50,9 @@ from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
 from engine.runtime.runtime_input import RuntimeInputService
 from engine.runtime.runtime_picking import RuntimeRenderQueryService
+from engine.scenes.result import Err
+from engine.scenes.refs import SceneAssetRef
+from engine.serialization.schema import ResolvedSceneReference
 
 if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
@@ -61,11 +65,13 @@ if TYPE_CHECKING:
     from engine.editor.animator_panel import AnimatorPanel
     from engine.editor.cursor_manager import CustomCursorRenderer
     from engine.editor.editor_layout import EditorLayout
+    from engine.editor.editor_session import EditorSession
     from engine.editor.editor_shell import EditorShell
     from engine.editor.gizmo_system import GizmoSystem
     from engine.editor.hierarchy_panel import HierarchyPanel
     from engine.editor.sprite_editor_modal import SpriteEditorModal
     from engine.editor.terminal_panel import TerminalPanel
+    from engine.editor.transform_preview import TransformPreviewCommands
     from engine.editor.ui.inspector_render import InspectorPanel
     from engine.editor.undo_redo import UndoRedoManager
     from engine.events.event_bus import EventBus
@@ -286,6 +292,7 @@ class Game:
             else None
         )
         self._editor_selection_state = self.editor_shell.selection_state if self.editor_shell is not None else None
+        self._editor_session: Optional["EditorSession"] = None
         self.hierarchy_panel: Optional["HierarchyPanel"] = (
             self.editor_shell.hierarchy_panel if self.editor_shell is not None else None
         )
@@ -298,7 +305,7 @@ class Game:
 
         # Gestión de escenas
         self._scene_manager: Optional["SceneManager"] = None
-        self._transform_preview_commands: Any | None = None
+        self._transform_preview_commands: Optional["TransformPreviewCommands"] = None
         self._external_scene_loader: Optional[Callable[[str], bool]] = None
         self._external_scene_flow_loader: Optional[Callable[[str], bool]] = None
 
@@ -469,7 +476,8 @@ class Game:
                 get_project_service=lambda: self._project_service,
                 get_scene_manager=lambda: self._scene_manager,
                 get_editor_layout=lambda: self.editor_layout,
-                get_editor_selection=lambda: self._editor_selection_state,
+                 get_editor_selection=lambda: self._editor_selection_state,
+                 get_editor_session=lambda: self._editor_session,
                 get_state=lambda: self._state,
                 get_current_scene_path=lambda: self.current_scene_path,
                 set_current_scene_path=lambda value: setattr(self, "current_scene_path", value),
@@ -500,6 +508,7 @@ class Game:
                 get_state=lambda: self._state,
                 get_editor_layout=lambda: self.editor_layout,
                 get_editor_selection=lambda: self._editor_selection_state,
+                get_editor_session=lambda: self._editor_session,
                 get_scene_manager=lambda: self._scene_manager,
                 get_selection_system=lambda: self._selection_system,
                 get_gizmo_system=lambda: self.gizmo_system,
@@ -533,6 +542,7 @@ class Game:
         self._bind_export_panel_api()
         self.hierarchy_panel = self.editor_shell.hierarchy_panel
         self.hierarchy_panel.set_selection_state(self._editor_selection_state)
+        self.hierarchy_panel.set_editor_session(self._editor_session)
         if self._scene_manager is not None:
             self.editor_shell.bind_scene_manager(self._scene_manager)
         if self._project_service is not None:
@@ -701,6 +711,8 @@ class Game:
     def play(self) -> None:
         self._runtime_input.reset()
         self._runtime_controller.play()
+        if self._editor_session is not None and self._scene_manager is not None and self._scene_manager.is_playing:
+            self._editor_session.set_mode("PLAY")
 
     def pause(self) -> None:
         self._runtime_controller.pause()
@@ -708,6 +720,8 @@ class Game:
     def stop(self) -> None:
         self._runtime_controller.stop()
         self._runtime_input.reset()
+        if self._editor_session is not None:
+            self._editor_session.set_mode("EDIT")
 
     def reset_profiler(self, run_label: str = "default") -> None:
         self.enable_deep_profiling = False
@@ -846,9 +860,12 @@ class Game:
 
     def set_scene_manager(self, manager: "SceneManager") -> None:
         self._scene_manager = manager
+        if self._project_service is not None:
+            manager.set_scene_reference_resolver(
+                lambda target_path: self._resolve_scene_asset_reference(self._project_service, target_path)
+            )
         self._scene_manager.set_history_manager(self._history_manager)
         self._scene_manager.set_runtime_signal_compiler(self._compile_runtime_signal_connections)
-        self._configure_transform_preview_commands(manager)
         self._sync_editor_shell()
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
@@ -864,43 +881,56 @@ class Game:
         if self.editor_layout is not None:
             self.editor_layout.set_scene_tabs(manager.list_open_scenes(), manager.active_scene_key)
 
-    def _configure_transform_preview_commands(self, manager: "SceneManager") -> None:
-        self._transform_preview_commands = None
-        if not self.editor_enabled:
-            return
-        from engine.editor.transform_preview import TransformPreviewCoordinator
-        from engine.scenes.preview_leases import PreviewLeaseRegistry
-        from engine.scenes.projection_integrity import AuthoringProjectionFingerprintService
+    def set_transform_preview_commands(
+        self,
+        commands: Optional["TransformPreviewCommands"],
+    ) -> None:
+        """Install the narrow Transform preview capability built by the editor app."""
+        self._transform_preview_commands = commands
 
-        leases = PreviewLeaseRegistry(
-            AuthoringProjectionFingerprintService(manager._projection.create_world),
-            history=manager._change_history,
-            restore_snapshot=lambda key, payload: manager._serializable_mutations.restore_scene_data(
-                key,
-                payload,
-            ),
-        )
+    def set_editor_session(self, session: Optional["EditorSession"]) -> None:
+        """Install the editor session capability built by the editor application."""
+        self._editor_session = session
+        if self.hierarchy_panel is not None:
+            self.hierarchy_panel.set_editor_session(session)
+        if session is not None and self._scene_manager is not None:
+            active_ref = self._scene_manager.active_scene_ref
+            if active_ref is not None:
+                session.activate_scene(active_ref)
 
-        def commit_transform(target, state) -> bool:
-            return manager.apply_transform_state_by_id(
-                target.entity_id,
-                {
-                    "x": state.x,
-                    "y": state.y,
-                    "rotation": state.rotation,
-                    "scale_x": state.scale_x,
-                    "scale_y": state.scale_y,
-                },
-                key_or_path=manager.active_scene_key,
-                record_history=False,
-                label=f"transform:entity_id:{target.entity_id}",
-            )
+    def select_editor_entity(self, entity_name: Optional[str]) -> bool:
+        """Select by EntityRef and project the display label into the active World."""
+        manager = self._scene_manager
+        if manager is None:
+            return False
+        session = self._editor_session
+        if session is not None:
+            active_ref = manager.active_scene_ref
+            if active_ref is not None:
+                session.activate_scene(active_ref)
+            normalized = str(entity_name or "").strip()
+            if not normalized:
+                session.clear_selection()
+            else:
+                entity_ref = manager.entity_ref_by_name(normalized)
+                if entity_ref is None or isinstance(session.select(entity_ref), Err):
+                    return False
+        return manager.set_selected_entity(entity_name)
 
-        self._transform_preview_commands = TransformPreviewCoordinator(
-            manager._workspace,
-            leases,
-            commit_transform,
-        )
+    def _selected_editor_entity_name(self) -> Optional[str]:
+        """Resolve the session selection only for presentation/legacy APIs."""
+        manager = self._scene_manager
+        session = self._editor_session
+        if manager is not None and session is not None:
+            selection = session.snapshot.selection
+            if selection is None:
+                return None
+            data = manager.find_entity_data_by_id(selection.entity_id)
+            if isinstance(data, dict):
+                name = data.get("name")
+                return str(name) if name else None
+            return None
+        return None
 
     def set_selection_system(self, system: "SelectionSystem") -> None:
         self._selection_system = system
@@ -1053,6 +1083,10 @@ class Game:
 
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
+        if self._scene_manager is not None:
+            self._scene_manager.set_scene_reference_resolver(
+                lambda target_path: self._resolve_scene_asset_reference(service, target_path)
+            )
         if self._render_system is not None:
             self._render_system.set_project_service(service)
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
@@ -1068,6 +1102,36 @@ class Game:
         self._sync_editor_shell()
         if self._project_workspace_controller is not None:
             self._project_workspace_controller.set_project_service(service, notify_agent_panel=False)
+
+    @staticmethod
+    def _resolve_scene_asset_reference(
+        service: ProjectService,
+        target_path: str,
+    ) -> ResolvedSceneReference | None:
+        """Resolve a scene path through persistent asset metadata; never invent a GUID."""
+        database = AssetDatabase(service)
+        raw = str(target_path or "").strip()
+        if not raw:
+            return None
+        candidates = [raw]
+        try:
+            candidates.append(service.to_relative_path(service.resolve_path(raw)))
+        except Exception:
+            pass
+        if not raw.replace("\\", "/").startswith("levels/"):
+            candidates.append(f"levels/{raw.lstrip('/\\')}")
+        for candidate in candidates:
+            normalized = str(candidate).replace("\\", "/").strip("/")
+            metadata = database.load_metadata(normalized)
+            guid = str(metadata.get("guid", "") or "").strip()
+            if not guid:
+                continue
+            try:
+                scene_ref = SceneAssetRef(guid, normalized)
+            except ValueError:
+                continue
+            return ResolvedSceneReference(scene=scene_ref)
+        return None
 
     def _refresh_project_scene_entries(self) -> None:
         if self._project_workspace_controller is not None:
@@ -1112,6 +1176,10 @@ class Game:
         if self._scene_manager is None:
             return
         self._world = self._scene_manager.active_world
+        if self._editor_session is not None:
+            active_ref = self._scene_manager.active_scene_ref
+            if active_ref is not None:
+                self._editor_session.activate_scene(active_ref)
         self._sync_current_scene_path()
         if self.editor_layout is not None:
             self.editor_layout.set_scene_tabs(
@@ -2371,7 +2439,7 @@ class Game:
             opened = self.load_scene_by_path(scene_ref)
         if not opened:
             return
-        if entity_name and not self._scene_manager.set_selected_entity(entity_name):
+        if entity_name and not self.select_editor_entity(entity_name):
             log_warn(f"Scene Flow: entity '{entity_name}' was not found after opening '{scene_ref}'")
 
     def _open_flow_target(self, request: dict[str, str]) -> None:
@@ -2385,8 +2453,9 @@ class Game:
     def _resolve_default_ui_parent(self, active_world: Optional["World"]) -> Optional[str]:
         if active_world is None:
             return None
-        if active_world.selected_entity_name:
-            return active_world.selected_entity_name
+        selected_name = self._selected_editor_entity_name()
+        if selected_name:
+            return selected_name
         for entity in active_world.iter_all_entities():
             if entity.has_component(Canvas):
                 return entity.name
@@ -2542,15 +2611,17 @@ class Game:
         if self.editor_layout.request_duplicate_entity:
             self.editor_layout.request_duplicate_entity = False
             active_world = self.world
-            if active_world is not None and active_world.selected_entity_name:
-                self._scene_manager.duplicate_entity_subtree(active_world.selected_entity_name)
+            selected_name = self._selected_editor_entity_name()
+            if selected_name:
+                self._scene_manager.duplicate_entity_subtree(selected_name)
 
         # DELETE ENTITY
         if self.editor_layout.request_delete_entity:
             self.editor_layout.request_delete_entity = False
             active_world = self.world
-            if active_world is not None and active_world.selected_entity_name:
-                self._scene_manager.remove_entity(active_world.selected_entity_name)
+            selected_name = self._selected_editor_entity_name()
+            if selected_name:
+                self._scene_manager.remove_entity(selected_name)
 
         # CREATE EMPTY ENTITY
         if self.editor_layout.request_create_entity:
@@ -2565,8 +2636,4 @@ class Game:
                     idx += 1
                 if self._scene_manager is not None:
                     self._scene_manager.create_entity(name, components={"Transform": {}})
-                    self._scene_manager.set_selected_entity(name)
-                else:
-                    e = active_world.create_entity(name)
-                    e.add_component(Transform())
-                    active_world.selected_entity_name = name
+                    self.select_editor_entity(name)

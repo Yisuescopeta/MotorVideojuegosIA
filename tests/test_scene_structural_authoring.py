@@ -142,15 +142,18 @@ class SceneStructuralEntityPortRoutingTests(unittest.TestCase):
             patch.object(pipeline, "begin", wraps=pipeline.begin) as begin,
             patch.object(
                 entry.scene,
-                "update_entity_property",
-                wraps=entry.scene.update_entity_property,
+                "reparent_entity_by_id",
+                wraps=entry.scene.reparent_entity_by_id,
             ) as primitive,
         ):
             self.assertTrue(manager.set_entity_parent("Child", "Parent"))
 
         update.assert_not_called()
         begin.assert_called_once_with(entry, failure_context="reparent:Child")
-        primitive.assert_called_once_with("Child", "parent", "Parent")
+        primitive.assert_called_once_with(
+            entry.scene.find_entity("Child")["id"],
+            entry.scene.find_entity("Parent")["id"],
+        )
         self.assertEqual(manager.find_entity_data("Child")["parent"], "Parent")
 
     def test_instantiate_prefab_uses_entity_port_payload(self) -> None:
@@ -187,30 +190,35 @@ class SceneStructuralEntityPortRoutingTests(unittest.TestCase):
 
 
 class SceneStructuralPendingFlushTests(unittest.TestCase):
-    def test_duplicate_builds_payload_from_world_materialized_by_begin(self) -> None:
+    def test_duplicate_blocks_pending_legacy_without_import(self) -> None:
         manager = _manager(_entity("Rig"))
         world = manager.get_edit_world()
         world.get_entity_by_name("Rig").get_component(Transform).local_x = 25.0
         self.assertTrue(manager.mark_edit_world_dirty())
 
-        self.assertTrue(manager.duplicate_entity_subtree("Rig", "RigCopy"))
+        self.assertFalse(manager.duplicate_entity_subtree("Rig", "RigCopy"))
 
-        copied = manager.find_entity_data("RigCopy")
-        self.assertEqual(copied["components"]["Transform"]["x"], 25.0)
+        scene = manager._workspace.get_active_entry().scene
+        self.assertIsNone(scene.find_entity("RigCopy"))
+        self.assertEqual(scene.find_entity("Rig")["components"]["Transform"]["x"], 0.0)
+        entry = manager.resolve_entry(manager.active_scene_key)
+        assert entry is not None
+        self.assertTrue(entry.edit_world_sync_pending)
 
-    def test_paste_resolves_name_conflicts_after_pending_rename_flush(self) -> None:
+    def test_paste_blocks_pending_legacy_without_import(self) -> None:
         manager = _manager(_entity("Seed"))
         self.assertTrue(manager.copy_entity_subtree("Seed"))
         manager.get_edit_world().get_entity_by_name("Seed").name = "Renamed"
         self.assertTrue(manager.mark_edit_world_dirty())
 
-        self.assertTrue(manager.paste_copied_entities())
+        self.assertFalse(manager.paste_copied_entities())
 
-        self.assertIsNotNone(manager.find_entity_data("Renamed"))
-        self.assertIsNotNone(manager.find_entity_data("Seed"))
-        self.assertIsNone(manager.find_entity_data("Seed_copy"))
+        scene = manager._workspace.get_active_entry().scene
+        self.assertIsNotNone(scene.find_entity("Seed"))
+        self.assertIsNone(scene.find_entity("Seed_copy"))
+        self.assertIsNone(scene.find_entity("Renamed"))
 
-    def test_create_prefab_replace_reads_parent_after_pending_flush(self) -> None:
+    def test_create_prefab_replace_blocks_pending_legacy_without_import(self) -> None:
         root = _entity("Root")
         root["parent"] = "ParentA"
         manager = _manager(_entity("ParentA"), _entity("ParentB"), root)
@@ -218,7 +226,7 @@ class SceneStructuralPendingFlushTests(unittest.TestCase):
         self.assertTrue(manager.mark_edit_world_dirty())
 
         with patch("engine.assets.prefab.PrefabManager.save_prefab", return_value=True):
-            self.assertTrue(
+            self.assertFalse(
                 manager.create_prefab(
                     "Root",
                     "prefabs/root.prefab",
@@ -226,7 +234,8 @@ class SceneStructuralPendingFlushTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(manager.find_entity_data("Root")["parent"], "ParentB")
+        scene = manager._workspace.get_active_entry().scene
+        self.assertEqual(scene.find_entity("Root")["parent"], "ParentA")
 
 
 if __name__ == "__main__":
