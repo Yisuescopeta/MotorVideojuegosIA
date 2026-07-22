@@ -4,6 +4,12 @@ from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_session import EditorMode, EditorSession, EditorSessionSnapshot
 from engine.editor.hierarchy_queries import HierarchyNode, HierarchyQueries, HierarchySnapshot
 from engine.editor.hierarchy_query_cache import HierarchyQueryCache
+from engine.editor.transform_preview import (
+    TransformPreviewCommands,
+    TransformPreviewCoordinator,
+    TransformPreviewHandle,
+    TransformPreviewState,
+)
 from engine.editor.editor_shell_actions import (
     EditorShellActionInbox,
     SceneTabAction,
@@ -24,6 +30,10 @@ __all__ = [
     "HierarchyQueries",
     "HierarchySnapshot",
     "HierarchyQueryCache",
+    "TransformPreviewCommands",
+    "TransformPreviewCoordinator",
+    "TransformPreviewHandle",
+    "TransformPreviewState",
     "EditorShellActionInbox",
     "SceneTabAction",
     "SceneTabActionKind",

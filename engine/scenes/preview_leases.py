@@ -33,6 +33,18 @@ class PreviewLeaseCode(str, Enum):
     INTEGRITY_BLOCKED = "integrity_blocked"
 
 
+class PreviewCancelReason(str, Enum):
+    USER = "user"
+    SCENE_SWITCH = "scene_switch"
+    PLAY = "play"
+    SAVE = "save"
+    UNDO_REDO = "undo_redo"
+    POINTER_CAPTURE_LOST = "pointer_capture_lost"
+    TARGET_MISSING = "target_missing"
+    CONFLICT = "conflict"
+    VALIDATION_FAILED = "validation_failed"
+
+
 @dataclass(frozen=True, slots=True)
 class PreviewLease:
     lease_id: str
